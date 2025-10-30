@@ -127,7 +127,7 @@ Inputs:
 - `python-version` (default `3.11`): Passed to `actions/setup-python`.
 - `requirements`: Requirements file to install; leave blank (default) to skip.
 - `extra-packages`: Additional pip packages to install.
-- `upload-path` (default `site`): Directory uploaded via `actions/upload-pages-artifact`. The build step writes to this directory using `python scripts/build_github_pages.py --output <upload-path>`.
+- `upload-path` (default `site`): Directory uploaded via `actions/upload-pages-artifact`. The action invokes `build_github_pages.py` from this repository with `--output <upload-path>`.
 - `working-directory` (default `.`): Directory for installation and build commands.
 - `pythonpath`: Exported as `PYTHONPATH` while running the build command.
 - `artifact-name` (default `github-pages`): Name of the uploaded artefact.

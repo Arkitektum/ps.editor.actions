@@ -70,7 +70,7 @@ runs:
         PYTHONPATH: ${{ inputs.pythonpath }}
       run: |
         set -eo pipefail
-        python scripts/build_github_pages.py --output "${{ inputs.upload-path }}"
+        python "$GITHUB_ACTION_PATH/../scripts/build_github_pages.py" --output "${{ inputs.upload-path }}"
     - name: Upload artefact
       uses: actions/upload-pages-artifact@v3
       with:
