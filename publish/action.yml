@@ -12,7 +12,7 @@ inputs:
   requirements:
     description: Path to requirements file to install before building. Leave empty to skip.
     required: false
-    default: "requirements.txt"
+    default: ""
   extra-packages:
     description: Additional pip packages to install (space separated). Leave empty to skip.
     required: false

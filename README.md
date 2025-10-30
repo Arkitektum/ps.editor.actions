@@ -24,9 +24,20 @@ jobs:
         if: steps.prepare.outputs.feature-catalogue-uml != ''
         run: |
           sudo apt-get update
-          sudo apt-get install -y graphviz
-          curl -L -o plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar
-          java -jar plantuml.jar -tpng "${{ steps.prepare.outputs.feature-catalogue-uml }}"
+          sudo apt-get install -y plantuml graphviz
+          set -euo pipefail
+          while IFS= read -r file; do
+            output_dir="$(dirname "$file")"
+            plantuml -tpng -output "$PWD/$output_dir" "$file"
+          done < <(git ls-files '*.puml')
+
+      - name: Derive PNG path
+        if: steps.prepare.outputs.feature-catalogue-uml != ''
+        id: feature-png
+        run: |
+          png="${{ steps.prepare.outputs.feature-catalogue-uml }}"
+          png="${png%.puml}.png"
+          echo "path=$png" >> "$GITHUB_OUTPUT"
 
       - id: assemble
         uses: arkitektum/ps.editor.actions/assemble@main
@@ -35,7 +46,7 @@ jobs:
           output-path: ${{ steps.prepare.outputs.spec-markdown }}
           feature-catalogue-markdown: ${{ steps.prepare.outputs.feature-catalogue-markdown }}
           feature-catalogue-uml: ${{ steps.prepare.outputs.feature-catalogue-uml }}
-          feature-catalogue-png: ${{ steps.prepare.outputs.feature-catalogue-uml }}.png
+          feature-catalogue-png: ${{ steps.feature-png.outputs.path }}
           updated: 2025-01-01
 ```
 
@@ -114,7 +125,7 @@ Inputs:
 
 - `checkout` (default `false`): Set to `true` if the action should fetch the repository.
 - `python-version` (default `3.11`): Passed to `actions/setup-python`.
-- `requirements` (default `requirements.txt`): Requirements file to install; leave blank to skip.
+- `requirements`: Requirements file to install; leave blank (default) to skip.
 - `extra-packages`: Additional pip packages to install.
 - `upload-path` (default `site`): Directory uploaded via `actions/upload-pages-artifact`. The build step writes to this directory using `python scripts/build_github_pages.py --output <upload-path>`.
 - `working-directory` (default `.`): Directory for installation and build commands.
