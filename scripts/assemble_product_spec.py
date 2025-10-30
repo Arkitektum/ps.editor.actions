@@ -50,7 +50,7 @@ def assemble_product_specification(
     output_path: Path,
     feature_catalogue_markdown: Path | None,
     feature_catalogue_uml: Path | None,
-    feature_catalogue_png: Path,
+    feature_catalogue_png: Path | None,
     updated: str | None,
 ) -> Path:
     psdata = json.loads(psdata_path.read_text(encoding="utf-8"))
@@ -65,19 +65,25 @@ def assemble_product_specification(
             IncludeResource("incl_featuretypes_table", table_content),
         )
 
-    if feature_catalogue_uml and not feature_catalogue_uml.exists():
-        raise FileNotFoundError(f"Feature catalogue PlantUML '{feature_catalogue_uml}' was not found.")
+    diagram_content = ""
+    png_exists = False
+    if feature_catalogue_png and feature_catalogue_png.exists():
+        png_exists = True
+        diagram_content = _format_image_markdown(feature_catalogue_png, output_path)
 
-    if feature_catalogue_png is None:
-        raise ValueError("feature_catalogue_png is required to embed the feature catalogue diagram.")
-    if not feature_catalogue_png.exists():
-        raise FileNotFoundError(f"Feature catalogue PNG '{feature_catalogue_png}' was not found.")
-    includes.append(
-        IncludeResource(
-            "incl_featuretypes_uml",
-            _format_image_markdown(feature_catalogue_png, output_path),
-        ),
-    )
+    if not png_exists:
+        if feature_catalogue_uml and feature_catalogue_uml.exists():
+            uml_text = _read_text(feature_catalogue_uml)
+            if uml_text:
+                diagram_content = f"```plantuml\n{uml_text}\n```"
+        elif feature_catalogue_png:
+            # PNG path was provided but does not exist; raise to flag missing artefact.
+            raise FileNotFoundError(f"Feature catalogue PNG '{feature_catalogue_png}' was not found.")
+
+    if diagram_content:
+        includes.append(
+            IncludeResource("incl_featuretypes_uml", diagram_content),
+        )
 
     rendered = render_template(
         template_path,
@@ -126,8 +132,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--feature-catalogue-png",
         type=Path,
-        required=True,
-        help="Path to the rendered PlantUML PNG diagram that will be embedded.",
+        help="Optional path to the rendered PlantUML PNG diagram.",
     )
     parser.add_argument(
         "--updated",

@@ -82,8 +82,8 @@ Inputs:
 - `output-path` (required): Target path for the rendered Markdown specification.
 - `template-path`: Optional override for the Handlebars-style template.
 - `feature-catalogue-markdown`: Optional path to the feature catalogue Markdown table.
-- `feature-catalogue-uml`: Optional path to the feature catalogue PlantUML source (handy for downstream tooling, not embedded).
-- `feature-catalogue-png` (required): Path to the rendered PlantUML PNG diagram that will be embedded in the specification.
+- `feature-catalogue-uml`: Optional path to the feature catalogue PlantUML source (embedded when no PNG is provided).
+- `feature-catalogue-png`: Optional path to the rendered PlantUML PNG diagram. When missing or unavailable, the PlantUML source is embedded instead.
 - `updated`: Optional override for the `updated` metadata field.
 
 Outputs:
@@ -134,14 +134,14 @@ Inputs:
 
 ## Exporting PlantUML to PNG
 
-The assemble action requires a PNG diagram; this repository does not render it directly to avoid bundling Java/Graphviz. Use the workflow snippet above—or any other conversion job—to transform the PlantUML source before invoking the assemble action.
+PNG diagrams are recommended for readability, but the assemble action now falls back to embedding the PlantUML source when no PNG is supplied. Use the workflow snippet above—or any other conversion job—to generate PNGs when you want rendered graphics.
 
 ## Template
 
 The default template lives at `data/template/ps.md.hbs`. It expects the following placeholders to be populated by the generator:
 
 - `incl_featuretypes_table`: Markdown table generated from the feature catalogue metadata.
-- `incl_featuretypes_uml`: PNG rendering of the feature catalogue diagram.
+- `incl_featuretypes_uml`: Feature catalogue diagram rendered as a PNG when available, otherwise the raw PlantUML source.
 
 You can provide a customised template via the `template-path` input to tailor the resulting Markdown documentation.
 

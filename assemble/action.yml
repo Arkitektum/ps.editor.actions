@@ -17,8 +17,8 @@ inputs:
     description: Optional path to the feature catalogue PlantUML source.
     required: false
   feature-catalogue-png:
-    description: Path to the rendered PlantUML PNG diagram that will be embedded.
-    required: true
+    description: Optional path to the rendered PlantUML PNG diagram. When omitted, the PlantUML source (if provided) will be embedded instead.
+    required: false
   updated:
     description: Optional override for the updated field in the rendered specification.
     required: false
@@ -52,7 +52,9 @@ runs:
         if [ -n "${{ inputs.feature-catalogue-uml }}" ]; then
           ARGS+=("--feature-catalogue-uml" "${{ inputs.feature-catalogue-uml }}")
         fi
-        ARGS+=("--feature-catalogue-png" "${{ inputs.feature-catalogue-png }}")
+        if [ -n "${{ inputs.feature-catalogue-png }}" ]; then
+          ARGS+=("--feature-catalogue-png" "${{ inputs.feature-catalogue-png }}")
+        fi
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")
         fi
