@@ -413,12 +413,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Entrypoint for the ``python -m puml.feature_types`` CLI."""
 
     parser = argparse.ArgumentParser(
-        description="Render PlantUML diagrams from feature_types.json files.",
+        description="Render PlantUML diagrams from feature_catalogue.json files.",
     )
     parser.add_argument(
         "input",
         type=Path,
-        help="Path to the feature_types.json file to render.",
+        help="Path to the feature_catalogue.json file to render.",
     )
     parser.add_argument(
         "--title",

@@ -1,5 +1,5 @@
-name: Generate product specification
-description: Fetch psdata metadata and feature catalogue information to render a product specification.
+name: Prepare product specification artefacts
+description: Fetch psdata metadata and feature catalogue information to prepare product specification artefacts.
 inputs:
   metadata-id:
     description: Geonorge metadata UUID used as the psdata source.
@@ -52,7 +52,7 @@ runs:
         set -eo pipefail
         python -m pip install --upgrade pip
         pip install requests PyYAML
-    - name: Generate product specification
+    - name: Prepare product specification artefacts
       id: generate
       shell: bash
       run: |
@@ -73,6 +73,7 @@ runs:
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")
         fi
+        ARGS+=("--skip-spec-markdown")
         python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"
         SPEC_DIR=""
         PSDATA_PATH=""

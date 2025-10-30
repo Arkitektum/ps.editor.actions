@@ -489,7 +489,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for root in {Path.cwd(), Path("src")}:
             if not root.exists():
                 continue
-            for path in root.rglob("*_feature_types.json"):
+            for path in root.rglob("*_feature_catalogue.json"):
                 discovered.add(path)
         input_paths = sorted(discovered)
 
@@ -500,7 +500,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for path in input_paths:
         feature_types = _gather_feature_types_from_file(path)
         stem = path.stem
-        prefix = stem.split("_feature_types", 1)[0]
+        prefix = stem.split("_feature_catalogue", 1)[0]
         display_name = prefix.replace("_", " ").strip() or stem
         display_name = display_name.upper()
         section = _render_markdown_section(

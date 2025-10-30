@@ -1,41 +1,119 @@
-﻿---
-title: {{identification.title}}
-updated: {{updated}}
-metadataId: {{identification.metadataId}}
+---
+title: "{{identification.title}}"
+updated: "{{updated}}"
 ---
 
-# Produktspesifikasjon – {{identification.title}}
+# Produktspesifikasjon: {{identification.title}}
 
+## Innledning, historikk og endringslogg
+{{incl_innledning_historikk_og_endringslogg}}
+
+### Innledning
+{{incl_innledning}}
+
+### Historikk
+{{incl_historikk}}
+
+### Endringslogg
+{{incl_endringslogg}}
+
+### Normative referanser
+{{incl_normative_referanser}}
+
+## Definisjoner og forkortelser
+{{incl_definisjoner_og_forkortelser}}
+
+### Definisjoner
+{{incl_definisjoner}}
+
+### Forkortelser
+{{incl_forkortelser}}
+
+## Generelt om spesifikasjonen
+{{incl_generelt_om_spesifikasjonen}}
+
+### Unik identifisering
+{{incl_unik_identifisering}}
+{{identification.id}}
+
+#### Fullstendig navn
+{{incl_fullstendig_navn}}
+{{identification.title}}
+
+#### Versjon
+{{incl_versjon}}
+{{identification.dates.publication}}
+
+### Referansedato
+{{incl_referansedato}}
+{{identification.dates.revision}}
+
+### Ansvarlig organisasjon
+{{incl_ansvarlig_organisasjon}}
+{{identification.responsibleParties.[0].organization}}
+
+### Språk
+{{incl_spraak}}
+{{identification.language}}
+
+### Hovedtema
+{{incl_hovedtema}}
+{{identification.keywords}}
+
+### Temakategori
+{{incl_temakategori}}
+{{identification.topicCategories}}
+
+### Sammendrag
+{{incl_sammendrag}}
 {{identification.abstract}}
 
-## Grunndata
-- Metadata-ID: {{identification.metadataId}}
-- Tema: {{identification.topicCategories.[0]}}
-- Status: {{identification.status}}
-- Metadata-URL: {{metadata.metadataUrl}}
-
-## Formål
+### Formål
+{{incl_formaal}}
 {{identification.purpose}}
 
-## Tilleggsinformasjon
-{{identification.supplementalInformation}}
+## Spesifikasjonsomfang
+{{incl_spesifikasjonsomfang}}
+{{scope}}
 
-## Bruk
-{{usage.description}}
+## Innhold og struktur
+{{incl_innhold_og_struktur}}
+{{dataContent}}
 
-## Kontakt
-- Eigar: {{identification.owner}}
-- Forvalter: {{identification.maintainer}}
-- Kontaktpunkt: {{identification.pointOfContact.[0].organization}} {{identification.pointOfContact.[0].email}}
-
-## Datakvalitet
-{{dataQuality.lineage.statement}}
-
-## Datainnhold
-{{incl_featuretypes_table}}
-
-## UML
+### Datamodell
+{{incl_datamodell}}
 {{incl_featuretypes_uml}}
 
-## Rå psdata
-{{incl_psdata_json}}
+{{incl_featuretypes_table}}
+
+## Referansesystem
+{{incl_referansesystem}}
+{{referenceSystems}}
+
+## Kvalitet
+{{incl_kvalitet}}
+{{dataQuality.scope}}
+{{dataQuality.qualityElements}}
+{{dataQuality.lineage}}
+
+## Datafangst
+{{incl_datafangst}}
+{{dataCapture}}
+
+## Datavedlikehold
+{{incl_datavedlikehold}}
+{{maintenance.maintenanceFrequency}}
+{{maintenance.maintenanceNote}}
+
+## Presentasjon
+{{incl_presentasjon}}
+{{portrayal.styleReferences}}
+{{portrayal.defaultPortrayalNote}}
+
+## Leveranse
+{{incl_leveranse}}
+{{delivery}}
+
+## Metadata
+{{incl_metadata}}
+{{metadata}}

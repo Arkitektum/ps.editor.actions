@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - id: spec
+
+      - id: prepare
         uses: arkitektum/ps.editor.actions@main
         with:
           metadata-id: 12345678-abcd-1234-abcd-1234567890ab
@@ -18,48 +19,91 @@ jobs:
           output-directory: produktspesifikasjon
           product-slug: mitt-produkt
           updated: 2025-01-01
-      - name: Inspect generated files
+
+      - name: Render UML to PNG
+        if: steps.prepare.outputs.feature-catalogue-uml != ''
         run: |
-          echo "Markdown: ${{ steps.spec.outputs.spec-markdown }}"
-          echo "psdata:  ${{ steps.spec.outputs.psdata-path }}"
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+          curl -L -o plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar
+          java -jar plantuml.jar -tpng "${{ steps.prepare.outputs.feature-catalogue-uml }}"
+
+      - id: assemble
+        uses: arkitektum/ps.editor.actions/assemble@main
+        with:
+          psdata-path: ${{ steps.prepare.outputs.psdata-path }}
+          output-path: ${{ steps.prepare.outputs.spec-markdown }}
+          feature-catalogue-markdown: ${{ steps.prepare.outputs.feature-catalogue-markdown }}
+          feature-catalogue-uml: ${{ steps.prepare.outputs.feature-catalogue-uml }}
+          feature-catalogue-png: ${{ steps.prepare.outputs.feature-catalogue-uml }}.png
+          updated: 2025-01-01
 ```
 
-Only `metadata-id` and `ogc-feature-api` are required. All other inputs are optional.
+The first action fetches and prepares every artefact. The optional PlantUML step converts the diagram to PNG before the second action stitches everything into the final Markdown document.
 
-## Inputs
+## Actions
+
+### Prepare artefacts (`arkitektum/ps.editor.actions@main`)
+
+Inputs:
 
 - `metadata-id` (required): Geonorge metadata UUID used to fetch psdata content.
 - `ogc-feature-api` (required): Fully qualified URL to an OGC API - Features `/collections` endpoint.
 - `output-directory` (default `produktspesifikasjon`): Directory that will contain the generated artefacts.
 - `product-slug`: Overrides the auto-generated folder name (derived from the psdata title).
 - `template-path`: Path to a Handlebars-style template if you want to replace `data/template/ps.md.hbs`.
-- `updated`: Explicit value for the `updated` field in the rendered Markdown front matter.
+- `updated`: Explicit value for the `updated` field in the rendered Markdown front matter (propagated to the assemble step).
 
-## Outputs
+Outputs:
 
 - `spec-directory`: Absolute path to the directory containing all generated files.
 - `psdata-path`: Path to the psdata JSON file.
 - `feature-catalogue-json`: Path to the collected feature catalogue JSON cache.
 - `feature-catalogue-markdown`: Path to the feature catalogue Markdown table (blank if no entries were found).
 - `feature-catalogue-uml`: Path to the feature catalogue PlantUML diagram (blank if no entries were found).
-- `spec-markdown`: Path to the rendered product specification Markdown document.
+- `spec-markdown`: Reserved path for the final product specification Markdown (always `<spec-directory>/index.md`). The file is created by the assemble action.
+
+### Assemble specification (`arkitektum/ps.editor.actions/assemble@main`)
+
+Inputs:
+
+- `psdata-path` (required): Path to the psdata JSON file from the prepare step.
+- `output-path` (required): Target path for the rendered Markdown specification.
+- `template-path`: Optional override for the Handlebars-style template.
+- `feature-catalogue-markdown`: Optional path to the feature catalogue Markdown table.
+- `feature-catalogue-uml`: Optional path to the feature catalogue PlantUML source (handy for downstream tooling, not embedded).
+- `feature-catalogue-png` (required): Path to the rendered PlantUML PNG diagram that will be embedded in the specification.
+- `updated`: Optional override for the `updated` metadata field.
+
+Outputs:
+
+- `spec-markdown`: Path to the assembled product specification Markdown document (always `<spec-directory>/index.md`).
+
+## Exporting PlantUML to PNG
+
+The assemble action requires a PNG diagram; this repository does not render it directly to avoid bundling Java/Graphviz. Use the workflow snippet above—or any other conversion job—to transform the PlantUML source before invoking the assemble action.
 
 ## Template
 
 The default template lives at `data/template/ps.md.hbs`. It expects the following placeholders to be populated by the generator:
 
-- `incl_psdata_json`: JSON representation of the psdata payload, wrapped in a fenced code block.
 - `incl_featuretypes_table`: Markdown table generated from the feature catalogue metadata.
-- `incl_featuretypes_uml`: PlantUML diagram rendered as a fenced code block.
+- `incl_featuretypes_uml`: PNG rendering of the feature catalogue diagram.
 
 You can provide a customised template via the `template-path` input to tailor the resulting Markdown documentation.
 
 ## Local development
 
-Run the generator script directly to verify changes before publishing:
+Prepare artefacts locally:
 
 ```bash
-python scripts/generate_product_spec.py <metadata-id> <ogc-feature-api> --output-dir produktspesifikasjon/test
+python scripts/generate_product_spec.py <metadata-id> <ogc-feature-api> --output-dir produktspesifikasjon/test --skip-spec-markdown
 ```
 
-The command writes all artefacts to the selected output directory and prints the resolved file paths, mirroring the behaviour in GitHub Actions.
+Once you have enriched the artefacts (e.g. rendered UML to PNG), assemble the final Markdown:
+
+```bash
+python scripts/assemble_product_spec.py produktspesifikasjon/test/<slug>/psdata_<slug>.json --output produktspesifikasjon/test/<slug>/index.md --feature-catalogue-markdown produktspesifikasjon/test/<slug>/<slug>_feature_catalogue.md --feature-catalogue-uml produktspesifikasjon/test/<slug>/<slug>_feature_catalogue.puml --feature-catalogue-png produktspesifikasjon/test/<slug>/<slug>_feature_catalogue.puml.png
+```
+
+Adjust paths to match your slug and any generated PNG files. The commands mirror the behaviour in GitHub Actions.

@@ -75,6 +75,7 @@ def generate_product_specification(
     slug_override: str | None,
     template_path: Path,
     updated: str | None,
+    render_spec_markdown: bool = True,
 ) -> dict[str, Path]:
     psdata = fetch_psdata(metadata_id)
     feature_types = load_feature_types(ogc_feature_api)
@@ -86,20 +87,23 @@ def generate_product_specification(
     psdata_path = spec_dir / psdata_filename
     _write_text_file(psdata_path, json.dumps(psdata, indent=2, ensure_ascii=False))
 
-    feature_types_filename = f"{slug}_feature_types.json"
-    feature_types_path = spec_dir / feature_types_filename
-    _write_text_file(feature_types_path, json.dumps(feature_types, indent=2, ensure_ascii=False))
+    feature_catalogue_filename = f"{slug}_feature_catalogue.json"
+    feature_catalogue_json_path = spec_dir / feature_catalogue_filename
+    _write_text_file(
+        feature_catalogue_json_path,
+        json.dumps(feature_types, indent=2, ensure_ascii=False),
+    )
 
-    feature_types_markdown_path = spec_dir / f"{slug}_feature_types.md"
+    feature_catalogue_markdown_path = spec_dir / f"{slug}_feature_catalogue.md"
     if feature_types:
-        feature_types_markdown = render_feature_types_to_markdown(feature_types)
-        _write_text_file(feature_types_markdown_path, feature_types_markdown)
+        feature_catalogue_markdown = render_feature_types_to_markdown(feature_types)
+        _write_text_file(feature_catalogue_markdown_path, feature_catalogue_markdown)
     else:
-        feature_types_markdown = ""
-        feature_types_markdown_path.parent.mkdir(parents=True, exist_ok=True)
-        feature_types_markdown_path.touch(exist_ok=True)
+        feature_catalogue_markdown = ""
+        feature_catalogue_markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        feature_catalogue_markdown_path.touch(exist_ok=True)
 
-    uml_path = spec_dir / f"{slug}_feature_types.puml"
+    feature_catalogue_uml_path = spec_dir / f"{slug}_feature_catalogue.puml"
     if feature_types:
         identification = psdata.get("identification")
         title = ""
@@ -107,50 +111,50 @@ def generate_product_specification(
             title_value = identification.get("title")
             if isinstance(title_value, str):
                 title = title_value.strip()
-        uml_content = render_feature_types_to_puml(
+        feature_catalogue_uml_content = render_feature_types_to_puml(
             feature_types,
             title=f"{title} - Objekttyper" if title else None,
             package="Objekttyper",
             include_notes=False,
             include_descriptions=False,
         )
-        _write_text_file(uml_path, uml_content)
+        _write_text_file(feature_catalogue_uml_path, feature_catalogue_uml_content)
     else:
-        uml_content = ""
-        uml_path.parent.mkdir(parents=True, exist_ok=True)
-        uml_path.touch(exist_ok=True)
+        feature_catalogue_uml_content = ""
+        feature_catalogue_uml_path.parent.mkdir(parents=True, exist_ok=True)
+        feature_catalogue_uml_path.touch(exist_ok=True)
 
     includes: list[IncludeResource] = [
         IncludeResource("incl_psdata_json", _format_json_block(psdata)),
     ]
-    if feature_types_markdown.strip():
+    if feature_catalogue_markdown.strip():
         includes.append(
-            IncludeResource("incl_featuretypes_table", feature_types_markdown.strip()),
+            IncludeResource("incl_featuretypes_table", feature_catalogue_markdown.strip()),
         )
-    if uml_content.strip():
+    if feature_catalogue_uml_content.strip():
         includes.append(
             IncludeResource(
                 "incl_featuretypes_uml",
-                f"```plantuml\n{uml_content.strip()}\n```",
+                f"```plantuml\n{feature_catalogue_uml_content.strip()}\n```",
             ),
         )
 
-    spec_markdown = render_template(
-        template_path,
-        psdata_path,
-        includes=includes,
-        updated=updated,
-    )
-
-    spec_markdown_path = spec_dir / f"{slug}.md"
-    _write_text_file(spec_markdown_path, spec_markdown)
+    spec_markdown_path = spec_dir / "index.md"
+    if render_spec_markdown:
+        spec_markdown = render_template(
+            template_path,
+            psdata_path,
+            includes=includes,
+            updated=updated,
+        )
+        _write_text_file(spec_markdown_path, spec_markdown)
 
     return {
         "directory": spec_dir,
         "psdata": psdata_path,
-        "feature_catalogue_json": feature_types_path,
-        "feature_catalogue_markdown": feature_types_markdown_path,
-        "feature_catalogue_uml": uml_path,
+        "feature_catalogue_json": feature_catalogue_json_path,
+        "feature_catalogue_markdown": feature_catalogue_markdown_path,
+        "feature_catalogue_uml": feature_catalogue_uml_path,
         "spec_markdown": spec_markdown_path,
     }
 
@@ -184,6 +188,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--updated",
         help="Optional override for the 'updated' metadata field in the rendered specification.",
     )
+    parser.add_argument(
+        "--skip-spec-markdown",
+        action="store_true",
+        help="Skip rendering the final product specification Markdown document.",
+    )
     return parser.parse_args(argv)
 
 
@@ -207,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
             slug_override=args.slug_override,
             template_path=template_path,
             updated=args.updated,
+            render_spec_markdown=not args.skip_spec_markdown,
         )
     except Exception as error:  # pragma: no cover - defensive logging
         print(f"Failed to generate product specification: {error}", file=sys.stderr)
@@ -229,7 +239,13 @@ def main(argv: list[str] | None = None) -> int:
             "No feature catalogue PlantUML generated "
             f"(reserved path: {paths['feature_catalogue_uml']})",
         )
-    print(f"Rendered product specification: {paths['spec_markdown']}")
+    if args.skip_spec_markdown:
+        print(
+            "Skipped rendering product specification Markdown "
+            f"(reserved path: {paths['spec_markdown']})",
+        )
+    else:
+        print(f"Rendered product specification: {paths['spec_markdown']}")
 
     print(f"[paths] directory={paths['directory']}")
     print(f"[paths] psdata={paths['psdata']}")
