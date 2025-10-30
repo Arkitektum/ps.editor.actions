@@ -1,0 +1,112 @@
+name: Generate product specification
+description: Fetch psdata metadata and feature catalogue information to render a product specification.
+inputs:
+  metadata-id:
+    description: Geonorge metadata UUID used as the psdata source.
+    required: true
+  ogc-feature-api:
+    description: URL to the OGC API - Features collections endpoint.
+    required: true
+  output-directory:
+    description: Directory where generated files should be written.
+    required: false
+    default: produktspesifikasjon
+  product-slug:
+    description: Optional explicit slug for the product specification directory.
+    required: false
+  template-path:
+    description: Optional path to a Handlebars-style template to override the default.
+    required: false
+  updated:
+    description: Optional override for the updated field in the rendered specification.
+    required: false
+outputs:
+  spec-directory:
+    description: Directory containing the generated product specification.
+    value: ${{ steps.generate.outputs.spec-directory }}
+  psdata-path:
+    description: Path to the generated psdata JSON file.
+    value: ${{ steps.generate.outputs.psdata-path }}
+  feature-catalogue-json:
+    description: Path to the feature catalogue JSON cache.
+    value: ${{ steps.generate.outputs.feature-catalogue-json }}
+  feature-catalogue-markdown:
+    description: Path to the feature catalogue Markdown documentation.
+    value: ${{ steps.generate.outputs.feature-catalogue-markdown }}
+  feature-catalogue-uml:
+    description: Path to the feature catalogue PlantUML diagram.
+    value: ${{ steps.generate.outputs.feature-catalogue-uml }}
+  spec-markdown:
+    description: Path to the rendered product specification Markdown file.
+    value: ${{ steps.generate.outputs.spec-markdown }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - name: Install dependencies
+      shell: bash
+      run: |
+        set -eo pipefail
+        python -m pip install --upgrade pip
+        pip install requests PyYAML
+    - name: Generate product specification
+      id: generate
+      shell: bash
+      run: |
+        set -eo pipefail
+        SUMMARY="$RUNNER_TEMP/product_spec_summary.txt"
+        ARGS=(
+          "${{ inputs.metadata-id }}"
+          "${{ inputs.ogc-feature-api }}"
+          "--output-dir"
+          "${{ inputs.output-directory }}"
+        )
+        if [ -n "${{ inputs.product-slug }}" ]; then
+          ARGS+=("--slug" "${{ inputs.product-slug }}")
+        fi
+        if [ -n "${{ inputs.template-path }}" ]; then
+          ARGS+=("--template" "${{ inputs.template-path }}")
+        fi
+        if [ -n "${{ inputs.updated }}" ]; then
+          ARGS+=("--updated" "${{ inputs.updated }}")
+        fi
+        python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"
+        SPEC_DIR=""
+        PSDATA_PATH=""
+        FEATURE_CATALOGUE_JSON=""
+        FEATURE_CATALOGUE_MD=""
+        FEATURE_CATALOGUE_UML=""
+        SPEC_MARKDOWN=""
+        while IFS= read -r line || [ -n "$line" ]; do
+          case "$line" in
+            "[paths] directory="*)
+              SPEC_DIR="${line#\[paths\] directory=}"
+              ;;
+            "[paths] psdata="*)
+              PSDATA_PATH="${line#\[paths\] psdata=}"
+              ;;
+            "[paths] feature_catalogue_json="*)
+              FEATURE_CATALOGUE_JSON="${line#\[paths\] feature_catalogue_json=}"
+              ;;
+            "[paths] feature_catalogue_markdown="*)
+              FEATURE_CATALOGUE_MD="${line#\[paths\] feature_catalogue_markdown=}"
+              ;;
+            "[paths] feature_catalogue_uml="*)
+              FEATURE_CATALOGUE_UML="${line#\[paths\] feature_catalogue_uml=}"
+              ;;
+            "[paths] spec_markdown="*)
+              SPEC_MARKDOWN="${line#\[paths\] spec_markdown=}"
+              ;;
+          esac
+        done < "$SUMMARY"
+        {
+          echo "spec-directory=$SPEC_DIR"
+          echo "psdata-path=$PSDATA_PATH"
+          echo "feature-catalogue-json=$FEATURE_CATALOGUE_JSON"
+          echo "feature-catalogue-markdown=$FEATURE_CATALOGUE_MD"
+          echo "feature-catalogue-uml=$FEATURE_CATALOGUE_UML"
+          echo "spec-markdown=$SPEC_MARKDOWN"
+        } >> "$GITHUB_OUTPUT"

@@ -1,0 +1,41 @@
+﻿---
+title: {{identification.title}}
+updated: {{updated}}
+metadataId: {{identification.metadataId}}
+---
+
+# Produktspesifikasjon – {{identification.title}}
+
+{{identification.abstract}}
+
+## Grunndata
+- Metadata-ID: {{identification.metadataId}}
+- Tema: {{identification.topicCategories.[0]}}
+- Status: {{identification.status}}
+- Metadata-URL: {{metadata.metadataUrl}}
+
+## Formål
+{{identification.purpose}}
+
+## Tilleggsinformasjon
+{{identification.supplementalInformation}}
+
+## Bruk
+{{usage.description}}
+
+## Kontakt
+- Eigar: {{identification.owner}}
+- Forvalter: {{identification.maintainer}}
+- Kontaktpunkt: {{identification.pointOfContact.[0].organization}} {{identification.pointOfContact.[0].email}}
+
+## Datakvalitet
+{{dataQuality.lineage.statement}}
+
+## Datainnhold
+{{incl_featuretypes_table}}
+
+## UML
+{{incl_featuretypes_uml}}
+
+## Rå psdata
+{{incl_psdata_json}}
