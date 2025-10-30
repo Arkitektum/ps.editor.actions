@@ -79,6 +79,48 @@ Outputs:
 
 - `spec-markdown`: Path to the assembled product specification Markdown document (always `<spec-directory>/index.md`).
 
+### Build Pages artefact (`arkitektum/ps.editor.actions/publish@main`)
+
+This optional action wraps the static-site build and artefact upload steps before `actions/deploy-pages`. Example:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arkitektum/ps.editor.actions/publish@main
+        with:
+          checkout: false                 # already checked out
+          upload-path: site
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+Inputs:
+
+- `checkout` (default `false`): Set to `true` if the action should fetch the repository.
+- `python-version` (default `3.11`): Passed to `actions/setup-python`.
+- `requirements` (default `requirements.txt`): Requirements file to install; leave blank to skip.
+- `extra-packages`: Additional pip packages to install.
+- `upload-path` (default `site`): Directory uploaded via `actions/upload-pages-artifact`. The build step writes to this directory using `python scripts/build_github_pages.py --output <upload-path>`.
+- `working-directory` (default `.`): Directory for installation and build commands.
+- `pythonpath`: Exported as `PYTHONPATH` while running the build command.
+- `artifact-name` (default `github-pages`): Name of the uploaded artefact.
+
 ## Exporting PlantUML to PNG
 
 The assemble action requires a PNG diagram; this repository does not render it directly to avoid bundling Java/Graphviz. Use the workflow snippet above—or any other conversion job—to transform the PlantUML source before invoking the assemble action.

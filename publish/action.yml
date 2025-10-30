@@ -1,0 +1,78 @@
+name: Build GitHub Pages artefact
+description: Build a static site using a configurable command and upload it as a GitHub Pages artefact.
+inputs:
+  checkout:
+    description: Whether to run actions/checkout before building.
+    required: false
+    default: "false"
+  python-version:
+    description: Python version passed to actions/setup-python.
+    required: false
+    default: "3.11"
+  requirements:
+    description: Path to requirements file to install before building. Leave empty to skip.
+    required: false
+    default: "requirements.txt"
+  extra-packages:
+    description: Additional pip packages to install (space separated). Leave empty to skip.
+    required: false
+    default: ""
+  working-directory:
+    description: Working directory for build steps.
+    required: false
+    default: "."
+  pythonpath:
+    description: Optional PYTHONPATH to export while running the build command.
+    required: false
+    default: ""
+  upload-path:
+    description: Directory to upload as the GitHub Pages artefact.
+    required: false
+    default: "site"
+  artifact-name:
+    description: Name for the uploaded artefact.
+    required: false
+    default: "github-pages"
+outputs:
+  artifact-path:
+    description: Path that was uploaded as the GitHub Pages artefact.
+    value: ${{ inputs.upload-path }}
+runs:
+  using: composite
+  steps:
+    - name: Check out repository
+      if: inputs.checkout == 'true'
+      uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install dependencies
+      if: inputs.requirements != '' || inputs.extra-packages != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -eo pipefail
+        python -m pip install --upgrade pip
+        if [ -n "${{ inputs.requirements }}" ] && [ -f "${{ inputs.requirements }}" ]; then
+          pip install -r "${{ inputs.requirements }}"
+        elif [ -n "${{ inputs.requirements }}" ]; then
+          echo "requirements file '${{ inputs.requirements }}' not found" >&2
+          exit 1
+        fi
+        if [ -n "${{ inputs.extra-packages }}" ]; then
+          pip install ${{ inputs.extra-packages }}
+        fi
+    - name: Build static site
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PYTHONPATH: ${{ inputs.pythonpath }}
+      run: |
+        set -eo pipefail
+        python scripts/build_github_pages.py --output "${{ inputs.upload-path }}"
+    - name: Upload artefact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ${{ inputs.upload-path }}
+        name: ${{ inputs.artifact-name }}
