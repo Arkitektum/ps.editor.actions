@@ -48,12 +48,12 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
     - name: Install dependencies
-      if: inputs.requirements != '' || inputs.extra-packages != ''
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -eo pipefail
         python -m pip install --upgrade pip
+        pip install markdown PyYAML
         if [ -n "${{ inputs.requirements }}" ] && [ -f "${{ inputs.requirements }}" ]; then
           pip install -r "${{ inputs.requirements }}"
         elif [ -n "${{ inputs.requirements }}" ]; then
