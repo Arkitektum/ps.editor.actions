@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import textwrap
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -265,10 +266,13 @@ def _stringify(value: Any) -> str:
         lines: list[str] = []
         for key, inner in value.items():
             label = _translate_label(key)
-            formatted = _stringify(inner)
+            formatted = _stringify(inner).strip()
             if formatted:
-                formatted = formatted.replace("\n", "\n    ")
-                lines.append(f"- **{label}**: {formatted}")
+                if "\n" in formatted:
+                    indented = textwrap.indent(formatted, "  ")
+                    lines.append(f"- **{label}**:\n{indented}")
+                else:
+                    lines.append(f"- **{label}**: {formatted}")
             else:
                 lines.append(f"- **{label}**:")
         return "\n".join(lines)
@@ -278,10 +282,20 @@ def _stringify(value: Any) -> str:
             return ", ".join(_stringify(item) for item in value if item is not None)
         lines = []
         for item in value:
-            formatted = _stringify(item)
-            if formatted:
-                formatted = formatted.replace("\n", "\n  ")
-            lines.append(f"- {formatted}" if formatted else "-")
+            formatted = _stringify(item).strip()
+            if not formatted:
+                lines.append("-")
+                continue
+            parts = formatted.splitlines()
+            first_line = parts[0]
+            if first_line.startswith("- "):
+                first_line = first_line[2:]
+            if len(parts) > 1:
+                remainder = "\n".join(parts[1:])
+                indented = textwrap.indent(remainder, "  ")
+                lines.append(f"- {first_line}\n{indented}")
+            else:
+                lines.append(f"- {first_line}")
         return "\n".join(lines)
     return str(value)
 
