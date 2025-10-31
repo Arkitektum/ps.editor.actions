@@ -25,6 +25,10 @@ inputs:
     description: Optional PYTHONPATH to export while running the build command.
     required: false
     default: ""
+  source:
+    description: Directory that holds the generated produktspesifikasjon Markdown files.
+    required: false
+    default: "produktspesifikasjon"
   upload-path:
     description: Directory to upload as the GitHub Pages artefact.
     required: false
@@ -70,7 +74,12 @@ runs:
         PYTHONPATH: ${{ inputs.pythonpath }}
       run: |
         set -eo pipefail
-        python "$GITHUB_ACTION_PATH/../scripts/build_github_pages.py" --output "${{ inputs.upload-path }}"
+        source_dir="${{ inputs.source }}"
+        if [ -n "$source_dir" ]; then
+          python "$GITHUB_ACTION_PATH/../scripts/build_github_pages.py" "$source_dir" --output "${{ inputs.upload-path }}"
+        else
+          python "$GITHUB_ACTION_PATH/../scripts/build_github_pages.py" --output "${{ inputs.upload-path }}"
+        fi
     - name: Upload artefact
       uses: actions/upload-pages-artifact@v3
       with:

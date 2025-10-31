@@ -362,7 +362,7 @@ _INDEX_TEMPLATE = Template(
       <header class=\"hero\">
         <p class=\"page-header__kicker\">Produktspesifikasjoner</p>
         <h1>Tilgjengelige dokumenter</h1>
-        <p>Utforsk de publiserte produktspesifikasjonene fra data/produktspesifikasjon.</p>
+        <p>Utforsk de publiserte produktspesifikasjonene fra produktspesifikasjon.</p>
       </header>
       <section class=\"spec-grid\">
         $items
@@ -610,6 +610,9 @@ def _render_index(pages: list[tuple[str, str, str | None]] | None, output_dir: P
 def build_site(source_dir: Path, output_dir: Path) -> None:
     """Render all ``index.md`` files below ``source_dir`` to a static site."""
 
+    if not source_dir.exists():
+        raise FileNotFoundError(f"Fant ikke katalogen for produktspesifikasjoner: {source_dir}")
+
     source_dir = source_dir.resolve()
     output_dir = output_dir.resolve()
 
@@ -619,7 +622,11 @@ def build_site(source_dir: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     pages: list[tuple[str, str, str | None]] = []
 
-    for markdown_path in sorted(source_dir.rglob("index.md")):
+    markdown_paths = sorted(
+        path for path in source_dir.rglob("*.md") if path.name.lower() == "index.md"
+    )
+
+    for markdown_path in markdown_paths:
         rel_dir = markdown_path.parent.relative_to(source_dir)
         destination_dir = output_dir / rel_dir
         metadata = _render_page(markdown_path, destination_dir, source_dir)
@@ -634,9 +641,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "source",
         nargs="?",
-        default=Path("data/produktspesifikasjon"),
+        default=Path("produktspesifikasjon"),
         type=Path,
-        help="Rotkatalog for markdown-filer (standard: data/produktspesifikasjon).",
+        help="Rotkatalog for markdown-filer (standard: produktspesifikasjon).",
     )
     parser.add_argument(
         "--output",

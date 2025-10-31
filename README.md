@@ -127,9 +127,10 @@ Inputs:
 - `python-version` (default `3.11`): Passed to `actions/setup-python`.
 - `requirements`: Additional requirements file to install; leave blank (default) to skip. The action installs `markdown` and `PyYAML` automatically.
 - `extra-packages`: Additional pip packages to install.
-- `upload-path` (default `site`): Directory uploaded via `actions/upload-pages-artifact`. The action invokes `build_github_pages.py` from this repository with `--output <upload-path>`.
+- `upload-path` (default `site`): Directory uploaded via `actions/upload-pages-artifact`. The action invokes `build_github_pages.py` from this repository with `<source> --output <upload-path>`.
 - `working-directory` (default `.`): Directory for installation and build commands.
 - `pythonpath`: Exported as `PYTHONPATH` while running the build command.
+- `source` (default `produktspesifikasjon`): Root directory that contains the generated Markdown specifications.
 - `artifact-name` (default `github-pages`): Name of the uploaded artefact.
 
 ## Exporting PlantUML to PNG
