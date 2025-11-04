@@ -189,6 +189,7 @@ def _build_identification(metadata_id: str, metadata: Mapping[str, Any]) -> dict
             "topicCategories": topic_categories,
             "dates": dates,
             "responsibleParties": _collect_contacts(metadata),
+            "organizationLogoUrl": _normalize_string(metadata.get("OrganizationLogoUrl")),
         }
     )
 

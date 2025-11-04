@@ -80,6 +80,39 @@ _HTML_TEMPLATE = Template(
         padding-bottom: clamp(1rem, 2vw, 2.5rem);
       }
 
+      .page-header__branding {
+        display: flex;
+        align-items: flex-start;
+        gap: clamp(1rem, 2vw, 2rem);
+      }
+
+      .page-header__logo {
+        flex: 0 0 auto;
+        max-width: clamp(6rem, 12vw, 10rem);
+      }
+
+      .page-header__logo img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+      }
+
+      .page-header__text {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      @media (max-width: 40rem) {
+        .page-header__branding {
+          flex-direction: column;
+        }
+
+        .page-header__logo {
+          max-width: clamp(5rem, 20vw, 7rem);
+        }
+      }
+
       .page-header__kicker {
         text-transform: uppercase;
         letter-spacing: 0.08em;
@@ -251,9 +284,14 @@ _HTML_TEMPLATE = Template(
     <a class=\"ds-sr-only\" href=\"#innhold\">Hopp til innhold</a>
     <div class=\"page-shell\">
       <header class=\"page-section page-header\">
-        <p class=\"page-header__kicker\">Produktspesifikasjon</p>
-        <h1>$title</h1>
-        $meta_block
+        <div class=\"page-header__branding\">
+          $logo_block
+          <div class=\"page-header__text\">
+            <p class=\"page-header__kicker\">Produktspesifikasjon</p>
+            <h1>$title</h1>
+            $meta_block
+          </div>
+        </div>
         $breadcrumbs_block
       </header>
       <main id=\"innhold\" class=\"page-section\">
@@ -324,6 +362,17 @@ _INDEX_TEMPLATE = Template(
         text-align: left;
       }
 
+      .spec-card__logo {
+        margin-bottom: 1rem;
+        max-width: clamp(5rem, 18vw, 8rem);
+      }
+
+      .spec-card__logo img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+      }
+
       .spec-card h2 {
         margin-top: 0;
         font-size: 1.4rem;
@@ -381,6 +430,8 @@ class PageMetadata:
     title: str
     updated: str | None
     description: str | None
+    organization: str | None
+    logo: str | None
 
 
 def _parse_front_matter(text: str) -> tuple[PageMetadata, str]:
@@ -399,13 +450,33 @@ def _parse_front_matter(text: str) -> tuple[PageMetadata, str]:
                 data = {}
             title = str(data.get("title", "Produktspesifikasjon"))
             updated = data.get("updated")
+            if updated is not None:
+                updated = str(updated).strip() or None
             description = data.get("description")
             if description is not None:
                 description = str(description)
-            meta = PageMetadata(title=title, updated=updated, description=description)
+            organization = data.get("organization")
+            if organization is not None:
+                organization = str(organization).strip() or None
+            logo = data.get("logo")
+            if logo is not None:
+                logo = str(logo).strip() or None
+            meta = PageMetadata(
+                title=title,
+                updated=updated,
+                description=description,
+                organization=organization,
+                logo=logo,
+            )
             return meta, body.lstrip("\n")
 
-    meta = PageMetadata(title="Produktspesifikasjon", updated=None, description=None)
+    meta = PageMetadata(
+        title="Produktspesifikasjon",
+        updated=None,
+        description=None,
+        organization=None,
+        logo=None,
+    )
     return meta, text
 
 
@@ -564,6 +635,17 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
     if updated_text:
         meta_block = f"<div class=\"page-meta\"><span>Sist oppdatert: {html.escape(updated_text)}</span></div>"
 
+    logo_block = ""
+    if metadata.logo:
+        logo_url = html.escape(metadata.logo, quote=True)
+        alt_source = metadata.organization or metadata.title
+        alt_text = html.escape(alt_source)
+        logo_block = (
+            "<div class=\"page-header__logo\">"
+            f"<img src=\"{logo_url}\" alt=\"{alt_text}\" />"
+            "</div>"
+        )
+
     description = metadata.description or metadata.title
     page_html = _HTML_TEMPLATE.substitute(
         page_title=html.escape(metadata.title),
@@ -573,26 +655,46 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
         breadcrumbs_block=breadcrumbs,
         toc_block=toc_block,
         content=html_content,
+        logo_block=logo_block,
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "index.html").write_text(page_html, encoding="utf-8")
 
     assets = _extract_assets(body)
+    if metadata.logo and not metadata.logo.startswith(("http://", "https://", "data:")):
+        assets.add(metadata.logo)
     _copy_assets(assets, markdown_path.parent, output_dir)
 
     return metadata
 
 
-def _render_index(pages: list[tuple[str, str, str | None]] | None, output_dir: Path) -> None:
+def _render_index(pages: list[dict[str, str | None]] | None, output_dir: Path) -> None:
     cards: list[str] = []
     if pages:
-        for title, href, updated in sorted(pages, key=lambda item: item[0].lower()):
+        def sort_key(item: dict[str, str | None]) -> str:
+            title = item.get("title")
+            return title.lower() if isinstance(title, str) else ""
+
+        for item in sorted(pages, key=sort_key):
+            title = item.get("title") or "Produktspesifikasjon"
+            href = item.get("href") or "./"
+            updated = item.get("updated")
             updated_text = _format_updated(updated)
             updated_html = f"<p>Sist oppdatert: {html.escape(updated_text)}</p>" if updated_text else ""
+            logo = item.get("logo")
+            organization = item.get("organization") or title
+            logo_html = ""
+            if isinstance(logo, str) and logo:
+                logo_html = (
+                    "<div class=\"spec-card__logo\">"
+                    f"<img src=\"{html.escape(logo, quote=True)}\" alt=\"{html.escape(organization)}\" />"
+                    "</div>"
+                )
             cards.append(
                 "<article class=\"spec-card\">"
                 f"<a href=\"{html.escape(href)}\">"
+                f"{logo_html}"
                 f"<h2>{html.escape(title)}</h2>"
                 f"{updated_html}"
                 "</a>"
@@ -620,7 +722,7 @@ def build_site(source_dir: Path, output_dir: Path) -> None:
         shutil.rmtree(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    pages: list[tuple[str, str, str | None]] = []
+    pages: list[dict[str, str | None]] = []
 
     markdown_paths = sorted(
         path for path in source_dir.rglob("*.md") if path.name.lower() == "index.md"
@@ -631,7 +733,15 @@ def build_site(source_dir: Path, output_dir: Path) -> None:
         destination_dir = output_dir / rel_dir
         metadata = _render_page(markdown_path, destination_dir, source_dir)
         href = "/".join(rel_dir.parts) + "/" if rel_dir.parts else "./"
-        pages.append((metadata.title, href, metadata.updated))
+        pages.append(
+            {
+                "title": metadata.title,
+                "href": href,
+                "updated": metadata.updated,
+                "logo": metadata.logo,
+                "organization": metadata.organization,
+            }
+        )
 
     _render_index(pages, output_dir)
 
