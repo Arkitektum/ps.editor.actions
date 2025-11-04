@@ -149,6 +149,7 @@ def build_psdata(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any
                     "status": _normalize_string(metadata.get("Status")),
                 }
             ),
+            "portrayal": _extract_portrayal(metadata),
             "delivery": _compact_mapping(
                 {
                     "distributions": _extract_distributions(metadata),
@@ -393,40 +394,57 @@ def _collect_contacts(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
 def _extract_spatial_extent(
     metadata: Mapping[str, Any], *, default_crs: str | None
 ) -> dict[str, Any] | None:
-    bbox = metadata.get("BoundingBox")
-    if not isinstance(bbox, Mapping):
-        return None
-
-    try:
-        west = float(bbox.get("WestBoundLongitude"))
-        south = float(bbox.get("SouthBoundLatitude"))
-        east = float(bbox.get("EastBoundLongitude"))
-        north = float(bbox.get("NorthBoundLatitude"))
-    except (TypeError, ValueError):  # pragma: no cover - invalid bounding box
-        return None
-
-    extent = {
-        "bbox": [west, south, east, north],
-    }
-
-    crs = default_crs
-    if not crs:
-        reference_system = metadata.get("ReferenceSystem")
-        if isinstance(reference_system, Mapping):
-            crs = _extract_epsg_code(reference_system.get("CoordinateSystemUrl")) or _normalize_string(
-                reference_system.get("CoordinateSystem")
-            )
-        else:
-            crs = _normalize_string(reference_system)
-
-    if isinstance(crs, str) and crs:
-        extent["crs"] = crs
+    extent: dict[str, Any] = {}
 
     scope_description = _normalize_string(metadata.get("SpatialScope"))
     if scope_description:
-        extent["description"] = scope_description
+        extent["spatialScope"] = scope_description
 
-    return extent
+    bbox = metadata.get("BoundingBox")
+    if isinstance(bbox, Mapping):
+        try:
+            west = float(bbox.get("WestBoundLongitude"))
+            south = float(bbox.get("SouthBoundLatitude"))
+            east = float(bbox.get("EastBoundLongitude"))
+            north = float(bbox.get("NorthBoundLatitude"))
+        except (TypeError, ValueError):  # pragma: no cover - invalid bounding box
+            west = south = east = north = None
+        else:
+            extent["bbox"] = [west, south, east, north]
+            bounding_box: dict[str, Any] = {
+                "west": west,
+                "south": south,
+                "east": east,
+                "north": north,
+            }
+
+            crs = default_crs
+            if not crs:
+                reference_system = metadata.get("ReferenceSystem")
+                if isinstance(reference_system, Mapping):
+                    crs = _extract_epsg_code(reference_system.get("CoordinateSystemUrl")) or _normalize_string(
+                        reference_system.get("CoordinateSystem")
+                    )
+                else:
+                    crs = _normalize_string(reference_system)
+
+            if isinstance(crs, str) and crs:
+                bounding_box["crs"] = crs
+
+            extent["boundingBox"] = bounding_box
+
+    return extent or None
+
+
+def _extract_portrayal(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
+    portrayal = _compact_mapping(
+        {
+            "styleReferences": _normalize_sequence(metadata.get("StyleReferences")),
+            "defaultPortrayalNote": _normalize_string(metadata.get("DefaultPortrayal")),
+            "legendDescriptionUrl": _normalize_string(metadata.get("LegendDescriptionUrl")),
+        }
+    )
+    return portrayal or None
 
 
 def _extract_reference_systems(
@@ -709,6 +727,23 @@ def _normalize_string(value: Any) -> str:
     if isinstance(value, str):
         return value.strip()
     return str(value).strip()
+
+
+def _normalize_sequence(value: Any) -> list[str] | None:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        items = [_normalize_string(item) for item in value if _normalize_string(item)]
+        return items or None
+
+    text = _normalize_string(value)
+    if not text:
+        return None
+
+    if "," in text or ";" in text:
+        parts = text.replace(";", ",").split(",")
+        items = [_normalize_string(part) for part in parts if _normalize_string(part)]
+        return items or None
+
+    return [text]
 
 
 def _parse_date(value: Any) -> str | None:

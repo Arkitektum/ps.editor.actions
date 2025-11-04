@@ -54,7 +54,13 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "level": "nivå",
     "extent": "utstrekning",
     "spatial": "romlig",
+    "spatialScope": "romlig omfang",
+    "boundingBox": "avgrensning",
     "bbox": "bbox",
+    "west": "vest",
+    "south": "sør",
+    "east": "øst",
+    "north": "nord",
     "crs": "crs",
     "temporal": "tidsmessig",
     "interval": "intervall",
@@ -101,6 +107,8 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "authority": "myndighet",
     "metadataUrl": "metadatalenke",
     "links": "lenker",
+    "useLimitations": "bruksbegrensninger",
+    
 }
 
 
