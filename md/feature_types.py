@@ -19,6 +19,8 @@ __all__ = [
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
 _HTML_BREAK_RE = re.compile(r"&lt;br\s*/?&gt;", re.IGNORECASE)
+_URL_RE = re.compile(r"(https?://[^\s<>()]+)", re.IGNORECASE)
+_TRAILING_PUNCTUATION = ".,:;!?)]"
 
 
 def render_feature_types_to_markdown(
@@ -57,10 +59,10 @@ def render_feature_types_to_markdown(
 
         if paragraphs:
             section_lines.append("")
-            section_lines.append(paragraphs[0])
+            section_lines.append(_linkify_html(paragraphs[0]))
             for paragraph in paragraphs[1:]:
                 section_lines.append("")
-                section_lines.append(paragraph)
+                section_lines.append(_linkify_html(paragraph))
 
         attributes_obj = feature_type.get("attributes")
         attributes: Sequence[Mapping[str, Any]] | None = None
@@ -428,7 +430,24 @@ def _escape_html(value: Any, *, preserve_breaks: bool = False) -> str:
     escaped = escape(text, quote=False)
     if preserve_breaks:
         escaped = _HTML_BREAK_RE.sub("<br />", escaped)
-    return escaped
+    return _linkify_html(escaped)
+
+
+def _linkify_html(text: str) -> str:
+    if not text:
+        return ""
+
+    def replace(match: re.Match[str]) -> str:
+        url = match.group(0)
+        suffix = ""
+        while url and url[-1] in _TRAILING_PUNCTUATION:
+            suffix = url[-1] + suffix
+            url = url[:-1]
+        if not url:
+            return match.group(0)
+        return f'<a href="{url}">{url}</a>{suffix}'
+
+    return _URL_RE.sub(replace, text)
 
 
 def _gather_feature_types_from_file(path: Path) -> list[Mapping[str, Any]]:
