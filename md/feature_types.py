@@ -5,7 +5,7 @@ import argparse
 import json
 import re
 from collections.abc import Mapping, Sequence
-from html import unescape
+from html import escape, unescape
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +18,7 @@ __all__ = [
 
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
+_HTML_BREAK_RE = re.compile(r"&lt;br\s*/?&gt;", re.IGNORECASE)
 
 
 def render_feature_types_to_markdown(
@@ -338,8 +339,8 @@ def _build_table(
     processed_rows: list[dict[str, str]] = []
 
     for entry in attributes:
-        name = _escape_markdown(entry.get("name", ""))
-        type_ = _escape_markdown(entry.get("type", ""))
+        name = _escape_html(entry.get("name", ""))
+        type_ = _escape_html(entry.get("type", ""))
 
         cardinality_value = entry.get("cardinality")
         if isinstance(cardinality_value, str):
@@ -364,10 +365,10 @@ def _build_table(
             {
                 "name": name,
                 "type": type_,
-                "cardinality": _escape_markdown(cardinality_text),
-                "description": _escape_markdown(description_cell),
-                "value_domain": _escape_markdown(value_domain_text),
-                "ogc_role": _escape_markdown(
+                "cardinality": _escape_html(cardinality_text),
+                "description": _escape_html(description_cell, preserve_breaks=True),
+                "value_domain": _escape_html(value_domain_text, preserve_breaks=True),
+                "ogc_role": _escape_html(
                     str(ogc_role).strip() if ogc_role is not None else ""
                 ),
             }
@@ -382,12 +383,19 @@ def _build_table(
 
     for row in processed_rows:
         lines.append("")
+        lines.append('<table class="feature-attribute-table">')
+        lines.append("  <colgroup>")
+        lines.append('    <col style="width: 35%;" />')
+        lines.append('    <col style="width: 65%;" />')
+        lines.append("  </colgroup>")
+        lines.append("  <tbody>")
 
         name_value = row["name"]
-        header_label = "**Navn:**"
-        header_value = f"**{name_value}**" if name_value else ""
-        lines.append(f"| {header_label} | {header_value} |")
-        lines.append("| --- | --- |")
+        strong_value = f"<strong>{name_value}</strong>" if name_value else ""
+        lines.append("    <tr>")
+        lines.append('      <th scope="row">Navn:</th>')
+        lines.append(f"      <td>{strong_value}</td>")
+        lines.append("    </tr>")
 
         field_rows = [
             ("Definisjon:", row["description"]),
@@ -398,15 +406,29 @@ def _build_table(
         ]
 
         for label, value in field_rows:
-            if value:
-                lines.append(f"| {label} | {value} |")
+            if not value:
+                continue
+            lines.append("    <tr>")
+            lines.append(f"      <th scope=\"row\">{label}</th>")
+            lines.append(f"      <td>{value}</td>")
+            lines.append("    </tr>")
+
+        lines.append("  </tbody>")
+        lines.append("</table>")
 
     return lines
 
 
-def _escape_markdown(value: Any) -> str:
+def _escape_html(value: Any, *, preserve_breaks: bool = False) -> str:
     text = str(value) if value is not None else ""
-    return text.replace("|", r"\|").strip()
+    text = text.strip()
+    if not text:
+        return ""
+
+    escaped = escape(text, quote=False)
+    if preserve_breaks:
+        escaped = _HTML_BREAK_RE.sub("<br />", escaped)
+    return escaped
 
 
 def _gather_feature_types_from_file(path: Path) -> list[Mapping[str, Any]]:
