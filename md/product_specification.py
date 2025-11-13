@@ -23,6 +23,8 @@ __all__ = [
 
 
 _PLACEHOLDER_RE = re.compile(r"{{\s*([^}]+?)\s*}}")
+_URL_RE = re.compile(r"(https?://[^\s<>()]+)", re.IGNORECASE)
+_TRAILING_PUNCTUATION = ".,:;!?)]"
 
 _LABEL_TRANSLATIONS: dict[str, str] = {
     "title": "tittel",
@@ -185,7 +187,8 @@ def render_product_specification(
         value = _resolve_expression(render_context, expression)
         return _stringify(value)
 
-    return _PLACEHOLDER_RE.sub(substitute, template_text)
+    rendered = _PLACEHOLDER_RE.sub(substitute, template_text)
+    return _linkify_markdown(rendered)
 
 
 def render_template(
@@ -307,6 +310,75 @@ def _stringify(value: Any) -> str:
                 lines.append(f"- {first_line}")
         return "\n".join(lines)
     return str(value)
+
+
+def _linkify_markdown(text: str) -> str:
+    if not text:
+        return ""
+
+    front_matter = ""
+    body = text
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            front_matter = text[: end + 4]
+            body = text[end + 4 :]
+
+    return front_matter + _linkify_markdown_body(body)
+
+
+def _linkify_markdown_body(text: str) -> str:
+    if not text:
+        return ""
+
+    lines = text.splitlines(keepends=True)
+    in_fence = False
+    linked_lines: list[str] = []
+
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            linked_lines.append(line)
+            continue
+        if in_fence:
+            linked_lines.append(line)
+            continue
+        if stripped.startswith("<"):
+            linked_lines.append(line)
+            continue
+        if "`" in line:
+            segments = line.split("`")
+            for index in range(0, len(segments), 2):
+                segments[index] = _linkify_plain_text(segments[index])
+            linked_lines.append("`".join(segments))
+        else:
+            linked_lines.append(_linkify_plain_text(line))
+
+    return "".join(linked_lines)
+
+
+def _linkify_plain_text(text: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        start = match.start()
+        if start > 0:
+            prev = text[start - 1]
+            if prev in {"(", "[", "<"}:
+                return match.group(0)
+        prefix = text[max(0, start - 6) : start].lower()
+        if "href=" in prefix or "src=" in prefix:
+            return match.group(0)
+
+        url = match.group(0)
+        suffix = ""
+        while url and url[-1] in _TRAILING_PUNCTUATION:
+            suffix = url[-1] + suffix
+            url = url[:-1]
+        if not url:
+            return match.group(0)
+        return f"<{url}>{suffix}"
+
+    return _URL_RE.sub(replace, text)
 
 
 def _read_include_resources(
