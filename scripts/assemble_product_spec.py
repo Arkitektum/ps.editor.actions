@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +41,26 @@ def _read_text(path: Path) -> str:
     if not path or not path.exists():
         return ""
     return path.read_text(encoding="utf-8").strip()
+
+
+def _collect_neighbor_includes(
+    directory: Path,
+    *,
+    skip_paths: Iterable[Path],
+) -> list[IncludeResource]:
+    """Import Markdown snippets located alongside the artefacts."""
+
+    normalized_skip = {path.resolve() for path in skip_paths if path}
+    includes: list[IncludeResource] = []
+    for path in sorted(directory.glob("*.md")):
+        if path.resolve() in normalized_skip:
+            continue
+        text = _read_text(path)
+        if not text:
+            continue
+        placeholder = f"incl_{path.stem}"
+        includes.append(IncludeResource(placeholder, text))
+    return includes
 
 
 def assemble_product_specification(
@@ -84,6 +104,19 @@ def assemble_product_specification(
         includes.append(
             IncludeResource("incl_featuretypes_uml", diagram_content),
         )
+
+    skip_files = [output_path]
+    if feature_catalogue_markdown:
+        skip_files.append(feature_catalogue_markdown)
+    neighbor_includes = _collect_neighbor_includes(
+        psdata_path.parent,
+        skip_paths=skip_files,
+    )
+    existing_placeholders = {resource.placeholder for resource in includes}
+    for resource in neighbor_includes:
+        if resource.placeholder in existing_placeholders:
+            continue
+        includes.append(resource)
 
     rendered = render_template(
         template_path,

@@ -144,6 +144,8 @@ The default template lives at `data/template/ps.md.hbs`. It expects the followin
 - `incl_featuretypes_table`: Markdown table generated from the feature catalogue metadata.
 - `incl_featuretypes_uml`: Feature catalogue diagram rendered as a PNG when available, otherwise the raw PlantUML source.
 
+During the assemble step, every additional `*.md` file placed alongside the generated artefacts (the same directory that holds `psdata_<slug>.json`) is automatically injected into the template. A file named `innledning.md`, for example, becomes available through the placeholder `{{incl_innledning}}`. Files that already have a dedicated input—such as `index.md` or `<slug>_feature_catalogue.md`—are ignored to avoid conflicts.
+
 You can provide a customised template via the `template-path` input to tailor the resulting Markdown documentation.
 
 ## Local development
