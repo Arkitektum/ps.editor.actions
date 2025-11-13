@@ -107,7 +107,8 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "authority": "myndighet",
     "metadataUrl": "metadatalenke",
     "links": "lenker",
-    "useLimitations": "bruksbegrensninger",
+    "useLimitation": "bruksbegrensninger",
+    "legendDescriptionUrl": "Tegnforklaring",
     
 }
 
