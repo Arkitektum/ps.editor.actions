@@ -106,7 +106,7 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "metadataDate": "Metadatadato",
     "pointOfContact": "Kontaktpunkt",
     "identifiers": "Identifikatorer",
-    "authority": "Myndighet",
+    "authority": "Utsteder",
     "metadataUrl": "Metadatalenke",
     "links": "lenker",
     "useLimitation": "Bruksbegrensninger",
@@ -282,10 +282,15 @@ def _stringify(value: Any, *, level: int = 0) -> str:
             formatted = _stringify(inner, level=level + 1).strip()
             bullet = level > 0
             prefix = "- " if bullet else ""
+            force_block = _should_force_block(inner, formatted, level)
             if formatted:
-                if "\n" in formatted:
+                if "\n" in formatted or force_block:
                     if bullet:
-                        indented = textwrap.indent(formatted, "  ")
+                        indented = (
+                            textwrap.indent(formatted, "  ")
+                            if "\n" in formatted
+                            else textwrap.indent(formatted, "  ")
+                        )
                         lines.append(f"{prefix}**{label}**:\n{indented}")
                     else:
                         separator = "\n\n" if formatted.lstrip().startswith(("- ", "* ")) else "\n"
@@ -294,7 +299,8 @@ def _stringify(value: Any, *, level: int = 0) -> str:
                     lines.append(f"{prefix}**{label}**: {formatted}")
             else:
                 lines.append(f"{prefix}**{label}**:")
-        return "\n".join(lines)
+        joiner = "\n\n" if level == 0 else "\n"
+        return joiner.join(line for line in lines if line)
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         primitive = [item for item in value if not isinstance(item, (Mapping, Sequence)) or isinstance(item, (str, bytes))]
         if len(primitive) == len(value):
@@ -317,6 +323,23 @@ def _stringify(value: Any, *, level: int = 0) -> str:
                 lines.append(f"- {first_line}")
         return "\n".join(lines)
     return str(value)
+
+
+def _should_force_block(raw_value: Any, rendered: str, level: int) -> bool:
+    if level > 0:
+        return False
+
+    if isinstance(raw_value, Mapping):
+        return True
+
+    if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes)):
+        return True
+
+    stripped = rendered.lstrip()
+    if stripped.startswith(("http://", "https://")):
+        return True
+
+    return False
 
 
 def _linkify_markdown(text: str) -> str:
