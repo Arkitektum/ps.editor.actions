@@ -288,7 +288,8 @@ def _stringify(value: Any, *, level: int = 0) -> str:
                         indented = textwrap.indent(formatted, "  ")
                         lines.append(f"{prefix}**{label}**:\n{indented}")
                     else:
-                        lines.append(f"**{label}**:\n{formatted}")
+                        separator = "\n\n" if formatted.lstrip().startswith(("- ", "* ")) else "\n"
+                        lines.append(f"**{label}**:{separator}{formatted}")
                 else:
                     lines.append(f"{prefix}**{label}**: {formatted}")
             else:
