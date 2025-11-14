@@ -54,7 +54,7 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "metadata": "metadata",
     "scope": "omfang",
     "level": "Nivå",
-    "extent": "utstrekning",
+    "extent": "Utstrekning",
     "spatial": "romlig",
     "spatialScope": "romlig omfang",
     "boundingBox": "avgrensning",
@@ -66,25 +66,25 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "crs": "crs",
     "temporal": "tidsmessig",
     "interval": "intervall",
-    "legalConstraints": "juridiske begrensninger",
-    "accessConstraints": "tilgangsbegrensninger",
-    "useConstraints": "bruksbegrensninger",
-    "license": "lisens",
-    "licenseUrl": "lisenslenke",
-    "securityConstraints": "sikkerhetsbegrensninger",
-    "result": "resultat",
-    "identification": "identifikasjon",
-    "abstract": "sammendrag",
-    "purpose": "formål",
-    "keywords": "stikkord",
-    "topicCategories": "temakategorier",
-    "dates": "datoer",
-    "creation": "opprettet",
-    "publication": "publisering",
-    "revision": "revisjon",
-    "responsibleParties": "ansvarlige parter",
-    "supplementalInformation": "tilleggsinformasjon",
-    "dataContent": "datainnhold",
+    "legalConstraints": "Juridiske begrensninger",
+    "accessConstraints": "Tilgangsbegrensninger",
+    "useConstraints": "Bruksbegrensninger",
+    "license": "Lisens",
+    "licenseUrl": "Lisenslenke",
+    "securityConstraints": "Sikkerhetsbegrensninger",
+    "result": "Resultat",
+    "identification": "Identifikasjon",
+    "abstract": "Sammendrag",
+    "purpose": "Formål",
+    "keywords": "Stikkord",
+    "topicCategories": "Temakategorier",
+    "dates": "Datoer",
+    "creation": "Opprettet",
+    "publication": "Publisering",
+    "revision": "Revisjon",
+    "responsibleParties": "Ansvarlige Parter",
+    "supplementalInformation": "Tilleggsinformasjon",
+    "dataContent": "Datainnhold",
     "usage": "Bruk",
     "referenceSystems": "Referansesystemer",
     "spatialReferenceSystems": "Romlige referansesystemer",
@@ -266,7 +266,7 @@ def _tokenize(expression: str) -> list[int | str]:
     return tokens
 
 
-def _stringify(value: Any, *, level: int = 0) -> str:
+def _stringify(value: Any, *, level: int = 0, suppress_bullet: bool = False) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
@@ -280,7 +280,7 @@ def _stringify(value: Any, *, level: int = 0) -> str:
         for key, inner in value.items():
             label = _translate_label(key)
             formatted = _stringify(inner, level=level + 1).strip()
-            bullet = level > 0
+            bullet = level > 0 and not suppress_bullet
             prefix = "- " if bullet else ""
             force_block = _should_force_block(inner, formatted, level)
             if formatted:
@@ -307,21 +307,23 @@ def _stringify(value: Any, *, level: int = 0) -> str:
             return ", ".join(_stringify(item, level=level + 1) for item in value if item is not None)
         lines = []
         for item in value:
-            formatted = _stringify(item, level=level + 1).strip()
+            formatted = _stringify(item, level=level + 1, suppress_bullet=True).strip()
             if not formatted:
-                lines.append("-")
                 continue
             parts = formatted.splitlines()
+            while parts and not parts[0].strip():
+                parts.pop(0)
+            if not parts:
+                continue
             first_line = parts[0]
             if first_line.startswith("- "):
                 first_line = first_line[2:]
-            if len(parts) > 1:
-                remainder = "\n".join(parts[1:])
-                indented = textwrap.indent(remainder, "  ")
-                lines.append(f"- {first_line}\n{indented}")
-            else:
-                lines.append(f"- {first_line}")
-        return "\n".join(lines)
+            remainder = "\n".join(parts[1:])
+            entry = f"- {first_line}"
+            if remainder.strip():
+                entry += "\n" + textwrap.indent(remainder, "  ")
+            lines.append(entry)
+        return "\n\n".join(lines)
     return str(value)
 
 
