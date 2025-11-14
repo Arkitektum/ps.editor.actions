@@ -297,6 +297,14 @@ def _build_metadata_section(metadata_id: str, metadata: Mapping[str, Any]) -> di
     if metadata_xml:
         metadata_section.setdefault("metadataUrl", metadata_xml)
 
+    landing_page = _normalize_string(
+        metadata.get("LandingPage")
+        or metadata.get("LandingPageUrl")
+        or metadata.get("Landingpage")
+    )
+    if landing_page:
+        metadata_section.setdefault("landingPage", landing_page)
+
     return metadata_section
 
 

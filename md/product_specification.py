@@ -265,7 +265,7 @@ def _tokenize(expression: str) -> list[int | str]:
     return tokens
 
 
-def _stringify(value: Any) -> str:
+def _stringify(value: Any, *, level: int = 0) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
@@ -278,23 +278,28 @@ def _stringify(value: Any) -> str:
         lines: list[str] = []
         for key, inner in value.items():
             label = _translate_label(key)
-            formatted = _stringify(inner).strip()
+            formatted = _stringify(inner, level=level + 1).strip()
+            bullet = level > 0
+            prefix = "- " if bullet else ""
             if formatted:
                 if "\n" in formatted:
-                    indented = textwrap.indent(formatted, "  ")
-                    lines.append(f"- **{label}**:\n{indented}")
+                    if bullet:
+                        indented = textwrap.indent(formatted, "  ")
+                        lines.append(f"{prefix}**{label}**:\n{indented}")
+                    else:
+                        lines.append(f"**{label}**:\n{formatted}")
                 else:
-                    lines.append(f"- **{label}**: {formatted}")
+                    lines.append(f"{prefix}**{label}**: {formatted}")
             else:
-                lines.append(f"- **{label}**:")
+                lines.append(f"{prefix}**{label}**:")
         return "\n".join(lines)
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         primitive = [item for item in value if not isinstance(item, (Mapping, Sequence)) or isinstance(item, (str, bytes))]
         if len(primitive) == len(value):
-            return ", ".join(_stringify(item) for item in value if item is not None)
+            return ", ".join(_stringify(item, level=level + 1) for item in value if item is not None)
         lines = []
         for item in value:
-            formatted = _stringify(item).strip()
+            formatted = _stringify(item, level=level + 1).strip()
             if not formatted:
                 lines.append("-")
                 continue
