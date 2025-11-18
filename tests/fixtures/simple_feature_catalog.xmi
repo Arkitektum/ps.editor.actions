@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<XMI xmi.version="1.1" xmlns:UML="omg.org/UML1.3">
+  <XMI.content>
+    <UML:Model name="Fixture">
+      <UML:Namespace.ownedElement>
+        <UML:Class xmi.id="FT1" name="SampleFeature">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="FeatureType" />
+          </UML:ModelElement.stereotype>
+          <UML:ModelElement.taggedValue>
+            <UML:TaggedValue tag="documentation" value="Fixture description" />
+          </UML:ModelElement.taggedValue>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="ATTR_GEOM" name="GEOM">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="description" value="Geometry attribute" />
+                <UML:TaggedValue tag="type" value="GM_Surface" />
+                <UML:TaggedValue tag="SOSI_navn" value="GEOM" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+            <UML:Attribute xmi.id="ATTR_STATUS" name="STATUS">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="description" value="Status flag" />
+                <UML:TaggedValue tag="type" value="StatusCode" />
+                <UML:TaggedValue tag="lowerBound" value="0" />
+                <UML:TaggedValue tag="upperBound" value="*" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+            <UML:Attribute xmi.id="ATTR_DETAIL" name="DETAILS">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="description" value="Nested details" />
+                <UML:TaggedValue tag="type" value="NestedType" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+
+        <UML:Class xmi.id="DT1" name="NestedType">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="dataType" />
+          </UML:ModelElement.stereotype>
+          <UML:ModelElement.taggedValue>
+            <UML:TaggedValue tag="documentation" value="Details container" />
+          </UML:ModelElement.taggedValue>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="ATTR_CHILD_NAME" name="CHILD_NAME">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="description" value="Name inside nested type" />
+                <UML:TaggedValue tag="type" value="CharacterString" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+
+        <UML:Class xmi.id="DT_BASE" name="BaseType">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="dataType" />
+          </UML:ModelElement.stereotype>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="ATTR_BASE" name="BASE_ATTR">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="description" value="Inherited value" />
+                <UML:TaggedValue tag="type" value="Integer" />
+                <UML:TaggedValue tag="lowerBound" value="0" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+
+        <UML:Class xmi.id="CL_STATUS" name="StatusCode">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="CodeList" />
+          </UML:ModelElement.stereotype>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="ATTR_ACTIVE" name="ACTIVE">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="description" value="Active state" />
+                <UML:TaggedValue tag="code" value="active" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+            <UML:Attribute xmi.id="ATTR_RET" name="RETIRED">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="description" value="Retired state" />
+                <UML:TaggedValue tag="code" value="retired" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+
+        <UML:Generalization subtype="DT1" supertype="DT_BASE" xmi.id="GEN_DT" />
+      </UML:Namespace.ownedElement>
+    </UML:Model>
+  </XMI.content>
+</XMI>

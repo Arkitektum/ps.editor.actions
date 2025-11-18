@@ -20,6 +20,17 @@ inputs:
   updated:
     description: Optional override for the updated field in the rendered specification.
     required: false
+  xmi-model:
+    description: Optional path or URL to a SOSI UML XMI feature catalogue. When provided the OGC API input is ignored.
+    required: false
+  xmi-username:
+    description: Optional username for downloading the XMI catalogue (default: sosi).
+    required: false
+    default: sosi
+  xmi-password:
+    description: Optional password for downloading the XMI catalogue (default: sosi).
+    required: false
+    default: sosi
 outputs:
   spec-directory:
     description: Directory containing the generated product specification.
@@ -36,6 +47,15 @@ outputs:
   feature-catalogue-uml:
     description: Path to the feature catalogue PlantUML diagram.
     value: ${{ steps.generate.outputs.feature-catalogue-uml }}
+  xmi-feature-catalogue-json:
+    description: Path to the XMI feature catalogue JSON cache.
+    value: ${{ steps.generate.outputs.xmi-feature-catalogue-json }}
+  xmi-feature-catalogue-markdown:
+    description: Path to the XMI feature catalogue Markdown documentation.
+    value: ${{ steps.generate.outputs.xmi-feature-catalogue-markdown }}
+  xmi-feature-catalogue-uml:
+    description: Path to the XMI feature catalogue PlantUML diagram.
+    value: ${{ steps.generate.outputs.xmi-feature-catalogue-uml }}
   spec-markdown:
     description: Path to the rendered product specification Markdown file.
     value: ${{ steps.generate.outputs.spec-markdown }}
@@ -73,6 +93,15 @@ runs:
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")
         fi
+        if [ -n "${{ inputs.xmi-model }}" ]; then
+          ARGS+=("--xmi-model" "${{ inputs.xmi-model }}")
+          if [ -n "${{ inputs.xmi-username }}" ]; then
+            ARGS+=("--xmi-username" "${{ inputs.xmi-username }}")
+          fi
+          if [ -n "${{ inputs.xmi-password }}" ]; then
+            ARGS+=("--xmi-password" "${{ inputs.xmi-password }}")
+          fi
+        fi
         ARGS+=("--skip-spec-markdown")
         python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"
         SPEC_DIR=""
@@ -80,6 +109,9 @@ runs:
         FEATURE_CATALOGUE_JSON=""
         FEATURE_CATALOGUE_MD=""
         FEATURE_CATALOGUE_UML=""
+        XMI_FEATURE_CATALOGUE_JSON=""
+        XMI_FEATURE_CATALOGUE_MD=""
+        XMI_FEATURE_CATALOGUE_UML=""
         SPEC_MARKDOWN=""
         while IFS= read -r line || [ -n "$line" ]; do
           case "$line" in
@@ -98,6 +130,15 @@ runs:
             "[paths] feature_catalogue_uml="*)
               FEATURE_CATALOGUE_UML="${line#\[paths\] feature_catalogue_uml=}"
               ;;
+            "[paths] xmi_feature_catalogue_json="*)
+              XMI_FEATURE_CATALOGUE_JSON="${line#\[paths\] xmi_feature_catalogue_json=}"
+              ;;
+            "[paths] xmi_feature_catalogue_markdown="*)
+              XMI_FEATURE_CATALOGUE_MD="${line#\[paths\] xmi_feature_catalogue_markdown=}"
+              ;;
+            "[paths] xmi_feature_catalogue_uml="*)
+              XMI_FEATURE_CATALOGUE_UML="${line#\[paths\] xmi_feature_catalogue_uml=}"
+              ;;
             "[paths] spec_markdown="*)
               SPEC_MARKDOWN="${line#\[paths\] spec_markdown=}"
               ;;
@@ -109,5 +150,8 @@ runs:
           echo "feature-catalogue-json=$FEATURE_CATALOGUE_JSON"
           echo "feature-catalogue-markdown=$FEATURE_CATALOGUE_MD"
           echo "feature-catalogue-uml=$FEATURE_CATALOGUE_UML"
+          echo "xmi-feature-catalogue-json=$XMI_FEATURE_CATALOGUE_JSON"
+          echo "xmi-feature-catalogue-markdown=$XMI_FEATURE_CATALOGUE_MD"
+          echo "xmi-feature-catalogue-uml=$XMI_FEATURE_CATALOGUE_UML"
           echo "spec-markdown=$SPEC_MARKDOWN"
         } >> "$GITHUB_OUTPUT"

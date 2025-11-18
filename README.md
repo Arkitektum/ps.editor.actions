@@ -1,6 +1,6 @@
 ﻿# ps.editor.actions - Generate Product Specifications
 
-This repository provides a reusable GitHub Action that fetches metadata from Geonorge and feature catalogue information from an OGC API - Features endpoint to assemble a complete product specification package. The action downloads psdata JSON, builds feature catalogue caches (JSON, Markdown, PlantUML) and renders a Markdown specification using the bundled Handlebars-style template or a custom template you supply.
+This repository provides a reusable GitHub Action that fetches metadata from Geonorge and feature catalogue information from an OGC API - Features endpoint to assemble a complete product specification package. The action downloads psdata JSON, builds feature catalogue caches (JSON, Markdown, PlantUML) and renders a Markdown specification using the bundled Handlebars-style template or a custom template you supply. 
 
 ## Usage
 
@@ -59,11 +59,13 @@ The first action fetches and prepares every artefact. The optional PlantUML step
 Inputs:
 
 - `metadata-id` (required): Geonorge metadata UUID used to fetch psdata content.
-- `ogc-feature-api` (required): Fully qualified URL to an OGC API - Features `/collections` endpoint.
+- `ogc-feature-api`: Fully qualified URL to an OGC API - Features `/collections` endpoint. Required unless `xmi-model` is provided.
 - `output-directory` (default `produktspesifikasjon`): Directory that will contain the generated artefacts.
 - `product-slug`: Overrides the auto-generated folder name (derived from the psdata title).
 - `template-path`: Path to a Handlebars-style template if you want to replace `data/template/ps.md.hbs`.
 - `updated`: Explicit value for the `updated` field in the rendered Markdown front matter (propagated to the assemble step).
+- `xmi-model`: Optional path or URL to a SOSI UML XMI feature catalogue. When supplied the OGC API input is ignored.
+- `xmi-username` / `xmi-password` (default `sosi`/`sosi`): Credentials used to download the XMI catalogue.
 
 Outputs:
 
@@ -72,6 +74,9 @@ Outputs:
 - `feature-catalogue-json`: Path to the collected feature catalogue JSON cache.
 - `feature-catalogue-markdown`: Path to the feature catalogue Markdown table (blank if no entries were found).
 - `feature-catalogue-uml`: Path to the feature catalogue PlantUML diagram (blank if no entries were found).
+- `xmi-feature-catalogue-json`: Path to the XMI feature catalogue JSON cache when generated.
+- `xmi-feature-catalogue-markdown`: Path to the XMI feature catalogue Markdown table when generated.
+- `xmi-feature-catalogue-uml`: Path to the XMI feature catalogue PlantUML diagram when generated.
 - `spec-markdown`: Reserved path for the final product specification Markdown (always `<spec-directory>/index.md`). The file is created by the assemble action.
 
 ### Assemble specification (`arkitektum/ps.editor.actions/assemble@main`)
@@ -84,6 +89,9 @@ Inputs:
 - `feature-catalogue-markdown`: Optional path to the feature catalogue Markdown table.
 - `feature-catalogue-uml`: Optional path to the feature catalogue PlantUML source (embedded when no PNG is provided).
 - `feature-catalogue-png`: Optional path to the rendered PlantUML PNG diagram. When missing or unavailable, the PlantUML source is embedded instead.
+- `xmi-feature-catalogue-markdown`: Optional path to the XMI feature catalogue Markdown table.
+- `xmi-feature-catalogue-uml`: Optional path to the XMI feature catalogue PlantUML source.
+- `xmi-feature-catalogue-png`: Optional path to the rendered XMI PlantUML PNG diagram.
 - `updated`: Optional override for the `updated` metadata field.
 
 Outputs:
@@ -141,8 +149,10 @@ PNG diagrams are recommended for readability, but the assemble action now falls 
 
 The default template lives at `data/template/ps.md.hbs`. It expects the following placeholders to be populated by the generator:
 
-- `incl_featuretypes_table`: Markdown table generated from the feature catalogue metadata.
+- `incl_featuretypes_table`: Markdown table generated from the OGC API feature catalogue metadata.
 - `incl_featuretypes_uml`: Feature catalogue diagram rendered as a PNG when available, otherwise the raw PlantUML source.
+- `incl_featuretypes_xmi_table`: Markdown table generated from the XMI feature catalogue when provided.
+- `incl_featuretypes_xmi_uml`: XMI feature catalogue diagram rendered as a PNG when available, otherwise the raw PlantUML source.
 
 During the assemble step, every additional `*.md` file placed alongside the generated artefacts (the same directory that holds `psdata_<slug>.json`) is automatically injected into the template. A file named `innledning.md`, for example, becomes available through the placeholder `{{incl_innledning}}`. Files that already have a dedicated input—such as `index.md` or `<slug>_feature_catalogue.md`—are ignored to avoid conflicts.
 
@@ -156,6 +166,8 @@ Prepare artefacts locally:
 python scripts/generate_product_spec.py <metadata-id> <ogc-feature-api> --output-dir produktspesifikasjon/test --skip-spec-markdown
 ```
 
+If you have a SOSI UML XMI export instead of an OGC API, omit the second positional argument and pass `--xmi-model <path-or-url>` (optionally override the default `sosi`/`sosi` credentials with `--xmi-username` and `--xmi-password`). The generated files will use the `_xmi_feature_catalogue.*` suffix to keep them separate from OGC-based artefacts.
+
 Once you have enriched the artefacts (e.g. rendered UML to PNG), assemble the final Markdown:
 
 ```bash
@@ -163,3 +175,30 @@ python scripts/assemble_product_spec.py produktspesifikasjon/test/<slug>/psdata_
 ```
 
 Adjust paths to match your slug and any generated PNG files. The commands mirror the behaviour in GitHub Actions.
+
+When you also generate an XMI-based catalogue, add the corresponding arguments:
+
+```bash
+--xmi-feature-catalogue-markdown produktspesifikasjon/test/<slug>/<slug>_xmi_feature_catalogue.md \
+--xmi-feature-catalogue-uml produktspesifikasjon/test/<slug>/<slug>_xmi_feature_catalogue.puml
+```
+
+and optionally `--xmi-feature-catalogue-png <path>` if you render the XMI diagram to PNG.
+
+## SOSI XMI feature catalogues
+
+Support specification projects from Enterprise Architect XMI exports. You can convert those catalogues to the JSON structure expected by the rest of this repository via the `xmi.feature_catalog` module (or by passing `--xmi-model` to `scripts/generate_product_spec.py`):
+
+```python
+import json
+from pathlib import Path
+from xmi.feature_catalog import load_feature_types_from_xmi
+
+feature_types = load_feature_types_from_xmi(
+    "https://sosi.geonorge.no/svn/SOSI/SOSI%20Del%203/Statens%20kartverk/AdministrativeEnheter_FylkerOgKommuner-20240101.xml"
+)
+
+Path("feature_catalogue.json").write_text(json.dumps(feature_types, indent=2, ensure_ascii=False))
+```
+
+The helper understands both local files and remote URLs. When downloading from `sosi.geonorge.no` the default `sosi`/`sosi` credentials are supplied automatically, but you can override them via the `username` and `password` arguments if needed. When the XMI path is used, generated artefacts follow the `<slug>_xmi_feature_catalogue.*` naming scheme to make side-by-side comparisons with OGC sources easier.

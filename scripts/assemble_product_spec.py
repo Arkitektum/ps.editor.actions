@@ -43,6 +43,25 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def _build_diagram_content(
+    png_path: Path | None,
+    uml_path: Path | None,
+    output_path: Path,
+) -> str:
+    if png_path and png_path.exists():
+        return _format_image_markdown(png_path, output_path)
+
+    if png_path and not png_path.exists():
+        raise FileNotFoundError(f"Feature catalogue PNG '{png_path}' was not found.")
+
+    if uml_path and uml_path.exists():
+        uml_text = _read_text(uml_path)
+        if uml_text:
+            return f"```plantuml\n{uml_text}\n```"
+
+    return ""
+
+
 def _collect_neighbor_includes(
     directory: Path,
     *,
@@ -71,6 +90,9 @@ def assemble_product_specification(
     feature_catalogue_markdown: Path | None,
     feature_catalogue_uml: Path | None,
     feature_catalogue_png: Path | None,
+    xmi_feature_catalogue_markdown: Path | None,
+    xmi_feature_catalogue_uml: Path | None,
+    xmi_feature_catalogue_png: Path | None,
     updated: str | None,
 ) -> Path:
     psdata = json.loads(psdata_path.read_text(encoding="utf-8"))
@@ -85,25 +107,29 @@ def assemble_product_specification(
             IncludeResource("incl_featuretypes_table", table_content),
         )
 
-    diagram_content = ""
-    png_exists = False
-    if feature_catalogue_png and feature_catalogue_png.exists():
-        png_exists = True
-        diagram_content = _format_image_markdown(feature_catalogue_png, output_path)
-
-    if not png_exists:
-        if feature_catalogue_uml and feature_catalogue_uml.exists():
-            uml_text = _read_text(feature_catalogue_uml)
-            if uml_text:
-                diagram_content = f"```plantuml\n{uml_text}\n```"
-        elif feature_catalogue_png:
-            # PNG path was provided but does not exist; raise to flag missing artefact.
-            raise FileNotFoundError(f"Feature catalogue PNG '{feature_catalogue_png}' was not found.")
-
+    diagram_content = _build_diagram_content(
+        feature_catalogue_png,
+        feature_catalogue_uml,
+        output_path,
+    )
     if diagram_content:
+        includes.append(IncludeResource("incl_featuretypes_uml", diagram_content))
+
+    xmi_table_content = (
+        _read_text(xmi_feature_catalogue_markdown) if xmi_feature_catalogue_markdown else ""
+    )
+    if xmi_table_content:
         includes.append(
-            IncludeResource("incl_featuretypes_uml", diagram_content),
+            IncludeResource("incl_featuretypes_xmi_table", xmi_table_content),
         )
+
+    xmi_diagram_content = _build_diagram_content(
+        xmi_feature_catalogue_png,
+        xmi_feature_catalogue_uml,
+        output_path,
+    )
+    if xmi_diagram_content:
+        includes.append(IncludeResource("incl_featuretypes_xmi_uml", xmi_diagram_content))
 
     skip_files = [output_path]
     if feature_catalogue_markdown:
@@ -168,6 +194,21 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Optional path to the rendered PlantUML PNG diagram.",
     )
     parser.add_argument(
+        "--xmi-feature-catalogue-markdown",
+        type=Path,
+        help="Optional path to the XMI feature catalogue Markdown table.",
+    )
+    parser.add_argument(
+        "--xmi-feature-catalogue-uml",
+        type=Path,
+        help="Optional path to the XMI feature catalogue PlantUML source.",
+    )
+    parser.add_argument(
+        "--xmi-feature-catalogue-png",
+        type=Path,
+        help="Optional path to the rendered XMI PlantUML PNG diagram.",
+    )
+    parser.add_argument(
         "--updated",
         help="Optional override for the 'updated' metadata field in the rendered specification.",
     )
@@ -190,6 +231,9 @@ def main(argv: list[str] | None = None) -> int:
             feature_catalogue_markdown=args.feature_catalogue_markdown,
             feature_catalogue_uml=args.feature_catalogue_uml,
             feature_catalogue_png=args.feature_catalogue_png,
+            xmi_feature_catalogue_markdown=args.xmi_feature_catalogue_markdown,
+            xmi_feature_catalogue_uml=args.xmi_feature_catalogue_uml,
+            xmi_feature_catalogue_png=args.xmi_feature_catalogue_png,
             updated=args.updated,
         )
     except Exception as error:  # pragma: no cover - defensive logging

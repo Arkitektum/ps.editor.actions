@@ -19,6 +19,15 @@ inputs:
   feature-catalogue-png:
     description: Optional path to the rendered PlantUML PNG diagram. When omitted, the PlantUML source (if provided) will be embedded instead.
     required: false
+  xmi-feature-catalogue-markdown:
+    description: Optional path to the XMI feature catalogue Markdown table.
+    required: false
+  xmi-feature-catalogue-uml:
+    description: Optional path to the XMI feature catalogue PlantUML source.
+    required: false
+  xmi-feature-catalogue-png:
+    description: Optional path to the rendered XMI PlantUML PNG diagram.
+    required: false
   updated:
     description: Optional override for the updated field in the rendered specification.
     required: false
@@ -54,6 +63,15 @@ runs:
         fi
         if [ -n "${{ inputs.feature-catalogue-png }}" ]; then
           ARGS+=("--feature-catalogue-png" "${{ inputs.feature-catalogue-png }}")
+        fi
+        if [ -n "${{ inputs.xmi-feature-catalogue-markdown }}" ]; then
+          ARGS+=("--xmi-feature-catalogue-markdown" "${{ inputs.xmi-feature-catalogue-markdown }}")
+        fi
+        if [ -n "${{ inputs.xmi-feature-catalogue-uml }}" ]; then
+          ARGS+=("--xmi-feature-catalogue-uml" "${{ inputs.xmi-feature-catalogue-uml }}")
+        fi
+        if [ -n "${{ inputs.xmi-feature-catalogue-png }}" ]; then
+          ARGS+=("--xmi-feature-catalogue-png" "${{ inputs.xmi-feature-catalogue-png }}")
         fi
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")
