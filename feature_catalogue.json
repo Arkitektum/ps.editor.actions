@@ -1,0 +1,426 @@
+[
+  {
+    "name": "Kommune",
+    "description": "inndeling i administrative og politiske enheter innenfor fylket\n\nMerknad: Tilsvarer NUTS 5 og LAU 2 på internasjonalt statistisk nivå",
+    "attributes": [
+      {
+        "name": "administrativEnhetNavn",
+        "type": "AdministrativEnhetNavn",
+        "description": "offisielt navn på en kommune, et fylke eller en nasjon",
+        "cardinality": "1..*",
+        "attributes": [
+          {
+            "name": "navn",
+            "type": "CharacterString",
+            "description": "navnet på den administrative enheten i angitt språk.",
+            "cardinality": "1"
+          },
+          {
+            "name": "språk",
+            "type": "Språkkode",
+            "description": "angir språk for det administrative navnet.",
+            "cardinality": "1",
+            "valueDomain": {
+              "listedValues": [
+                {
+                  "value": "English",
+                  "label": "English"
+                },
+                {
+                  "value": "KvenFinnish",
+                  "label": "Kven Finnish"
+                },
+                {
+                  "value": "LuleSami",
+                  "label": "Lule Sami"
+                },
+                {
+                  "value": "NorthernSami",
+                  "label": "Northern Sami"
+                },
+                {
+                  "value": "Swedish",
+                  "label": "Swedish"
+                },
+                {
+                  "value": "Finnish",
+                  "label": "Finnish"
+                },
+                {
+                  "value": "Norwegian",
+                  "label": "Norwegian"
+                },
+                {
+                  "value": "SouthernSami",
+                  "label": "Southern Sami"
+                }
+              ]
+            }
+          },
+          {
+            "name": "rekkefølge",
+            "type": "Integer",
+            "description": "angir presentasjonsrekkefølge i sammenstaninger av nav på administretiv enhet ved presentasjon på alle sprøkformer.",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "kommunenummer",
+        "type": "Kommunenummer",
+        "description": "nummerering av kommunen i henhold til Statistisk sentralbyrå sin offisielle liste\n\nMerknad: Det presiseres at kommune alltid skal ha 4 siffer, dvs. eventuelt med ledende null. Kommune benyttes for kopling mot en rekke andre registre som også benytter 4 siffer.",
+        "cardinality": "1",
+        "valueDomain": {
+          "codeList": "https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/kommunenummer"
+        }
+      },
+      {
+        "name": "kommunenavn",
+        "type": "CharacterString",
+        "description": "Offisielt navn på en kommune. Merk: Hvis kommunen har flere vedtatte parallellnavn, framstår disse i en sammenhengende tekststreng.",
+        "cardinality": "1"
+      },
+      {
+        "name": "samiskForvaltningsområde",
+        "type": "Boolean",
+        "description": "angir om kommunen er en del ac samisk forvaltningaområde",
+        "cardinality": "0..1"
+      }
+    ],
+    "abstract": false,
+    "relationships": {
+      "inheritance": [
+        "SOSI_Objekt_flate"
+      ],
+      "associations": [
+        {
+          "target": "Grense",
+          "role": "avgrensesAvGrense",
+          "cardinality": "0..*"
+        }
+      ]
+    },
+    "geometry": {
+      "name": "område",
+      "type": "GM_MultiSurface",
+      "ogcRole": "primary-geometry",
+      "description": "den geografiske avgrensingen av stemmekretsen."
+    }
+  },
+  {
+    "name": "SOSI_Objekt_flate",
+    "description": "abstrakt objekttype som bærer en rekke egenskaper som er fagområde-uavhengige og kan benyttes for alle objekttyper\n\nMerknad:\nSpesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.",
+    "attributes": [
+      {
+        "name": "datafangstdato",
+        "type": "DateTime",
+        "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "datauttaksdato",
+        "type": "DateTime",
+        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "opphav",
+        "type": "CharacterString",
+        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
+        "cardinality": "0..1"
+      }
+    ],
+    "abstract": true,
+    "relationships": {
+      "inheritance": [
+        "SOSI_Fellesegenskaper"
+      ],
+      "associations": []
+    }
+  },
+  {
+    "name": "Grense",
+    "description": "Generell avgrensingslinje",
+    "attributes": [
+      {
+        "name": "avgrensningstype",
+        "type": "TypeAvgrensning",
+        "description": "angir type avgreisningslinje. Ulike objekter avgrenses av ulike typer grenser.",
+        "cardinality": "1",
+        "valueDomain": {
+          "listedValues": [
+            {
+              "value": "Riksgrense",
+              "label": "avgrensningen av nasjonen Norge på land mot andre nasjoner"
+            },
+            {
+              "value": "Territorialgrense",
+              "label": "avgrensning i havet av statens suverenitetsområde, beregnet 12 nm (22 224 m) utenfor og parallelt med grunnlinjen"
+            },
+            {
+              "value": "AvtaltAvgrensningslinje",
+              "label": "avtalt avgrensningslinje til havs basert på folkerettslig bindende avtaler\n\nMerknad:\nAvtalt avgrensningslinje vil normalt gjelde alle aktuelle former for kyststatsjurisdiksjon. Detaljene vil framgå av den aktuelle avgrensningsavtale.\n\nMerknad 2:\nBenyttes også som avgrensning av kontinentalsokkel i internasjonalt farvann, der flere stater kan framlegge dokumentasjon om rettigheter til sokkelen, men der statene har kommet til enighet om en avgrensningslinje."
+            },
+            {
+              "value": "Kommunegrense",
+              "label": "avgrensing av kommune"
+            },
+            {
+              "value": "Fylkesgrense",
+              "label": "avgrensning av fylke"
+            },
+            {
+              "value": "Grunnkretsgrense",
+              "label": "avgrensning av grunnkrets"
+            },
+            {
+              "value": "Delområdegrense",
+              "label": "avgrensning av delområde"
+            },
+            {
+              "value": "Stemmekretsgrense",
+              "label": "avgrensing av Stemmekrets"
+            }
+          ]
+        }
+      }
+    ],
+    "abstract": false,
+    "relationships": {
+      "inheritance": [
+        "SOSI_Objekt_grense"
+      ],
+      "associations": [
+        {
+          "target": "Kommune"
+        },
+        {
+          "target": "Fylke"
+        }
+      ]
+    },
+    "geometry": {
+      "name": "grense",
+      "type": "GM_Curve",
+      "ogcRole": "primary-geometry",
+      "description": "Geometri for avgrensingslinjer"
+    }
+  },
+  {
+    "name": "SOSI_Fellesegenskaper",
+    "description": "abstrakt objekttype som bærer sentrale egenskaper som er anbefalt for bruk i produktspesifikasjoner.\n\nMerknad: Disse egenskapene skal derfor ikke modelleres inn i fagområdemodeller.",
+    "attributes": [
+      {
+        "name": "identifikasjon",
+        "type": "Identifikasjon",
+        "description": "unik identifikasjon av et objekt",
+        "cardinality": "1",
+        "attributes": [
+          {
+            "name": "lokalId",
+            "type": "CharacterString",
+            "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.",
+            "cardinality": "1"
+          },
+          {
+            "name": "navnerom",
+            "type": "CharacterString",
+            "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no",
+            "cardinality": "1"
+          },
+          {
+            "name": "versjonId",
+            "type": "CharacterString",
+            "description": "identifikasjon av en spesiell versjon av et geografisk objekt (instans)",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "oppdateringsdato",
+        "type": "DateTime",
+        "description": "tidspunkt for siste endring på objektet\n\nMerknad:\nOppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).",
+        "cardinality": "1"
+      },
+      {
+        "name": "gyldigFra",
+        "type": "Date",
+        "description": "Tidspunktet når objektet oppstod i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "gyldigTil",
+        "type": "Date",
+        "description": "Tidspunktet når objektet opphørte å eksistere i den virkelige verden",
+        "cardinality": "0..1"
+      }
+    ],
+    "abstract": true,
+    "relationships": {
+      "inheritance": [],
+      "associations": []
+    }
+  },
+  {
+    "name": "SOSI_Objekt_grense",
+    "description": "abstrakt objekttype som bærer en rekke egenskaper som er fagområde-uavhengige og kan benyttes for alle objekttyper\n\nMerknad:\nSpesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.",
+    "attributes": [
+      {
+        "name": "datafangstdato",
+        "type": "DateTime",
+        "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "kvalitet",
+        "type": "Posisjonskvalitet",
+        "description": "beskrivelse av kvaliteten på stedfestingen",
+        "cardinality": "0..1",
+        "attributes": [
+          {
+            "name": "målemetode",
+            "type": "Målemetode",
+            "description": "metode for måling i grunnriss (x,y), og høyde (z) når metoden er den samme som ved måling i grunnriss",
+            "cardinality": "1",
+            "valueDomain": {
+              "codeList": "https://register.geonorge.no/sosi-kodelister/generelle-konsepter/4.5/m%C3%A5lemetodekode"
+            }
+          },
+          {
+            "name": "nøyaktighet",
+            "type": "Integer",
+            "description": "punktstandardavviket i grunnriss for punkter samt tverravvik for linjer\n\nMerknad:\nOppgitt i cm",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "datauttaksdato",
+        "type": "DateTime",
+        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "opphav",
+        "type": "CharacterString",
+        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
+        "cardinality": "0..1"
+      }
+    ],
+    "abstract": true,
+    "relationships": {
+      "inheritance": [
+        "SOSI_Fellesegenskaper"
+      ],
+      "associations": []
+    }
+  },
+  {
+    "name": "Fylke",
+    "description": "administrativ inndeling av nasjonen på regionalt nivå\n\nMerknad: Tilsvarer NUTS 3 på internasjonalt statistisk nivå",
+    "attributes": [
+      {
+        "name": "administrativEnhetNavn",
+        "type": "AdministrativEnhetNavn",
+        "description": "offisielt navn på en kommune, et fylke eller en nasjon",
+        "cardinality": "1..*",
+        "attributes": [
+          {
+            "name": "navn",
+            "type": "CharacterString",
+            "description": "navnet på den administrative enheten i angitt språk.",
+            "cardinality": "1"
+          },
+          {
+            "name": "språk",
+            "type": "Språkkode",
+            "description": "angir språk for det administrative navnet.",
+            "cardinality": "1",
+            "valueDomain": {
+              "listedValues": [
+                {
+                  "value": "English",
+                  "label": "English"
+                },
+                {
+                  "value": "KvenFinnish",
+                  "label": "Kven Finnish"
+                },
+                {
+                  "value": "LuleSami",
+                  "label": "Lule Sami"
+                },
+                {
+                  "value": "NorthernSami",
+                  "label": "Northern Sami"
+                },
+                {
+                  "value": "Swedish",
+                  "label": "Swedish"
+                },
+                {
+                  "value": "Finnish",
+                  "label": "Finnish"
+                },
+                {
+                  "value": "Norwegian",
+                  "label": "Norwegian"
+                },
+                {
+                  "value": "SouthernSami",
+                  "label": "Southern Sami"
+                }
+              ]
+            }
+          },
+          {
+            "name": "rekkefølge",
+            "type": "Integer",
+            "description": "angir presentasjonsrekkefølge i sammenstaninger av nav på administretiv enhet ved presentasjon på alle sprøkformer.",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "fylkesnummer",
+        "type": "Fylkesnummer",
+        "description": "nummerering av fylker i henhold til Statistisk sentralbyrå sin offisielle liste\n\nMerknad:\nDet presiseres at fylkesnummer alltid skal ha 2 sifre, dvs. eventuelt med ledende null. Fylkesnummer benyttes for kopling mot en rekke andre registre som også benytter 2 sifre.",
+        "cardinality": "1",
+        "valueDomain": {
+          "codeList": "https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/fylkesnummer?"
+        }
+      },
+      {
+        "name": "fylkesnavn",
+        "type": "CharacterString",
+        "description": "Offisielt navn på et fylke. Merk: Hvis fylket har flere vedtatte parallellnavn, framstår disse i en sammenhengende tekststreng.",
+        "cardinality": "1"
+      },
+      {
+        "name": "samiskForvaltningsområde",
+        "type": "Boolean",
+        "description": "angir om fylket er en del ac samisk forvaltningaområde",
+        "cardinality": "0..1"
+      }
+    ],
+    "abstract": false,
+    "relationships": {
+      "inheritance": [
+        "SOSI_Objekt_flate"
+      ],
+      "associations": [
+        {
+          "target": "Grense",
+          "role": "avgrensesAvGrense",
+          "cardinality": "0..*"
+        }
+      ]
+    },
+    "geometry": {
+      "name": "område",
+      "type": "GM_MultiSurface",
+      "ogcRole": "primary-geometry",
+      "description": "den geografiske avgrensingen av stemmekretsen."
+    }
+  }
+]

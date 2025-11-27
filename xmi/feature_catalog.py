@@ -46,6 +46,7 @@ class _UmlClass:
     name: str
     stereotype: str | None
     tagged_values: dict[str, str]
+    abstract: bool = False
     attributes: list[_UmlAttribute] = field(default_factory=list)
 
 
@@ -149,6 +150,7 @@ def _parse_feature_types(text: str) -> list[dict[str, Any]]:
     root = ET.fromstring(text)
     classes, order = _collect_classes(root)
     parents = _collect_generalizations(root)
+    associations = _collect_associations(root, classes)
 
     classes_by_name = {info.name: info for info in classes.values()}
     codelists = _build_code_lists(
@@ -167,6 +169,7 @@ def _parse_feature_types(text: str) -> list[dict[str, Any]]:
                 classes_by_name,
                 parents,
                 codelists,
+                associations,
             )
         )
 
@@ -185,11 +188,13 @@ def _collect_classes(root: ET.Element) -> tuple[dict[str, _UmlClass], list[str]]
         stereotype = _extract_stereotype(class_elem)
         tagged_values = _extract_tagged_values(class_elem)
         attributes = _collect_attributes(class_elem, class_id)
+        abstract = class_elem.get("isAbstract", "false").lower() == "true"
         info = _UmlClass(
             id=class_id,
             name=name,
             stereotype=stereotype,
             tagged_values=tagged_values,
+            abstract=abstract,
             attributes=attributes,
         )
         classes[class_id] = info
@@ -234,6 +239,41 @@ def _collect_generalizations(root: ET.Element) -> dict[str, list[str]]:
     return parents
 
 
+def _collect_associations(root: ET.Element, classes: Mapping[str, _UmlClass]) -> dict[str, list[dict[str, Any]]]:
+    associations: dict[str, list[dict[str, Any]]] = {}
+    for association in root.findall(".//UML:Association", _NS):
+        ends = association.findall("UML:Association.connection/UML:AssociationEnd", _NS)
+        if len(ends) < 2:
+            continue
+
+        for idx, end in enumerate(ends):
+            source_id = end.get("type")
+            if not source_id:
+                continue
+            for other_idx, other in enumerate(ends):
+                if idx == other_idx:
+                    continue
+                target_id = other.get("type")
+                if not target_id:
+                    continue
+                target_info = classes.get(target_id)
+                if not target_info:
+                    continue
+
+                role = other.get("name") or ""
+                lower, upper = _extract_association_bounds(other)
+                cardinality = _format_cardinality(lower, upper) if (lower or upper) else ""
+
+                entry: dict[str, Any] = {"target": target_info.name}
+                if role:
+                    entry["role"] = role
+                if cardinality:
+                    entry["cardinality"] = cardinality
+                associations.setdefault(source_id, []).append(entry)
+
+    return associations
+
+
 def _build_code_lists(classes: Mapping[str, _UmlClass]) -> dict[str, list[dict[str, str]]]:
     listings: dict[str, list[dict[str, str]]] = {}
     for class_info in classes.values():
@@ -258,6 +298,7 @@ def _build_feature_type(
     classes_by_name: Mapping[str, _UmlClass],
     parents: Mapping[str, Sequence[str]],
     codelists: Mapping[str, list[dict[str, str]]],
+    associations: Mapping[str, Sequence[Mapping[str, Any]]],
 ) -> dict[str, Any]:
     inherited = _collect_attributes_with_inheritance(class_info.id, classes_by_id, parents)
 
@@ -281,12 +322,25 @@ def _build_feature_type(
 
     description = _clean_text(class_info.tagged_values.get("documentation"))
 
-    return {
+    parent_names = [classes_by_id[parent].name for parent in parents.get(class_info.id, []) if parent in classes_by_id]
+    association_entries = list(associations.get(class_info.id, []))
+    relationships: dict[str, Any] = {
+        "inheritance": parent_names,
+        "associations": association_entries,
+    }
+
+    feature_dict: dict[str, Any] = {
         "name": class_info.name,
         "description": description,
-        "geometry": geometry or {},
         "attributes": attributes,
+        "abstract": class_info.abstract,
+        "relationships": relationships,
     }
+
+    if geometry:
+        feature_dict["geometry"] = geometry
+
+    return feature_dict
 
 
 def _collect_attributes_with_inheritance(
@@ -294,25 +348,22 @@ def _collect_attributes_with_inheritance(
     classes_by_id: Mapping[str, _UmlClass],
     parents: Mapping[str, Sequence[str]],
 ) -> list[_UmlAttribute]:
-    chain = _build_inheritance_chain(class_id, parents)
-    ordered: list[_UmlAttribute] = []
+    info = classes_by_id.get(class_id)
+    if not info:
+        return []
+    # Only include attributes declared directly on the class; inheritance is captured separately
+    direct_attrs: list[_UmlAttribute] = []
     positions: dict[str, int] = {}
-
-    for cid in chain:
-        info = classes_by_id.get(cid)
-        if not info:
+    for attribute in info.attributes:
+        key = _attribute_display_name(attribute)
+        if not key:
             continue
-        for attribute in info.attributes:
-            key = _attribute_display_name(attribute)
-            if not key:
-                continue
-            if key in positions:
-                ordered[positions[key]] = attribute
-            else:
-                positions[key] = len(ordered)
-                ordered.append(attribute)
-
-    return ordered
+        if key in positions:
+            direct_attrs[positions[key]] = attribute
+        else:
+            positions[key] = len(direct_attrs)
+            direct_attrs.append(attribute)
+    return direct_attrs
 
 
 def _build_inheritance_chain(
@@ -364,6 +415,13 @@ def _convert_attribute(
         entry["cardinality"] = cardinality
 
     value_domain = _build_value_domain(attr_type, codelists)
+    external_codelist = attribute.tags.get("defaultCodeSpace")
+    if external_codelist:
+        if value_domain is None:
+            value_domain = {}
+        else:
+            value_domain = dict(value_domain)
+        value_domain["codeList"] = external_codelist
     if value_domain:
         entry["valueDomain"] = value_domain
 
@@ -404,7 +462,7 @@ def _build_value_domain(
 
 def _build_geometry_attribute(attribute: _UmlAttribute) -> dict[str, Any]:
     geom_type = attribute.tags.get("type") or attribute.type_name or "geometry"
-    name = attribute.tags.get("SOSI_navn") or attribute.name or "geometry"
+    name = attribute.name or "geometry"
     geometry: dict[str, Any] = {
         "name": name,
         "type": geom_type,
@@ -412,9 +470,6 @@ def _build_geometry_attribute(attribute: _UmlAttribute) -> dict[str, Any]:
     }
     if attribute.description:
         geometry["description"] = attribute.description
-    sosi_geom = attribute.tags.get("SOSI_navn")
-    if sosi_geom:
-        geometry["itemType"] = sosi_geom
     return geometry
 
 
@@ -428,15 +483,15 @@ def _is_geometry_attribute(attribute: _UmlAttribute) -> bool:
     }:
         return True
 
-    sosi_name = (attribute.tags.get("SOSI_navn") or attribute.name or "").upper()
-    if any(token in sosi_name for token in _GEOMETRY_NAMES):
+    name = (attribute.name or "").upper()
+    if any(token in name for token in _GEOMETRY_NAMES):
         return True
 
     return False
 
 
 def _attribute_display_name(attribute: _UmlAttribute) -> str:
-    name = attribute.tags.get("SOSI_navn") or attribute.name
+    name = attribute.name
     return name.strip() if name else ""
 
 
@@ -505,6 +560,20 @@ def _extract_bounds(
     return tags.get("lowerBound"), tags.get("upperBound")
 
 
+def _extract_association_bounds(end: ET.Element) -> tuple[str | None, str | None]:
+    multiplicity_attr = end.get("multiplicity")
+    if multiplicity_attr:
+        return _split_range(multiplicity_attr)
+
+    multiplicity = end.find(
+        "UML:AssociationEnd.multiplicity/UML:Multiplicity/UML:Multiplicity.range/UML:MultiplicityRange",
+        _NS,
+    )
+    if multiplicity is not None:
+        return multiplicity.get("lower"), multiplicity.get("upper")
+    return None, None
+
+
 def _get_identifier(element: ET.Element) -> str | None:
     return element.get("xmi.id") or element.get("{http://www.omg.org/XMI}id")
 
@@ -517,3 +586,9 @@ def _clean_text(value: str | None) -> str:
     text = "\n".join(part.strip() for part in text.splitlines()).strip()
     return text
 
+
+def _split_range(value: str) -> tuple[str | None, str | None]:
+    if ".." in value:
+        lower, upper = value.split("..", 1)
+        return lower or None, upper or None
+    return value, value

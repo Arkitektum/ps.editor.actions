@@ -70,6 +70,8 @@ def render_feature_types_to_puml(
     )
 
     indent = ""
+    alias_map: dict[str, str] = {}
+    datatypes = _collect_datatypes(feature_types)
     if package:
         lines.append(f'package "{package}" {{')
         lines.append("")
@@ -81,16 +83,33 @@ def render_feature_types_to_puml(
         if index:
             lines.append("")
 
-        _append_feature_type(
+        alias = _append_feature_type(
             lines,
             feature_type,
             indent,
             include_notes=include_notes,
             include_descriptions=include_descriptions,
         )
+        alias_map[str(feature_type.get("name", ""))] = alias
+
+    for dtype_name, dtype_attrs in datatypes.items():
+        lines.append("")
+        dtype_alias = _append_data_type(
+            lines,
+            dtype_name,
+            dtype_attrs,
+            indent,
+            include_descriptions=include_descriptions,
+        )
+        alias_map[dtype_name] = dtype_alias
 
     if package:
         lines.append("}")
+
+    relation_lines = _build_relationship_lines(feature_types, alias_map, indent)
+    if relation_lines:
+        lines.append("")
+        lines.extend(relation_lines)
 
     lines.append("")
     lines.append("@enduml")
@@ -105,15 +124,18 @@ def _append_feature_type(
     *,
     include_notes: bool,
     include_descriptions: bool,
-) -> None:
+) -> str:
     name = str(feature_type.get("name", "UnnamedFeature"))
-    class_header = _build_class_header(name)
-    class_alias = class_header.split(" as ")[-1] if " as " in class_header else name
+    class_header, class_alias = _class_header_and_alias(name)
+    keyword = "abstract " if feature_type.get("abstract") is True else ""
 
-    lines.append(f"{indent}class {class_header} <<featureType>> {{")
+    lines.append(f"{indent}{keyword}class {class_header} <<featureType>> {{")
 
     attributes_obj = feature_type.get("attributes")
     attribute_entries = _collect_attribute_entries(attributes_obj)
+    geometry_attribute = _build_geometry_attribute(feature_type.get("geometry"))
+    if geometry_attribute:
+        attribute_entries.insert(0, geometry_attribute)
 
     nested_object_attributes = _append_attributes(
         lines,
@@ -125,18 +147,16 @@ def _append_feature_type(
 
     lines.append(f"{indent}}}")
 
-    if not include_notes:
-        return
-
-    note_lines = _build_note_lines(feature_type)
-    if note_lines:
-        lines.append(f"{indent}note right of {class_alias}")
-        for note_line in note_lines:
-            lines.append(f"{indent}  {note_line}")
-        lines.append(f"{indent}end note")
+    if include_notes:
+        note_lines = _build_note_lines(feature_type)
+        if note_lines:
+            lines.append(f"{indent}note right of {class_alias}")
+            for note_line in note_lines:
+                lines.append(f"{indent}  {note_line}")
+            lines.append(f"{indent}end note")
 
     if not nested_object_attributes:
-        return
+        return class_alias
 
     nested_class_blocks: list[list[str]] = []
     association_lines: list[str] = []
@@ -165,6 +185,31 @@ def _append_feature_type(
         lines.extend(block)
         if index != len(nested_class_blocks) - 1:
             lines.append("")
+
+    return class_alias
+
+
+def _append_data_type(
+    lines: list[str],
+    name: str,
+    attributes: Sequence[Mapping[str, Any]],
+    indent: str,
+    *,
+    include_descriptions: bool,
+) -> str:
+    class_header, class_alias = _class_header_and_alias(name)
+    lines.append(f"{indent}class {class_header} {{")
+
+    _append_attributes(
+        lines,
+        attributes,
+        indent,
+        include_descriptions=include_descriptions,
+        prefix="",
+    )
+
+    lines.append(f"{indent}}}")
+    return class_alias
 
 
 def _append_attributes(
@@ -260,11 +305,14 @@ def _combine_attribute_prefix(prefix: str, name: str) -> str:
 
 
 def _is_object_with_attributes(attribute: Mapping[str, Any]) -> bool:
-    raw_type = str(attribute.get("type", "")).lower()
-    if raw_type != "object":
-        return False
     child_attributes = _collect_attribute_entries(attribute.get("attributes"))
-    return bool(child_attributes)
+    if not child_attributes:
+        return False
+    raw_type = str(attribute.get("type", "")).strip().lower()
+    if raw_type and raw_type != "object":
+        # Treat as standalone datatype, not nested object
+        return False
+    return True
 
 
 def _derive_nested_class_name(parent_alias: str, attribute_name: str) -> str:
@@ -284,8 +332,7 @@ def _build_nested_object_classes(
 ) -> tuple[list[list[str]], list[str]]:
     attribute_name = str(attribute.get("name", "attribute"))
     class_name = _derive_nested_class_name(parent_alias, attribute_name)
-    class_header = _build_class_header(class_name)
-    child_alias = class_header.split(" as ")[-1] if " as " in class_header else class_name
+    class_header, child_alias = _class_header_and_alias(class_name)
 
     child_attributes = _collect_attribute_entries(attribute.get("attributes"))
     attribute_prefix = prefix if prefix is not None else _combine_attribute_prefix("", attribute_name)
@@ -321,12 +368,117 @@ def _build_nested_object_classes(
     return class_blocks, relations
 
 
-def _build_class_header(name: str) -> str:
+def _class_header_and_alias(name: str) -> tuple[str, str]:
     if _IDENTIFIER_RE.match(name):
-        return name
+        header = name
+        alias = name
+    else:
+        alias = re.sub(r"[^A-Za-z0-9_]", "_", name) or "FeatureType"
+        header = f'"{name}" as {alias}'
+    return header, alias
 
-    alias = re.sub(r"[^A-Za-z0-9_]", "_", name) or "FeatureType"
-    return f'"{name}" as {alias}'
+
+def _build_geometry_attribute(geometry: Any) -> dict[str, Any] | None:
+    if not isinstance(geometry, Mapping) or not geometry:
+        return None
+
+    name = str(geometry.get("name") or "geometry").strip() or "geometry"
+    geom_type = str(geometry.get("type") or "geometry").strip() or "geometry"
+
+    return {
+        "name": name,
+        "type": geom_type,
+        "cardinality": "1",
+        "description": geometry.get("description"),
+    }
+
+
+def _collect_datatypes(feature_types: Sequence[Mapping[str, Any]]) -> dict[str, list[Mapping[str, Any]]]:
+    datatypes: dict[str, list[Mapping[str, Any]]] = {}
+
+    def visit_attributes(attributes: Sequence[Mapping[str, Any]] | None) -> None:
+        if not attributes:
+            return
+        for attribute in attributes:
+            if not isinstance(attribute, Mapping):
+                continue
+            nested = attribute.get("attributes")
+            if not isinstance(nested, Sequence) or isinstance(nested, (str, bytes)):
+                continue
+            nested_entries = [entry for entry in nested if isinstance(entry, Mapping)]
+            if not nested_entries:
+                continue
+            attr_type = str(attribute.get("type") or "").strip()
+            if attr_type:
+                datatypes.setdefault(attr_type, [])
+                if not datatypes[attr_type]:
+                    datatypes[attr_type] = nested_entries
+            visit_attributes(nested_entries)
+
+    for feature_type in feature_types:
+        if not isinstance(feature_type, Mapping):
+            continue
+        attributes_obj = feature_type.get("attributes")
+        if isinstance(attributes_obj, Sequence) and not isinstance(attributes_obj, (str, bytes)):
+            visit_attributes([entry for entry in attributes_obj if isinstance(entry, Mapping)])
+
+    return datatypes
+
+
+def _build_relationship_lines(
+    feature_types: Sequence[Mapping[str, Any]],
+    alias_map: Mapping[str, str],
+    indent: str,
+) -> list[str]:
+    lines: list[str] = []
+
+    def _alias_for(name: str) -> str | None:
+        if name in alias_map:
+            return alias_map[name]
+        if not name:
+            return None
+        _, alias = _class_header_and_alias(name)
+        return alias
+
+    for feature_type in feature_types:
+        if not isinstance(feature_type, Mapping):
+            continue
+        relationships = feature_type.get("relationships")
+        if not isinstance(relationships, Mapping):
+            continue
+        child_alias = _alias_for(str(feature_type.get("name", "")))
+        if not child_alias:
+            continue
+
+        inheritance = relationships.get("inheritance")
+        if isinstance(inheritance, Sequence) and not isinstance(inheritance, (str, bytes)):
+            for parent in inheritance:
+                parent_alias = _alias_for(str(parent))
+                if parent_alias:
+                    lines.append(f"{indent}{parent_alias} <|-- {child_alias}")
+
+        associations = relationships.get("associations")
+        if isinstance(associations, Sequence) and not isinstance(associations, (str, bytes)):
+            for assoc in associations:
+                if not isinstance(assoc, Mapping):
+                    continue
+                target_alias = _alias_for(str(assoc.get("target", "")))
+                if not target_alias:
+                    continue
+                role = str(assoc.get("role", "")).strip()
+                cardinality = str(assoc.get("cardinality", "")).strip()
+                label_parts: list[str] = []
+                if role:
+                    label_parts.append(role)
+                if cardinality:
+                    label_parts.append(f"[{cardinality}]")
+                label = " ".join(label_parts)
+                if label:
+                    lines.append(f"{indent}{child_alias} --> {target_alias} : {label}")
+                else:
+                    lines.append(f"{indent}{child_alias} --> {target_alias}")
+
+    return lines
 
 
 def _map_type(raw_type: str) -> str:
@@ -341,7 +493,14 @@ def _map_type(raw_type: str) -> str:
         geometry_key = key.split("-", 1)[1]
         return _GEOMETRY_MAPPING.get(geometry_key, "GM_Object")
 
-    return _TYPE_MAPPING.get(key, "Any")
+    if key.startswith("gm_"):
+        return raw_type.strip() or "GM_Object"
+
+    mapped = _TYPE_MAPPING.get(key)
+    if mapped:
+        return mapped
+
+    return raw_type.strip() or "Any"
 
 
 def _format_cardinality(attribute: Mapping[str, Any]) -> str:

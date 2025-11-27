@@ -1,0 +1,462 @@
+[
+  {
+    "name": "Fylker",
+    "description": "Fylker 2024",
+    "geometry": {
+      "itemType": "feature",
+      "type": "geometry-any",
+      "crs": [
+        "http://www.opengis.net/def/crs/OGC/1.3/CRS84",
+        "http://www.opengis.net/def/crs/EPSG/0/3857"
+      ],
+      "format": "geometry-any",
+      "ogcRole": "primary-geometry"
+    },
+    "attributes": [
+      {
+        "name": "objid",
+        "valueType": "integer",
+        "type": "integer",
+        "cardinality": "0..1",
+        "description": "objid"
+      },
+      {
+        "name": "objtype",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "objtype"
+      },
+      {
+        "name": "lokalid",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "lokalid"
+      },
+      {
+        "name": "navnerom",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "navnerom"
+      },
+      {
+        "name": "versjonid",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "versjonid"
+      },
+      {
+        "name": "oppdateringsdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "oppdateringsdato"
+      },
+      {
+        "name": "gyldigfra",
+        "valueType": "date (string)",
+        "type": "date (string)",
+        "cardinality": "0..1",
+        "description": "gyldigfra"
+      },
+      {
+        "name": "gyldigtil",
+        "valueType": "date (string)",
+        "type": "date (string)",
+        "cardinality": "0..1",
+        "description": "gyldigtil"
+      },
+      {
+        "name": "datafangstdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "datafangstdato"
+      },
+      {
+        "name": "datauttaksdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "datauttaksdato"
+      },
+      {
+        "name": "opphav",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "opphav"
+      },
+      {
+        "name": "fylkesnummer",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "fylkesnummer",
+        "ogcRole": "id"
+      },
+      {
+        "name": "fylkesnavn",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "fylkesnavn"
+      },
+      {
+        "name": "samiskforvaltningsomrade",
+        "valueType": "boolean",
+        "type": "boolean",
+        "cardinality": "0..1",
+        "description": "samiskforvaltningsomrade"
+      }
+    ]
+  },
+  {
+    "name": "Fylkesgrenser",
+    "description": "Fylkesgrenser 2024",
+    "geometry": {
+      "itemType": "feature",
+      "type": "geometry-any",
+      "crs": [
+        "http://www.opengis.net/def/crs/OGC/1.3/CRS84",
+        "http://www.opengis.net/def/crs/EPSG/0/3857"
+      ],
+      "format": "geometry-any",
+      "ogcRole": "primary-geometry"
+    },
+    "attributes": [
+      {
+        "name": "objid",
+        "valueType": "integer",
+        "type": "integer",
+        "cardinality": "0..1",
+        "description": "objid",
+        "ogcRole": "id"
+      },
+      {
+        "name": "objtype",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "objtype"
+      },
+      {
+        "name": "lokalid",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "lokalid"
+      },
+      {
+        "name": "navnerom",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "navnerom"
+      },
+      {
+        "name": "versjonid",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "versjonid"
+      },
+      {
+        "name": "oppdateringsdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "oppdateringsdato"
+      },
+      {
+        "name": "gyldigfra",
+        "valueType": "date (string)",
+        "type": "date (string)",
+        "cardinality": "0..1",
+        "description": "gyldigfra"
+      },
+      {
+        "name": "gyldigtil",
+        "valueType": "date (string)",
+        "type": "date (string)",
+        "cardinality": "0..1",
+        "description": "gyldigtil"
+      },
+      {
+        "name": "datafangstdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "datafangstdato"
+      },
+      {
+        "name": "malemetode",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "malemetode"
+      },
+      {
+        "name": "noyaktighet",
+        "valueType": "integer",
+        "type": "integer",
+        "cardinality": "0..1",
+        "description": "noyaktighet"
+      },
+      {
+        "name": "datauttaksdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "datauttaksdato"
+      },
+      {
+        "name": "opphav",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "opphav"
+      },
+      {
+        "name": "avgrensningstype",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "avgrensningstype"
+      }
+    ]
+  },
+  {
+    "name": "Kommuner",
+    "description": "Kommuner 2024",
+    "geometry": {
+      "itemType": "feature",
+      "type": "geometry-any",
+      "crs": [
+        "http://www.opengis.net/def/crs/OGC/1.3/CRS84",
+        "http://www.opengis.net/def/crs/EPSG/0/3857"
+      ],
+      "format": "geometry-any",
+      "ogcRole": "primary-geometry"
+    },
+    "attributes": [
+      {
+        "name": "objid",
+        "valueType": "integer",
+        "type": "integer",
+        "cardinality": "0..1",
+        "description": "objid"
+      },
+      {
+        "name": "objtype",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "objtype"
+      },
+      {
+        "name": "lokalid",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "lokalid"
+      },
+      {
+        "name": "navnerom",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "navnerom"
+      },
+      {
+        "name": "versjonid",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "versjonid"
+      },
+      {
+        "name": "oppdateringsdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "oppdateringsdato"
+      },
+      {
+        "name": "gyldigfra",
+        "valueType": "date (string)",
+        "type": "date (string)",
+        "cardinality": "0..1",
+        "description": "gyldigfra"
+      },
+      {
+        "name": "gyldigtil",
+        "valueType": "date (string)",
+        "type": "date (string)",
+        "cardinality": "0..1",
+        "description": "gyldigtil"
+      },
+      {
+        "name": "datafangstdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "datafangstdato"
+      },
+      {
+        "name": "datauttaksdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "datauttaksdato"
+      },
+      {
+        "name": "opphav",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "opphav"
+      },
+      {
+        "name": "kommunenummer",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "kommunenummer",
+        "ogcRole": "id"
+      },
+      {
+        "name": "kommunenavn",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "kommunenavn"
+      },
+      {
+        "name": "samiskforvaltningsomrade",
+        "valueType": "boolean",
+        "type": "boolean",
+        "cardinality": "0..1",
+        "description": "samiskforvaltningsomrade"
+      }
+    ]
+  },
+  {
+    "name": "Kommunegrenser",
+    "description": "Kommunegrenser 2024",
+    "geometry": {
+      "itemType": "feature",
+      "type": "geometry-any",
+      "crs": [
+        "http://www.opengis.net/def/crs/OGC/1.3/CRS84",
+        "http://www.opengis.net/def/crs/EPSG/0/3857"
+      ],
+      "format": "geometry-any",
+      "ogcRole": "primary-geometry"
+    },
+    "attributes": [
+      {
+        "name": "objid",
+        "valueType": "integer",
+        "type": "integer",
+        "cardinality": "0..1",
+        "description": "objid",
+        "ogcRole": "id"
+      },
+      {
+        "name": "objtype",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "objtype"
+      },
+      {
+        "name": "lokalid",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "lokalid"
+      },
+      {
+        "name": "navnerom",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "navnerom"
+      },
+      {
+        "name": "versjonid",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "versjonid"
+      },
+      {
+        "name": "oppdateringsdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "oppdateringsdato"
+      },
+      {
+        "name": "gyldigfra",
+        "valueType": "date (string)",
+        "type": "date (string)",
+        "cardinality": "0..1",
+        "description": "gyldigfra"
+      },
+      {
+        "name": "gyldigtil",
+        "valueType": "date (string)",
+        "type": "date (string)",
+        "cardinality": "0..1",
+        "description": "gyldigtil"
+      },
+      {
+        "name": "datafangstdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "datafangstdato"
+      },
+      {
+        "name": "malemetode",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "malemetode"
+      },
+      {
+        "name": "noyaktighet",
+        "valueType": "integer",
+        "type": "integer",
+        "cardinality": "0..1",
+        "description": "noyaktighet"
+      },
+      {
+        "name": "datauttaksdato",
+        "valueType": "date-time (string)",
+        "type": "date-time (string)",
+        "cardinality": "0..1",
+        "description": "datauttaksdato"
+      },
+      {
+        "name": "opphav",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "opphav"
+      },
+      {
+        "name": "avgrensningstype",
+        "valueType": "string",
+        "type": "string",
+        "cardinality": "0..1",
+        "description": "avgrensningstype"
+      }
+    ]
+  }
+]

@@ -43,6 +43,8 @@ def render_feature_types_to_markdown(
             raise TypeError("Each feature type entry must be a mapping")
 
         name = str(feature_type.get("name", "Unnamed feature type")).strip() or "Unnamed feature type"
+        if feature_type.get("abstract") is True:
+            name = f"{name} (abstrakt)"
         section_lines: list[str] = [f"{heading_prefix} {name}"]
 
         paragraphs: list[str] = []
@@ -90,6 +92,12 @@ def render_feature_types_to_markdown(
 
         section_lines.append("")
         section_lines.extend(_build_table(flattened, include_descriptions=include_descriptions))
+
+        relationship_lines = _build_relationships(feature_type.get("relationships"))
+        if relationship_lines:
+            section_lines.append("")
+            section_lines.append("Relasjoner")
+            section_lines.extend(relationship_lines)
 
         sections.append("\n".join(section_lines))
 
@@ -417,6 +425,45 @@ def _build_table(
 
         lines.append("  </tbody>")
         lines.append("</table>")
+
+    return lines
+
+
+def _build_relationships(relationships: Any) -> list[str]:
+    if not isinstance(relationships, Mapping):
+        return []
+
+    lines: list[str] = []
+
+    inheritance = relationships.get("inheritance")
+    if isinstance(inheritance, Sequence) and not isinstance(inheritance, (str, bytes)):
+        inherited = [str(entry).strip() for entry in inheritance if str(entry).strip()]
+        if inherited:
+            lines.append("")
+            lines.append("**Arv**")
+            lines.append(", ".join(inherited))
+
+    associations = relationships.get("associations")
+    if isinstance(associations, Sequence) and not isinstance(associations, (str, bytes)):
+        assoc_lines: list[str] = []
+        for assoc in associations:
+            if not isinstance(assoc, Mapping):
+                continue
+            target = str(assoc.get("target", "")).strip()
+            role = str(assoc.get("role", "")).strip()
+            cardinality = str(assoc.get("cardinality", "")).strip()
+            if not target:
+                continue
+            parts = [target]
+            if role:
+                parts.append(f"rolle: {role}")
+            if cardinality:
+                parts.append(f"kardinalitet: {cardinality}")
+            assoc_lines.append(" – ".join(parts))
+        if assoc_lines:
+            lines.append("")
+            lines.append("**Assosiasjoner**")
+            lines.extend(assoc_lines)
 
     return lines
 

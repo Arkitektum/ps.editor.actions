@@ -1,0 +1,76 @@
+@startuml
+title Feature catalogue
+
+skinparam class {
+  AttributeIconSize 0
+}
+
+class Kommune <<featureType>> {
+  + område [1] : GM_MultiSurface
+  + administrativEnhetNavn [1..*] : AdministrativEnhetNavn
+  + kommunenummer [1] : Kommunenummer
+  + kommunenavn [1] : CharacterString
+  + samiskForvaltningsområde [0..1] : Boolean
+}
+
+abstract class SOSI_Objekt_flate <<featureType>> {
+  + datafangstdato [0..1] : Date
+  + datauttaksdato [0..1] : Date
+  + opphav [0..1] : CharacterString
+}
+
+class Grense <<featureType>> {
+  + grense [1] : GM_Curve
+  + avgrensningstype [1] : TypeAvgrensning
+}
+
+abstract class SOSI_Fellesegenskaper <<featureType>> {
+  + identifikasjon [1] : Identifikasjon
+  + oppdateringsdato [1] : Date
+  + gyldigFra [0..1] : Date
+  + gyldigTil [0..1] : Date
+}
+
+abstract class SOSI_Objekt_grense <<featureType>> {
+  + datafangstdato [0..1] : Date
+  + kvalitet [0..1] : Posisjonskvalitet
+  + datauttaksdato [0..1] : Date
+  + opphav [0..1] : CharacterString
+}
+
+class Fylke <<featureType>> {
+  + område [1] : GM_MultiSurface
+  + administrativEnhetNavn [1..*] : AdministrativEnhetNavn
+  + fylkesnummer [1] : Fylkesnummer
+  + fylkesnavn [1] : CharacterString
+  + samiskForvaltningsområde [0..1] : Boolean
+}
+
+class AdministrativEnhetNavn {
+  + navn [1] : CharacterString
+  + språk [1] : Språkkode
+  + rekkefølge [0..1] : Integer
+}
+
+class Identifikasjon {
+  + lokalId [1] : CharacterString
+  + navnerom [1] : CharacterString
+  + versjonId [0..1] : CharacterString
+}
+
+class Posisjonskvalitet {
+  + målemetode [1] : Målemetode
+  + nøyaktighet [0..1] : Integer
+}
+
+SOSI_Objekt_flate <|-- Kommune
+Kommune --> Grense : avgrensesAvGrense [0..*]
+SOSI_Fellesegenskaper <|-- SOSI_Objekt_flate
+SOSI_Objekt_grense <|-- Grense
+Grense --> Kommune
+Grense --> Fylke
+SOSI_Fellesegenskaper <|-- SOSI_Objekt_grense
+SOSI_Objekt_flate <|-- Fylke
+Fylke --> Grense : avgrensesAvGrense [0..*]
+
+@enduml
