@@ -24,11 +24,11 @@ inputs:
     description: Optional path or URL to a SOSI UML XMI feature catalogue. When provided the OGC API input is ignored.
     required: false
   xmi-username:
-    description: Optional username for downloading the XMI catalogue (default: sosi).
+    description: "Optional username for downloading the XMI catalogue (default: sosi)."
     required: false
     default: sosi
   xmi-password:
-    description: Optional password for downloading the XMI catalogue (default: sosi).
+    description: "Optional password for downloading the XMI catalogue (default: sosi)."
     required: false
     default: sosi
 outputs:
