@@ -51,14 +51,13 @@ def _build_diagram_content(
     if png_path and png_path.exists():
         return _format_image_markdown(png_path, output_path)
 
-    if png_path and not png_path.exists():
-        raise FileNotFoundError(f"Feature catalogue PNG '{png_path}' was not found.")
-
     if uml_path and uml_path.exists():
         uml_text = _read_text(uml_path)
         if uml_text:
             return f"```plantuml\n{uml_text}\n```"
 
+    # If a PNG path was provided but the file is missing, fall back silently to any
+    # available PlantUML text instead of failing the assembly.
     return ""
 
 
