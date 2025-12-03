@@ -94,18 +94,29 @@ def fetch_metadata(metadata_id: str, http_get: HTTPGet | None = None) -> Mapping
     except Exception as exc:  # pragma: no cover - invalid JSON
         raise ValueError("Metadata response did not contain valid JSON.") from exc
 
+    if payload is None:
+        payload = {}
+
     if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], Mapping):
         payload = payload[0]
 
-    if not isinstance(payload, Mapping):
+    snippet = ""
+    try:
+        text = getattr(response, "text", "")
+        if text:
+            snippet = f" Response snippet: {text[:300]!r}"
+    except Exception:
         snippet = ""
-        try:
-            text = getattr(response, "text", "")
-            if text:
-                snippet = f" Response snippet: {text[:300]!r}"
-        except Exception:
-            snippet = ""
-        raise ValueError(f"Metadata response must be a JSON object; got {type(payload).__name__}.{snippet}")
+
+    if isinstance(payload, Mapping) and not payload:
+        raise ValueError(
+            f"Metadata response for '{metadata_id}' was empty; verify the metadata ID or access.{snippet}"
+        )
+
+    if not isinstance(payload, Mapping):
+        raise ValueError(
+            f"Metadata response must be a JSON object; got {type(payload).__name__}.{snippet}"
+        )
 
     return payload
 
