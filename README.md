@@ -59,7 +59,7 @@ The first action fetches and prepares every artefact. The optional PlantUML step
 Inputs:
 
 - `metadata-id` (required): Geonorge metadata UUID used to fetch psdata content.
-- `ogc-feature-api`: Fully qualified URL to an OGC API - Features `/collections` endpoint. Required unless `xmi-model` is provided.
+- `ogc-feature-api`: Fully qualified URL to an OGC API - Features `/collections` endpoint. Optional; omit when you only want psdata or when using `xmi-model` instead.
 - `output-directory` (default `produktspesifikasjon`): Directory that will contain the generated artefacts.
 - `product-slug`: Overrides the auto-generated folder name (derived from the psdata title).
 - `template-path`: Path to a Handlebars-style template if you want to replace `data/template/ps.md.hbs`.
@@ -163,10 +163,10 @@ You can provide a customised template via the `template-path` input to tailor th
 Prepare artefacts locally:
 
 ```bash
-python scripts/generate_product_spec.py <metadata-id> <ogc-feature-api> --output-dir produktspesifikasjon/test --skip-spec-markdown
+python scripts/generate_product_spec.py <metadata-id> [<ogc-feature-api>] --output-dir produktspesifikasjon/test --skip-spec-markdown
 ```
 
-If you have a SOSI UML XMI export instead of an OGC API, omit the second positional argument and pass `--xmi-model <path-or-url>` (optionally override the default `sosi`/`sosi` credentials with `--xmi-username` and `--xmi-password`). The generated files will use the `_xmi_feature_catalogue.*` suffix to keep them separate from OGC-based artefacts.
+If you have a SOSI UML XMI export instead of an OGC API, omit the second positional argument and pass `--xmi-model <path-or-url>` (optionally override the default `sosi`/`sosi` credentials with `--xmi-username` and `--xmi-password`). You can also omit the OGC API argument entirely to only fetch psdata (feature catalogue artefacts will still be created but remain empty). The generated files will use the `_xmi_feature_catalogue.*` suffix to keep them separate from OGC-based artefacts.
 
 Once you have enriched the artefacts (e.g. rendered UML to PNG), assemble the final Markdown:
 

@@ -5,8 +5,8 @@ inputs:
     description: Geonorge metadata UUID used as the psdata source.
     required: true
   ogc-feature-api:
-    description: URL to the OGC API - Features collections endpoint.
-    required: true
+    description: Optional URL to the OGC API - Features collections endpoint.
+    required: false
   output-directory:
     description: Directory where generated files should be written.
     required: false
@@ -78,12 +78,11 @@ runs:
       run: |
         set -eo pipefail
         SUMMARY="$RUNNER_TEMP/product_spec_summary.txt"
-        ARGS=(
-          "${{ inputs.metadata-id }}"
-          "${{ inputs.ogc-feature-api }}"
-          "--output-dir"
-          "${{ inputs.output-directory }}"
-        )
+        ARGS=("${{ inputs.metadata-id }}")
+        if [ -n "${{ inputs.ogc-feature-api }}" ]; then
+          ARGS+=("${{ inputs.ogc-feature-api }}")
+        fi
+        ARGS+=("--output-dir" "${{ inputs.output-directory }}")
         if [ -n "${{ inputs.product-slug }}" ]; then
           ARGS+=("--slug" "${{ inputs.product-slug }}")
         fi

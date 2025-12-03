@@ -129,9 +129,6 @@ def generate_product_specification(
     xmi_password: str | None = None,
     render_spec_markdown: bool = True,
 ) -> dict[str, Path]:
-    if not ogc_feature_api and not xmi_model:
-        raise ValueError("Either an OGC API endpoint or an XMI model must be provided.")
-
     psdata = fetch_psdata(metadata_id)
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
@@ -243,8 +240,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "ogc_feature_api",
         nargs="?",
         help=(
-            "URL to the OGC API - Features collections endpoint providing feature type "
-            "metadata. Optional when --xmi-model is supplied."
+            "Optional URL to the OGC API - Features collections endpoint providing feature "
+            "type metadata. Omit to skip OGC feature catalogue generation or when using "
+            "--xmi-model instead."
         ),
     )
     parser.add_argument(
@@ -300,6 +298,11 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = args.output_dir
     if not output_dir.is_absolute():
         output_dir = Path.cwd() / output_dir
+
+    if not args.ogc_feature_api and not args.xmi_model:
+        print(
+            "No OGC API or XMI source supplied; generating psdata and empty feature catalogue artefacts.",
+        )
 
     try:
         paths = generate_product_specification(
