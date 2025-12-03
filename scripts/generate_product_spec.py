@@ -128,7 +128,7 @@ def generate_product_specification(
     xmi_username: str | None = None,
     xmi_password: str | None = None,
     render_spec_markdown: bool = True,
-) -> dict[str, Path]:
+) -> dict[str, Path | None]:
     psdata = fetch_psdata(metadata_id)
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
@@ -156,13 +156,15 @@ def generate_product_specification(
         if isinstance(title_value, str):
             product_title = title_value.strip()
 
-    ogc_assets = _build_feature_catalogue_assets(
-        ogc_feature_types,
-        slug=slug,
-        spec_dir=spec_dir,
-        prefix="",
-        product_title=product_title,
-    )
+    ogc_assets = None
+    if ogc_feature_api:
+        ogc_assets = _build_feature_catalogue_assets(
+            ogc_feature_types,
+            slug=slug,
+            spec_dir=spec_dir,
+            prefix="",
+            product_title=product_title,
+        )
 
     xmi_assets = None
     if xmi_model:
@@ -177,19 +179,20 @@ def generate_product_specification(
     includes: list[IncludeResource] = [
         IncludeResource("incl_psdata_json", _format_json_block(psdata)),
     ]
-    ogc_markdown = ogc_assets["markdown_content"]
-    if ogc_markdown.strip():
-        includes.append(
-            IncludeResource("incl_featuretypes_table", ogc_markdown.strip()),
-        )
-    ogc_uml_content = ogc_assets["uml_content"]
-    if ogc_uml_content.strip():
-        includes.append(
-            IncludeResource(
-                "incl_featuretypes_uml",
-                f"```plantuml\n{ogc_uml_content.strip()}\n```",
-            ),
-        )
+    if ogc_assets:
+        ogc_markdown = ogc_assets["markdown_content"]
+        if ogc_markdown.strip():
+            includes.append(
+                IncludeResource("incl_featuretypes_table", ogc_markdown.strip()),
+            )
+        ogc_uml_content = ogc_assets["uml_content"]
+        if ogc_uml_content.strip():
+            includes.append(
+                IncludeResource(
+                    "incl_featuretypes_uml",
+                    f"```plantuml\n{ogc_uml_content.strip()}\n```",
+                ),
+            )
 
     if xmi_assets:
         xmi_markdown = xmi_assets["markdown_content"]
@@ -219,9 +222,9 @@ def generate_product_specification(
     result: dict[str, Path | None] = {
         "directory": spec_dir,
         "psdata": psdata_path,
-        "feature_catalogue_json": ogc_assets["json_path"],
-        "feature_catalogue_markdown": ogc_assets["markdown_path"],
-        "feature_catalogue_uml": ogc_assets["uml_path"],
+        "feature_catalogue_json": ogc_assets["json_path"] if ogc_assets else None,
+        "feature_catalogue_markdown": ogc_assets["markdown_path"] if ogc_assets else None,
+        "feature_catalogue_uml": ogc_assets["uml_path"] if ogc_assets else None,
         "spec_markdown": spec_markdown_path,
         "xmi_feature_catalogue_json": xmi_assets["json_path"] if xmi_assets else None,
         "xmi_feature_catalogue_markdown": xmi_assets["markdown_path"] if xmi_assets else None,
@@ -323,21 +326,24 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Product specification directory: {paths['directory']}")
     print(f"Wrote psdata JSON: {paths['psdata']}")
-    print(f"Wrote feature catalogue JSON: {paths['feature_catalogue_json']}")
-    if paths["feature_catalogue_markdown"].exists():
-        print(f"Wrote feature catalogue Markdown: {paths['feature_catalogue_markdown']}")
+    if paths.get("feature_catalogue_json"):
+        print(f"Wrote feature catalogue JSON: {paths['feature_catalogue_json']}")
+        if paths["feature_catalogue_markdown"] and paths["feature_catalogue_markdown"].exists():
+            print(f"Wrote feature catalogue Markdown: {paths['feature_catalogue_markdown']}")
+        elif paths["feature_catalogue_markdown"]:
+            print(
+                "No feature catalogue Markdown generated "
+                f"(reserved path: {paths['feature_catalogue_markdown']})",
+            )
+        if paths["feature_catalogue_uml"] and paths["feature_catalogue_uml"].exists():
+            print(f"Wrote feature catalogue PlantUML: {paths['feature_catalogue_uml']}")
+        elif paths["feature_catalogue_uml"]:
+            print(
+                "No feature catalogue PlantUML generated "
+                f"(reserved path: {paths['feature_catalogue_uml']})",
+            )
     else:
-        print(
-            "No feature catalogue Markdown generated "
-            f"(reserved path: {paths['feature_catalogue_markdown']})",
-        )
-    if paths["feature_catalogue_uml"].exists():
-        print(f"Wrote feature catalogue PlantUML: {paths['feature_catalogue_uml']}")
-    else:
-        print(
-            "No feature catalogue PlantUML generated "
-            f"(reserved path: {paths['feature_catalogue_uml']})",
-        )
+        print("Skipped OGC feature catalogue artefacts (no OGC API provided).")
     if args.skip_spec_markdown:
         print(
             "Skipped rendering product specification Markdown "
@@ -362,9 +368,9 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[paths] directory={paths['directory']}")
     print(f"[paths] psdata={paths['psdata']}")
-    print(f"[paths] feature_catalogue_json={paths['feature_catalogue_json']}")
-    print(f"[paths] feature_catalogue_markdown={paths['feature_catalogue_markdown']}")
-    print(f"[paths] feature_catalogue_uml={paths['feature_catalogue_uml']}")
+    print(f"[paths] feature_catalogue_json={paths.get('feature_catalogue_json') or ''}")
+    print(f"[paths] feature_catalogue_markdown={paths.get('feature_catalogue_markdown') or ''}")
+    print(f"[paths] feature_catalogue_uml={paths.get('feature_catalogue_uml') or ''}")
     print(f"[paths] xmi_feature_catalogue_json={paths.get('xmi_feature_catalogue_json') or ''}")
     print(f"[paths] xmi_feature_catalogue_markdown={paths.get('xmi_feature_catalogue_markdown') or ''}")
     print(f"[paths] xmi_feature_catalogue_uml={paths.get('xmi_feature_catalogue_uml') or ''}")
