@@ -224,11 +224,18 @@ def _format_listed_values(value_domain: Any) -> str:
     if not isinstance(value_domain, Mapping):
         return ""
 
+    bullets: list[str] = []
+
+    code_list = value_domain.get("codeList")
+    if isinstance(code_list, str):
+        code_list = code_list.strip()
+        if code_list:
+            bullets.append(f"Kodeliste: {code_list}")
+
     listed_values = value_domain.get("listedValues")
     if not isinstance(listed_values, Sequence) or isinstance(listed_values, (str, bytes)):
-        return ""
+        return "<br />".join(f"- {bullet}" for bullet in bullets) if bullets else ""
 
-    bullets: list[str] = []
     for entry in listed_values:
         if not isinstance(entry, Mapping):
             continue
