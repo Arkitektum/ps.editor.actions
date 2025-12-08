@@ -1051,7 +1051,6 @@ def _node_to_attribute(node: _AttributeNode) -> dict[str, Any]:
 
     attribute: dict[str, Any] = {
         "name": node.name,
-        "valueType": attr_type,
         "type": attr_type,
     }
 

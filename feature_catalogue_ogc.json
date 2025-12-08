@@ -15,84 +15,72 @@
     "attributes": [
       {
         "name": "objid",
-        "valueType": "integer",
         "type": "integer",
         "cardinality": "0..1",
         "description": "objid"
       },
       {
         "name": "objtype",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "objtype"
       },
       {
         "name": "lokalid",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "lokalid"
       },
       {
         "name": "navnerom",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "navnerom"
       },
       {
         "name": "versjonid",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "versjonid"
       },
       {
         "name": "oppdateringsdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "oppdateringsdato"
       },
       {
         "name": "gyldigfra",
-        "valueType": "date (string)",
         "type": "date (string)",
         "cardinality": "0..1",
         "description": "gyldigfra"
       },
       {
         "name": "gyldigtil",
-        "valueType": "date (string)",
         "type": "date (string)",
         "cardinality": "0..1",
         "description": "gyldigtil"
       },
       {
         "name": "datafangstdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "datafangstdato"
       },
       {
         "name": "datauttaksdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "datauttaksdato"
       },
       {
         "name": "opphav",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "opphav"
       },
       {
         "name": "fylkesnummer",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "fylkesnummer",
@@ -100,14 +88,12 @@
       },
       {
         "name": "fylkesnavn",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "fylkesnavn"
       },
       {
         "name": "samiskforvaltningsomrade",
-        "valueType": "boolean",
         "type": "boolean",
         "cardinality": "0..1",
         "description": "samiskforvaltningsomrade"
@@ -130,7 +116,6 @@
     "attributes": [
       {
         "name": "objid",
-        "valueType": "integer",
         "type": "integer",
         "cardinality": "0..1",
         "description": "objid",
@@ -138,91 +123,78 @@
       },
       {
         "name": "objtype",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "objtype"
       },
       {
         "name": "lokalid",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "lokalid"
       },
       {
         "name": "navnerom",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "navnerom"
       },
       {
         "name": "versjonid",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "versjonid"
       },
       {
         "name": "oppdateringsdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "oppdateringsdato"
       },
       {
         "name": "gyldigfra",
-        "valueType": "date (string)",
         "type": "date (string)",
         "cardinality": "0..1",
         "description": "gyldigfra"
       },
       {
         "name": "gyldigtil",
-        "valueType": "date (string)",
         "type": "date (string)",
         "cardinality": "0..1",
         "description": "gyldigtil"
       },
       {
         "name": "datafangstdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "datafangstdato"
       },
       {
         "name": "malemetode",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "malemetode"
       },
       {
         "name": "noyaktighet",
-        "valueType": "integer",
         "type": "integer",
         "cardinality": "0..1",
         "description": "noyaktighet"
       },
       {
         "name": "datauttaksdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "datauttaksdato"
       },
       {
         "name": "opphav",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "opphav"
       },
       {
         "name": "avgrensningstype",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "avgrensningstype"
@@ -245,84 +217,72 @@
     "attributes": [
       {
         "name": "objid",
-        "valueType": "integer",
         "type": "integer",
         "cardinality": "0..1",
         "description": "objid"
       },
       {
         "name": "objtype",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "objtype"
       },
       {
         "name": "lokalid",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "lokalid"
       },
       {
         "name": "navnerom",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "navnerom"
       },
       {
         "name": "versjonid",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "versjonid"
       },
       {
         "name": "oppdateringsdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "oppdateringsdato"
       },
       {
         "name": "gyldigfra",
-        "valueType": "date (string)",
         "type": "date (string)",
         "cardinality": "0..1",
         "description": "gyldigfra"
       },
       {
         "name": "gyldigtil",
-        "valueType": "date (string)",
         "type": "date (string)",
         "cardinality": "0..1",
         "description": "gyldigtil"
       },
       {
         "name": "datafangstdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "datafangstdato"
       },
       {
         "name": "datauttaksdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "datauttaksdato"
       },
       {
         "name": "opphav",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "opphav"
       },
       {
         "name": "kommunenummer",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "kommunenummer",
@@ -330,14 +290,12 @@
       },
       {
         "name": "kommunenavn",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "kommunenavn"
       },
       {
         "name": "samiskforvaltningsomrade",
-        "valueType": "boolean",
         "type": "boolean",
         "cardinality": "0..1",
         "description": "samiskforvaltningsomrade"
@@ -360,7 +318,6 @@
     "attributes": [
       {
         "name": "objid",
-        "valueType": "integer",
         "type": "integer",
         "cardinality": "0..1",
         "description": "objid",
@@ -368,91 +325,78 @@
       },
       {
         "name": "objtype",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "objtype"
       },
       {
         "name": "lokalid",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "lokalid"
       },
       {
         "name": "navnerom",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "navnerom"
       },
       {
         "name": "versjonid",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "versjonid"
       },
       {
         "name": "oppdateringsdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "oppdateringsdato"
       },
       {
         "name": "gyldigfra",
-        "valueType": "date (string)",
         "type": "date (string)",
         "cardinality": "0..1",
         "description": "gyldigfra"
       },
       {
         "name": "gyldigtil",
-        "valueType": "date (string)",
         "type": "date (string)",
         "cardinality": "0..1",
         "description": "gyldigtil"
       },
       {
         "name": "datafangstdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "datafangstdato"
       },
       {
         "name": "malemetode",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "malemetode"
       },
       {
         "name": "noyaktighet",
-        "valueType": "integer",
         "type": "integer",
         "cardinality": "0..1",
         "description": "noyaktighet"
       },
       {
         "name": "datauttaksdato",
-        "valueType": "date-time (string)",
         "type": "date-time (string)",
         "cardinality": "0..1",
         "description": "datauttaksdato"
       },
       {
         "name": "opphav",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "opphav"
       },
       {
         "name": "avgrensningstype",
-        "valueType": "string",
         "type": "string",
         "cardinality": "0..1",
         "description": "avgrensningstype"
