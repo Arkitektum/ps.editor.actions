@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Iterable
@@ -81,6 +82,52 @@ def _collect_neighbor_includes(
     return includes
 
 
+_HEADING_RE = re.compile(r"^(#{1,6})\s+.+$")
+
+
+def _strip_empty_headings(markdown: str) -> str:
+    """Remove heading sections where the body is empty after templating."""
+
+    def _prune_sections(lines: list[str]) -> list[str]:
+        pruned: list[str] = []
+        i = 0
+
+        while i < len(lines):
+            match = _HEADING_RE.match(lines[i])
+            if not match:
+                pruned.append(lines[i])
+                i += 1
+                continue
+
+            heading_level = len(match.group(1))
+            heading_line = lines[i]
+            i += 1
+
+            section_lines: list[str] = []
+            while i < len(lines):
+                next_match = _HEADING_RE.match(lines[i])
+                if next_match and len(next_match.group(1)) <= heading_level:
+                    break
+                section_lines.append(lines[i])
+                i += 1
+
+            nested_pruned = _prune_sections(section_lines)
+
+            if any(line.strip() for line in nested_pruned):
+                pruned.append(heading_line)
+                pruned.extend(nested_pruned)
+
+        return pruned
+
+    lines = markdown.splitlines()
+    pruned_lines = _prune_sections(lines)
+
+    rebuilt = "\n".join(pruned_lines)
+    if markdown.endswith("\n"):
+        rebuilt = f"{rebuilt}\n"
+    return rebuilt
+
+
 def assemble_product_specification(
     psdata_path: Path,
     *,
@@ -93,6 +140,7 @@ def assemble_product_specification(
     xmi_feature_catalogue_uml: Path | None,
     xmi_feature_catalogue_png: Path | None,
     updated: str | None,
+    strip_empty_headings: bool = True,
 ) -> Path:
     psdata = json.loads(psdata_path.read_text(encoding="utf-8"))
 
@@ -149,6 +197,9 @@ def assemble_product_specification(
         includes=includes,
         updated=updated,
     )
+
+    if strip_empty_headings:
+        rendered = _strip_empty_headings(rendered)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(rendered, encoding="utf-8")
@@ -211,6 +262,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--updated",
         help="Optional override for the 'updated' metadata field in the rendered specification.",
     )
+    parser.add_argument(
+        "--keep-empty-headings",
+        action="store_true",
+        help="Preserve headings even if their sections are empty after templating.",
+    )
     return parser.parse_args(argv)
 
 
@@ -234,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
             xmi_feature_catalogue_uml=args.xmi_feature_catalogue_uml,
             xmi_feature_catalogue_png=args.xmi_feature_catalogue_png,
             updated=args.updated,
+            strip_empty_headings=not args.keep_empty_headings,
         )
     except Exception as error:  # pragma: no cover - defensive logging
         print(f"Failed to assemble product specification: {error}", file=sys.stderr)

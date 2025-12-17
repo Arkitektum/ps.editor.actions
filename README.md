@@ -94,6 +94,8 @@ Inputs:
 - `xmi-feature-catalogue-png`: Optional path to the rendered XMI PlantUML PNG diagram.
 - `updated`: Optional override for the `updated` metadata field.
 
+Empty headings are removed automatically when their sections end up blank after templating. If you want to keep the headings in place when running the script directly, pass `--keep-empty-headings`.
+
 Outputs:
 
 - `spec-markdown`: Path to the assembled product specification Markdown document (always `<spec-directory>/index.md`).
