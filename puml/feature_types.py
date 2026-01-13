@@ -62,9 +62,21 @@ def render_feature_types_to_puml(
 
     lines.extend(
         [
+            "skinparam backgroundColor #F7F8FA",
+            "skinparam shadowing false",
+            "skinparam RoundCorner 8",
+            "skinparam ArrowColor #94A3B8",
             "skinparam class {",
+            "  BackgroundColor #FFFFFF",
+            "  BorderColor #CBD5E1",
+            "  FontColor #0F172A",
+            "  HeaderBackgroundColor #EEF2F7",
+            "  HeaderFontColor #0F172A",
             "  AttributeIconSize 0",
             "}",
+            "skinparam stereotypeCBackgroundColor #E2E8F0",
+            "skinparam stereotypeCBorderColor #CBD5E1",
+            "skinparam stereotypeCFontColor #0F172A",
             "",
         ]
     )
