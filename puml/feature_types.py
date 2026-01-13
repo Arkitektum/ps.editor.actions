@@ -62,12 +62,12 @@ def render_feature_types_to_puml(
 
     lines.extend(
         [
-            "skinparam backgroundColor #F8F2EA",
+            "skinparam backgroundColor #F5F5F5",
             "skinparam shadowing false",
             "skinparam RoundCorner 6",
             "skinparam ArrowColor #6C8198",
             "skinparam class {",
-            "  BackgroundColor #FBF6EF",
+            "  BackgroundColor #FBF2E8",
             "  BorderColor #9C8578",
             "  FontColor #2D201A",
             "  HeaderBackgroundColor #EFE1D6",
