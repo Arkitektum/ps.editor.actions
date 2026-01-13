@@ -35,7 +35,13 @@ def _format_image_markdown(image_path: Path, output_path: Path) -> str:
         relative = image_path
 
     alt_text = image_path.stem.replace("_", " ").strip().capitalize() or image_path.stem
-    return f"![{alt_text}]({relative.as_posix()})"
+    href = relative.as_posix()
+    return (
+        f'<a href="{href}" title="Klikk for stor visning">'
+        f'<img src="{href}" alt="{alt_text}" '
+        f'style="max-width: 100%; height: auto;" />'
+        "</a>"
+    )
 
 
 def _read_text(path: Path) -> str:
