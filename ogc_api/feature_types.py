@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 import xml.etree.ElementTree as ElementTree
+from urllib.parse import urljoin
 
 try:  # pragma: no cover - optional dependency when testing
     import requests
@@ -92,16 +93,15 @@ def load_feature_types(collections_url: str, http_get: HTTPGet | None = None) ->
         collections = payload.get("collections")
     else:
         collections = None
+
+    resolved_collections_url = collections_url
     if collections is None:
         collections_link = _find_collections_link(payload)
         if collections_link:
             follow = _load_json_mapping(collections_link, getter)
             if isinstance(follow, Mapping):
                 collections = follow.get("collections")
-                if collections is None and isinstance(
-                    follow.get("links"), Sequence
-                ):
-                    collections = follow.get("collections")
+                resolved_collections_url = collections_link
         if collections is None and isinstance(payload, Sequence) and not isinstance(
             payload, (str, bytes)
         ):
@@ -130,18 +130,22 @@ def load_feature_types(collections_url: str, http_get: HTTPGet | None = None) ->
         queryables_url = _find_queryables_link(collection)
 
         if schema_url:
-            schema_mapping = _load_schema(schema_url, getter)
+            schema_mapping = _load_schema(schema_url, getter, preferred_name=name)
             if schema_mapping:
                 schema_candidates.append(schema_mapping)
 
         if schema_url is None or queryables_url is None:
-            detail = _load_collection_detail(collection, getter)
+            detail = _load_collection_detail(
+                collection, getter, collections_url=resolved_collections_url
+            )
             if detail:
                 additional_sources.append(detail)
                 if schema_url is None:
                     schema_url = _find_schema_link(detail)
                     if schema_url:
-                        schema_mapping = _load_schema(schema_url, getter)
+                        schema_mapping = _load_schema(
+                            schema_url, getter, preferred_name=name
+                        )
                         if schema_mapping:
                             schema_candidates.append(schema_mapping)
                 if queryables_url is None:
@@ -256,7 +260,9 @@ def _find_link_href(
     return None
 
 
-def _load_schema(url: str, getter: HTTPGet) -> Mapping[str, Any] | None:
+def _load_schema(
+    url: str, getter: HTTPGet, preferred_name: str | None = None
+) -> Mapping[str, Any] | None:
     response = _fetch_response(url, getter)
     if response is None:
         return None
@@ -264,7 +270,7 @@ def _load_schema(url: str, getter: HTTPGet) -> Mapping[str, Any] | None:
     if _response_looks_like_xml(response, url):
         xml_text = _response_text(response)
         if xml_text:
-            schema = _parse_gml_schema(xml_text)
+            schema = _parse_gml_schema(xml_text, preferred_name=preferred_name)
             if schema:
                 return schema
 
@@ -276,9 +282,20 @@ def _load_schema(url: str, getter: HTTPGet) -> Mapping[str, Any] | None:
 
 
 def _load_collection_detail(
-    collection: Mapping[str, Any], getter: HTTPGet
+    collection: Mapping[str, Any],
+    getter: HTTPGet,
+    *,
+    collections_url: str | None = None,
 ) -> Mapping[str, Any] | None:
     self_link = _find_self_link(collection)
+    if not self_link and collections_url:
+        collection_id = collection.get("id") or collection.get("title")
+        if isinstance(collection_id, str) and collection_id:
+            base_url = collections_url.rstrip("/")
+            if base_url.lower().endswith("/collections"):
+                self_link = urljoin(f"{base_url}/", collection_id)
+            else:
+                self_link = urljoin(f"{base_url}/collections/", collection_id)
     if not self_link:
         return None
 
@@ -357,7 +374,9 @@ def _response_looks_like_xml(response: Any, url: str) -> bool:
     return any(marker in content_type for marker in ("xml", "gml", "xsd"))
 
 
-def _parse_gml_schema(xml_text: str) -> Mapping[str, Any] | None:
+def _parse_gml_schema(
+    xml_text: str, *, preferred_name: str | None = None
+) -> Mapping[str, Any] | None:
     try:
         root = ElementTree.fromstring(xml_text)
     except ElementTree.ParseError:  # pragma: no cover - invalid XML
@@ -376,11 +395,24 @@ def _parse_gml_schema(xml_text: str) -> Mapping[str, Any] | None:
     feature_element_name: str | None = None
     for element in root.findall(f".//{qname('element')}"):
         substitution_group = element.get("substitutionGroup") or ""
-        if "AbstractFeature" in substitution_group:
+        substitution_lower = substitution_group.lower()
+        if "abstractfeature" in substitution_lower or "_feature" in substitution_lower:
             feature_type_name = _strip_namespace(element.get("type"))
             feature_element_name = element.get("name")
             if feature_type_name:
                 break
+
+    if preferred_name:
+        preferred_type = _match_type_name(preferred_name, complex_types.keys())
+        if preferred_type:
+            feature_type_name = preferred_type
+        if not feature_type_name:
+            matched_element = _match_element_name(
+                preferred_name, root, qname("element")
+            )
+            if matched_element is not None:
+                feature_type_name = _strip_namespace(matched_element.get("type"))
+                feature_element_name = matched_element.get("name")
 
     if not feature_type_name and len(complex_types) == 1:
         feature_type_name = next(iter(complex_types))
@@ -429,6 +461,39 @@ def _strip_namespace(value: str | None) -> str | None:
     if ":" in value:
         return value.split(":", 1)[1]
     return value
+
+
+def _match_type_name(
+    preferred_name: str, candidates: Iterable[str]
+) -> str | None:
+    preferred = preferred_name.strip()
+    if not preferred:
+        return None
+
+    lower_preferred = preferred.lower()
+    preferred_with_type = f"{preferred}type".lower()
+    for candidate in candidates:
+        candidate_lower = candidate.lower()
+        if candidate_lower == lower_preferred:
+            return candidate
+        if candidate_lower == preferred_with_type:
+            return candidate
+    return None
+
+
+def _match_element_name(
+    preferred_name: str, root: ElementTree.Element, element_tag: str
+) -> ElementTree.Element | None:
+    preferred = preferred_name.strip().lower()
+    if not preferred:
+        return None
+
+    for element in root.findall(f".//{element_tag}"):
+        name = element.get("name")
+        if isinstance(name, str) and name.lower() == preferred:
+            return element
+
+    return None
 
 
 def _parse_complex_type_properties(

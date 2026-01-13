@@ -156,6 +156,71 @@ class OgcApiGmlSchemaTests(unittest.TestCase):
         self.assertEqual(len(feature_types), 1)
         self.assertEqual(feature_types[0]["name"], "roads")
 
+    def test_load_gml_schema_via_collection_detail(self) -> None:
+        gml_schema = """<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema"
+        xmlns:gml="http://www.opengis.net/gml"
+        targetNamespace="http://example.com/test">
+  <element type="OtherType" substitutionGroup="gml:_Feature" name="Other"/>
+  <complexType name="OtherType">
+    <sequence>
+      <element name="geometry" type="gml:PointPropertyType"/>
+      <element name="ignore" type="string"/>
+    </sequence>
+  </complexType>
+  <element type="UttakType" substitutionGroup="gml:_Feature" name="Uttak"/>
+  <complexType name="UttakType">
+    <sequence>
+      <element name="geometry" type="gml:PointPropertyType"/>
+      <element name="name" type="string"/>
+    </sequence>
+  </complexType>
+</schema>
+"""
+
+        collections_payload = {
+            "collections": [
+                {"id": "Uttak", "links": []},
+            ]
+        }
+        detail_payload = {
+            "id": "Uttak",
+            "links": [
+                {
+                    "rel": "describedBy",
+                    "href": "https://example.com/schema.xsd",
+                }
+            ],
+        }
+
+        responses = {
+            "https://example.com/collections": _FakeResponse(
+                json_payload=collections_payload
+            ),
+            "https://example.com/collections/Uttak": _FakeResponse(
+                json_payload=detail_payload
+            ),
+            "https://example.com/schema.xsd": _FakeResponse(
+                text=gml_schema,
+                headers={"Content-Type": "application/xml"},
+            ),
+        }
+
+        def http_get(url: str):
+            return responses[url]
+
+        feature_types = load_feature_types(
+            "https://example.com/collections", http_get=http_get
+        )
+
+        self.assertEqual(len(feature_types), 1)
+        feature_type = feature_types[0]
+        self.assertEqual(feature_type["name"], "UttakType")
+
+        attributes = {attr["name"] for attr in feature_type["attributes"]}
+        self.assertIn("name", attributes)
+        self.assertNotIn("ignore", attributes)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
