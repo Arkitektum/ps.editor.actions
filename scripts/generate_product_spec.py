@@ -68,6 +68,35 @@ def _format_json_block(data: Any) -> str:
     return f"```json\n{serialized}\n```"
 
 
+def _parse_feature_type_filter(values: Sequence[str] | None) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        parts = [part.strip() for part in value.split(",")]
+        normalized.extend(part for part in parts if part)
+    return normalized
+
+
+def _filter_feature_types(
+    feature_types: list[dict[str, Any]],
+    allowed_names: Sequence[str] | None,
+) -> list[dict[str, Any]]:
+    if not allowed_names:
+        return feature_types
+    allowed = {name.strip().lower() for name in allowed_names if name.strip()}
+    if not allowed:
+        return feature_types
+    filtered: list[dict[str, Any]] = []
+    for feature_type in feature_types:
+        name = feature_type.get("name")
+        if isinstance(name, str) and name.strip().lower() in allowed:
+            filtered.append(feature_type)
+    return filtered
+
+
 def _build_feature_catalogue_assets(
     feature_types: list[dict[str, Any]],
     *,
@@ -127,12 +156,16 @@ def generate_product_specification(
     xmi_model: str | Path | None = None,
     xmi_username: str | None = None,
     xmi_password: str | None = None,
+    feature_type_filter: Sequence[str] | None = None,
     render_spec_markdown: bool = True,
 ) -> dict[str, Path | None]:
     psdata = fetch_psdata(metadata_id)
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
         ogc_feature_types = load_feature_types(ogc_feature_api)
+        ogc_feature_types = _filter_feature_types(
+            ogc_feature_types, feature_type_filter
+        )
 
     xmi_feature_types: list[dict[str, Any]] = []
     if xmi_model:
@@ -140,6 +173,9 @@ def generate_product_specification(
             xmi_model,
             username=xmi_username or "sosi",
             password=xmi_password or "sosi",
+        )
+        xmi_feature_types = _filter_feature_types(
+            xmi_feature_types, feature_type_filter
         )
 
     slug = _derive_slug(metadata_id, psdata, slug_override)
@@ -287,11 +323,20 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="Skip rendering the final product specification Markdown document.",
     )
+    parser.add_argument(
+        "--feature-type-filter",
+        action="append",
+        help=(
+            "Optional feature type name filter (exact match, case-insensitive). "
+            "Use multiple times or provide a comma-separated list."
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    feature_type_filter = _parse_feature_type_filter(args.feature_type_filter)
 
     template_path = args.template or _default_template_path()
     if not template_path.exists():
@@ -318,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
             xmi_model=args.xmi_model,
             xmi_username=args.xmi_username,
             xmi_password=args.xmi_password,
+            feature_type_filter=feature_type_filter,
             render_spec_markdown=not args.skip_spec_markdown,
         )
     except Exception as error:  # pragma: no cover - defensive logging

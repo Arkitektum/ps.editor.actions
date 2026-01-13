@@ -60,6 +60,7 @@ Inputs:
 
 - `metadata-id` (required): Geonorge metadata UUID used to fetch psdata content.
 - `ogc-feature-api`: Fully qualified URL to an OGC API - Features `/collections` endpoint. Optional; omit when you only want psdata or when using `xmi-model` instead.
+- `feature-type-filter`: Optional list of feature type names to include (case-insensitive exact match). Provide multiple values to keep only selected feature types (applies to both OGC API and XMI).
 - `output-directory` (default `produktspesifikasjon`): Directory that will contain the generated artefacts.
 - `product-slug`: Overrides the auto-generated folder name (derived from the psdata title).
 - `template-path`: Path to a Handlebars-style template if you want to replace `data/template/ps.md.hbs`.
@@ -166,6 +167,13 @@ Prepare artefacts locally:
 
 ```bash
 python scripts/generate_product_spec.py <metadata-id> [<ogc-feature-api>] --output-dir produktspesifikasjon/test --skip-spec-markdown
+```
+
+If you want to filter the feature catalogue, pass `--feature-type-filter` multiple times or as a comma-separated list (applies to both OGC API and XMI sources):
+
+```bash
+python scripts/generate_product_spec.py <metadata-id> https://dirmin.no/kart/server/wfs3/collections \
+  --feature-type-filter Uttak --feature-type-filter Konsesjon
 ```
 
 If you have a SOSI UML XMI export instead of an OGC API, omit the second positional argument and pass `--xmi-model <path-or-url>` (optionally override the default `sosi`/`sosi` credentials with `--xmi-username` and `--xmi-password`). You can also omit the OGC API argument entirely to only fetch psdata (feature catalogue artefacts will still be created but remain empty). The generated files will use the `_xmi_feature_catalogue.*` suffix to keep them separate from OGC-based artefacts.
