@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
+import xml.etree.ElementTree as ElementTree
 
 try:  # pragma: no cover - optional dependency when testing
     import requests
@@ -231,7 +232,22 @@ def _find_link_href(
 
 
 def _load_schema(url: str, getter: HTTPGet) -> Mapping[str, Any] | None:
-    return _load_json_mapping(url, getter)
+    response = _fetch_response(url, getter)
+    if response is None:
+        return None
+
+    if _response_looks_like_xml(response, url):
+        xml_text = _response_text(response)
+        if xml_text:
+            schema = _parse_gml_schema(xml_text)
+            if schema:
+                return schema
+
+    json_mapping = _response_json_mapping(response)
+    if json_mapping is not None:
+        return json_mapping
+
+    return None
 
 
 def _load_collection_detail(
@@ -245,6 +261,13 @@ def _load_collection_detail(
 
 
 def _load_json_mapping(url: str, getter: HTTPGet) -> Mapping[str, Any] | None:
+    response = _fetch_response(url, getter)
+    if response is None:
+        return None
+    return _response_json_mapping(response)
+
+
+def _fetch_response(url: str, getter: HTTPGet) -> Any | None:
     try:
         response = getter(url)
     except Exception:  # pragma: no cover - tolerate fetch failures
@@ -260,6 +283,10 @@ def _load_json_mapping(url: str, getter: HTTPGet) -> Mapping[str, Any] | None:
         except Exception:  # pragma: no cover - tolerate fetch failures
             return None
 
+    return response
+
+
+def _response_json_mapping(response: Any) -> Mapping[str, Any] | None:
     try:
         payload = response.json()
     except Exception:  # pragma: no cover - invalid JSON
@@ -268,6 +295,202 @@ def _load_json_mapping(url: str, getter: HTTPGet) -> Mapping[str, Any] | None:
     if isinstance(payload, Mapping):
         return payload
 
+    return None
+
+
+def _response_text(response: Any) -> str | None:
+    text = getattr(response, "text", None)
+    if isinstance(text, str) and text.strip():
+        return text
+    content = getattr(response, "content", None)
+    if isinstance(content, (bytes, bytearray)):
+        try:
+            decoded = content.decode("utf-8", errors="ignore")
+        except Exception:  # pragma: no cover - defensive
+            return None
+        if decoded.strip():
+            return decoded
+    return None
+
+
+def _response_looks_like_xml(response: Any, url: str) -> bool:
+    content_type = ""
+    headers = getattr(response, "headers", None)
+    if isinstance(headers, Mapping):
+        content_type = str(headers.get("Content-Type", "")).lower()
+
+    url_lower = url.lower()
+    if any(url_lower.endswith(suffix) for suffix in (".xsd", ".xml")):
+        return True
+
+    return any(marker in content_type for marker in ("xml", "gml", "xsd"))
+
+
+def _parse_gml_schema(xml_text: str) -> Mapping[str, Any] | None:
+    try:
+        root = ElementTree.fromstring(xml_text)
+    except ElementTree.ParseError:  # pragma: no cover - invalid XML
+        return None
+
+    xsd_namespace = _detect_xsd_namespace(root)
+    qname = _qualify_tag(xsd_namespace)
+
+    complex_types: dict[str, ElementTree.Element] = {}
+    for complex_type in root.findall(f".//{qname('complexType')}"):
+        name = complex_type.get("name")
+        if isinstance(name, str) and name:
+            complex_types[name] = complex_type
+
+    feature_type_name: str | None = None
+    feature_element_name: str | None = None
+    for element in root.findall(f".//{qname('element')}"):
+        substitution_group = element.get("substitutionGroup") or ""
+        if "AbstractFeature" in substitution_group:
+            feature_type_name = _strip_namespace(element.get("type"))
+            feature_element_name = element.get("name")
+            if feature_type_name:
+                break
+
+    if not feature_type_name and len(complex_types) == 1:
+        feature_type_name = next(iter(complex_types))
+
+    selected_complex_type = None
+    if feature_type_name and feature_type_name in complex_types:
+        selected_complex_type = complex_types[feature_type_name]
+    elif complex_types:
+        selected_complex_type = next(iter(complex_types.values()))
+
+    if selected_complex_type is None:
+        return None
+
+    properties = _parse_complex_type_properties(selected_complex_type, xsd_namespace)
+    if not properties:
+        return None
+
+    title = feature_type_name or feature_element_name or selected_complex_type.get("name")
+    schema: dict[str, Any] = {
+        "properties": properties,
+    }
+    if isinstance(title, str) and title:
+        schema["title"] = title
+
+    return schema
+
+
+def _detect_xsd_namespace(root: ElementTree.Element) -> str:
+    if root.tag.startswith("{"):
+        namespace = root.tag.split("}", 1)[0][1:]
+        if namespace:
+            return namespace
+    return "http://www.w3.org/2001/XMLSchema"
+
+
+def _qualify_tag(namespace: str) -> Callable[[str], str]:
+    def _qualifier(tag: str) -> str:
+        return f"{{{namespace}}}{tag}"
+
+    return _qualifier
+
+
+def _strip_namespace(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if ":" in value:
+        return value.split(":", 1)[1]
+    return value
+
+
+def _parse_complex_type_properties(
+    complex_type: ElementTree.Element, xsd_namespace: str
+) -> dict[str, Any]:
+    qname = _qualify_tag(xsd_namespace)
+    element_paths = [
+        f"./{qname('sequence')}/{qname('element')}",
+        f"./{qname('complexContent')}/{qname('extension')}/{qname('sequence')}/{qname('element')}",
+        f"./{qname('complexContent')}/{qname('extension')}//{qname('element')}",
+        f"./{qname('sequence')}//{qname('element')}",
+    ]
+
+    elements: list[ElementTree.Element] = []
+    for path in element_paths:
+        found = complex_type.findall(path)
+        if found:
+            elements = found
+            break
+
+    if not elements:
+        elements = complex_type.findall(f".//{qname('element')}")
+
+    properties: dict[str, Any] = {}
+    seen: set[str] = set()
+    for element in elements:
+        parsed = _parse_xsd_element(element, xsd_namespace)
+        if parsed is None:
+            continue
+        name, details = parsed
+        if name in seen:
+            continue
+        seen.add(name)
+        properties[name] = details
+
+    return properties
+
+
+def _parse_xsd_element(
+    element: ElementTree.Element, xsd_namespace: str
+) -> tuple[str, dict[str, Any]] | None:
+    name = element.get("name")
+    if not name:
+        name = _strip_namespace(element.get("ref"))
+    if not name:
+        return None
+
+    details: dict[str, Any] = {}
+    type_value = element.get("type")
+    if isinstance(type_value, str) and type_value:
+        details["type"] = type_value
+    elif element.get("ref"):
+        details["type"] = element.get("ref")
+
+    substitution_group = element.get("substitutionGroup")
+    if isinstance(substitution_group, str) and substitution_group:
+        details["substitutionGroup"] = substitution_group
+
+    for key in ("minOccurs", "maxOccurs"):
+        value = element.get(key)
+        if value is None:
+            continue
+        if value == "unbounded":
+            details[key] = value
+            continue
+        try:
+            details[key] = int(value)
+        except (TypeError, ValueError):
+            continue
+
+    nillable = element.get("nillable")
+    if isinstance(nillable, str) and nillable:
+        details["nillable"] = nillable
+
+    description = _extract_xsd_documentation(element, xsd_namespace)
+    if description:
+        details["description"] = description
+
+    if _looks_like_geometry_type(details):
+        details.setdefault("format", "gml")
+
+    return name, details
+
+
+def _extract_xsd_documentation(
+    element: ElementTree.Element, xsd_namespace: str
+) -> str | None:
+    qname = _qualify_tag(xsd_namespace)
+    doc = element.find(f"./{qname('annotation')}/{qname('documentation')}")
+    if doc is not None and isinstance(doc.text, str):
+        text = doc.text.strip()
+        if text:
+            return text
     return None
 
 
@@ -396,7 +619,7 @@ def _iter_geometry_definitions(
             continue
 
         for name, details in _iter_attribute_definitions(container):
-            if name != "geometry":
+            if not _is_geometry_attribute(name, details):
                 continue
 
             resolved_details = _resolve_attribute_details(
@@ -584,7 +807,7 @@ def _extract_attributes(
     for source in sources:
         properties = _get_properties_container(source)
         for raw_name, details in _iter_attribute_definitions(properties):
-            if raw_name == "geometry":
+            if _is_geometry_attribute(raw_name, details):
                 continue
 
             if not isinstance(raw_name, str):
@@ -851,7 +1074,56 @@ def _determine_is_array(details: Any) -> bool | None:
     if "items" in details:
         return True
 
+    max_occurs = details.get("maxOccurs") or details.get("max_occurs") or details.get(
+        "maxoccurs"
+    )
+    if isinstance(max_occurs, str) and max_occurs.lower() == "unbounded":
+        return True
+    if isinstance(max_occurs, int) and max_occurs > 1:
+        return True
+
+    min_occurs = details.get("minOccurs") or details.get("min_occurs") or details.get(
+        "minoccurs"
+    )
+    if isinstance(min_occurs, int) and min_occurs > 1:
+        return True
+
     return None
+
+
+def _is_geometry_attribute(name: Any, details: Any) -> bool:
+    if isinstance(name, str) and name == "geometry":
+        return True
+
+    if not isinstance(details, Mapping):
+        return False
+
+    if isinstance(name, str):
+        lowered = name.lower()
+        if lowered in {"geom", "geometry", "shape", "the_geom", "wkb_geometry"}:
+            return True
+
+    return _looks_like_geometry_type(details)
+
+
+def _looks_like_geometry_type(details: Mapping[str, Any]) -> bool:
+    type_value = details.get("type") or details.get("dataType") or details.get("ref")
+    if isinstance(type_value, str):
+        lowered = type_value.lower()
+        if "gml" in lowered or "geometry" in lowered:
+            return True
+
+    fmt = details.get("format")
+    if isinstance(fmt, str) and ("gml" in fmt.lower() or "geometry" in fmt.lower()):
+        return True
+
+    substitution_group = details.get("substitutionGroup") or details.get(
+        "substitution_group"
+    )
+    if isinstance(substitution_group, str) and "geometry" in substitution_group.lower():
+        return True
+
+    return False
 
 
 def _coerce_to_bool(value: Any) -> bool | None:
