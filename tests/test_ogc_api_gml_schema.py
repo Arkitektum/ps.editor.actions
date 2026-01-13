@@ -124,6 +124,38 @@ class OgcApiGmlSchemaTests(unittest.TestCase):
         self.assertEqual(len(feature_types), 1)
         self.assertEqual(feature_types[0]["name"], "buildings")
 
+    def test_follow_collections_link_from_data_rel(self) -> None:
+        landing_payload = {
+            "links": [
+                {
+                    "rel": "data",
+                    "href": "https://example.com/collections",
+                }
+            ]
+        }
+        collections_payload = {
+            "collections": [
+                {"id": "roads", "description": "Roads", "links": []}
+            ]
+        }
+
+        responses = {
+            "https://example.com/landing": _FakeResponse(json_payload=landing_payload),
+            "https://example.com/collections": _FakeResponse(
+                json_payload=collections_payload
+            ),
+        }
+
+        def http_get(url: str):
+            return responses[url]
+
+        feature_types = load_feature_types(
+            "https://example.com/landing", http_get=http_get
+        )
+
+        self.assertEqual(len(feature_types), 1)
+        self.assertEqual(feature_types[0]["name"], "roads")
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -222,6 +222,7 @@ def _find_collections_link(document: Mapping[str, Any]) -> str | None:
             "http://www.opengis.net/def/rel/ogc/1.0/collections",
             "http://www.opengis.net/def/rel/ogc/0.0/collections",
             "collections",
+            "data",
         },
     )
 
