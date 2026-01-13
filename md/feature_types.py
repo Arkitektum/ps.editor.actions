@@ -124,25 +124,25 @@ def _format_geometry_metadata(geometry: Any) -> str:
     geometry_type = str(geometry.get("type", "")).strip()
 
     if item_type:
-        lines.append(f"- itemType: {item_type}")
+        lines.append(f"Elementtype: {item_type}")
 
     if geometry_type and (not item_type or geometry_type != item_type):
-        lines.append(f"- type: {geometry_type}")
+        lines.append(f"Type: {geometry_type}")
 
     storage_crs_values = _normalize_sequence(geometry.get("storageCrs"))
     if storage_crs_values:
-        lines.append("- storageCrs:")
-        lines.extend(f"  - {value}" for value in storage_crs_values)
+        lines.append("Lagrings-CRS:")
+        lines.extend(f"• {value}" for value in storage_crs_values)
 
     crs_values = _normalize_sequence(geometry.get("crs"))
     if crs_values:
-        lines.append("- crs:")
-        lines.extend(f"  - {value}" for value in crs_values)
+        lines.append("Koordinatreferansesystem (crs):")
+        lines.extend(f"• {value}" for value in crs_values)
 
     if len(lines) == 1:
         return ""
 
-    return "\n".join(lines)
+    return "<br />".join(lines)
 
 
 def _normalize_sequence(value: Any) -> list[str]:
