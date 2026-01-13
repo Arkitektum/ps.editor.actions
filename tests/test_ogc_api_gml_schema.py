@@ -80,11 +80,11 @@ class OgcApiGmlSchemaTests(unittest.TestCase):
 
         self.assertEqual(len(feature_types), 1)
         feature_type = feature_types[0]
-        self.assertEqual(feature_type["name"], "TestType")
+        self.assertEqual(feature_type["name"], "test")
 
         geometry = feature_type["geometry"]
         self.assertEqual(geometry.get("format"), "gml")
-        self.assertEqual(geometry.get("type"), "gml")
+        self.assertEqual(geometry.get("type"), "GM_Point")
 
         attributes = {attr["name"]: attr for attr in feature_type["attributes"]}
         self.assertIn("name", attributes)
@@ -215,7 +215,7 @@ class OgcApiGmlSchemaTests(unittest.TestCase):
 
         self.assertEqual(len(feature_types), 1)
         feature_type = feature_types[0]
-        self.assertEqual(feature_type["name"], "UttakType")
+        self.assertEqual(feature_type["name"], "Uttak")
 
         attributes = {attr["name"] for attr in feature_type["attributes"]}
         self.assertIn("name", attributes)

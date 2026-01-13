@@ -430,7 +430,10 @@ def _parse_gml_schema(
     if not properties:
         return None
 
-    title = feature_type_name or feature_element_name or selected_complex_type.get("name")
+    if preferred_name:
+        title = preferred_name
+    else:
+        title = feature_element_name or feature_type_name or selected_complex_type.get("name")
     schema: dict[str, Any] = {
         "properties": properties,
     }
@@ -623,17 +626,16 @@ def _extract_geometry(
         if len(geometry_types) > 1:
             geometry["types"] = geometry_types
     else:
-        if geometry_format:
+        parsed_geometry_type = _select_geometry_type(
+            geometry_definitions,
+            document_sequence,
+        )
+        if parsed_geometry_type:
+            geometry["type"] = parsed_geometry_type
+        elif geometry_format:
             geometry["type"] = geometry_format
-        else:
-            parsed_geometry_type = _select_geometry_type(
-                geometry_definitions,
-                document_sequence,
-            )
-            if parsed_geometry_type:
-                geometry["type"] = parsed_geometry_type
-            elif isinstance(item_type, str) and item_type:
-                geometry["type"] = item_type
+        elif isinstance(item_type, str) and item_type:
+            geometry["type"] = item_type
 
     crs_values: list[str] = []
 
@@ -736,6 +738,9 @@ def _select_geometry_type(
 ) -> str | None:
     geometry_name_markers = {name.lower() for name in _GEOJSON_GEOMETRY_NAMES}
     for definition in definitions:
+        gml_candidate = _extract_gml_geometry_type(definition.details)
+        if isinstance(gml_candidate, str):
+            return gml_candidate
         candidate = _parse_attribute_type(
             definition.details,
             source=definition.source,
@@ -1183,6 +1188,36 @@ def _determine_is_array(details: Any) -> bool | None:
     )
     if isinstance(min_occurs, int) and min_occurs > 1:
         return True
+
+    return None
+
+
+def _extract_gml_geometry_type(details: Any) -> str | None:
+    if not isinstance(details, Mapping):
+        return None
+
+    type_value = details.get("type") or details.get("dataType") or details.get("ref")
+    if not isinstance(type_value, str):
+        return None
+
+    lowered = type_value.lower()
+    if "gml" not in lowered and "surface" not in lowered and "curve" not in lowered:
+        return None
+
+    for key, value in (
+        ("multisurface", "GM_MultiSurface"),
+        ("multipolygon", "GM_MultiSurface"),
+        ("multicurve", "GM_MultiCurve"),
+        ("multilinestring", "GM_MultiCurve"),
+        ("multipoint", "GM_MultiPoint"),
+        ("surface", "GM_Surface"),
+        ("polygon", "GM_Surface"),
+        ("curve", "GM_Curve"),
+        ("linestring", "GM_Curve"),
+        ("point", "GM_Point"),
+    ):
+        if key in lowered:
+            return value
 
     return None
 
