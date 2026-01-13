@@ -85,15 +85,28 @@ def load_feature_types(collections_url: str, http_get: HTTPGet | None = None) ->
                 f"Request to '{collections_url}' failed: {exc}."
             ) from exc
 
-    try:
-        payload = response.json()
-    except Exception as exc:  # pragma: no cover - invalid JSON
-        raise ValueError("Collections response did not contain valid JSON.") from exc
+    payload = _response_json(response)
+    if payload is None:
+        raise ValueError("Collections response did not contain valid JSON.")
+    if isinstance(payload, Mapping):
+        collections = payload.get("collections")
+    else:
+        collections = None
+    if collections is None:
+        collections_link = _find_collections_link(payload)
+        if collections_link:
+            follow = _load_json_mapping(collections_link, getter)
+            if isinstance(follow, Mapping):
+                collections = follow.get("collections")
+                if collections is None and isinstance(
+                    follow.get("links"), Sequence
+                ):
+                    collections = follow.get("collections")
+        if collections is None and isinstance(payload, Sequence) and not isinstance(
+            payload, (str, bytes)
+        ):
+            collections = payload
 
-    if not isinstance(payload, Mapping):
-        raise ValueError("Collections response must be a JSON object.")
-
-    collections = payload.get("collections")
     if not (isinstance(collections, Sequence) and not isinstance(collections, (str, bytes))):
         raise ValueError("Collections response missing 'collections' array.")
 
@@ -202,6 +215,17 @@ def _find_self_link(collection: Mapping[str, Any]) -> str | None:
     return _find_link_href(collection, rel_candidates={"self"})
 
 
+def _find_collections_link(document: Mapping[str, Any]) -> str | None:
+    return _find_link_href(
+        document,
+        rel_candidates={
+            "http://www.opengis.net/def/rel/ogc/1.0/collections",
+            "http://www.opengis.net/def/rel/ogc/0.0/collections",
+            "collections",
+        },
+    )
+
+
 def _find_link_href(
     collection: Mapping[str, Any],
     *,
@@ -287,15 +311,21 @@ def _fetch_response(url: str, getter: HTTPGet) -> Any | None:
 
 
 def _response_json_mapping(response: Any) -> Mapping[str, Any] | None:
-    try:
-        payload = response.json()
-    except Exception:  # pragma: no cover - invalid JSON
+    payload = _response_json(response)
+    if payload is None:
         return None
 
     if isinstance(payload, Mapping):
         return payload
 
     return None
+
+
+def _response_json(response: Any) -> Any | None:
+    try:
+        return response.json()
+    except Exception:  # pragma: no cover - invalid JSON
+        return None
 
 
 def _response_text(response: Any) -> str | None:
