@@ -597,13 +597,23 @@ def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
 
 def _extract_distributions(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
     distributions: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def add_distribution(entry: Mapping[str, Any] | None) -> None:
+        if not entry:
+            return
+        key = _distribution_key(entry)
+        if key in seen:
+            return
+        seen.add(key)
+        distributions.append(dict(entry))
 
     protocol = _normalize_string(metadata.get("DistributionProtocol"))
     distribution_url = _normalize_string(metadata.get("DistributionUrl"))
     download_url = _normalize_string(metadata.get("DownloadUrl"))
 
     if protocol or distribution_url or download_url:
-        distributions.append(
+        add_distribution(
             _compact_mapping(
                 {
                     "format": _compact_mapping({"format": protocol}),
@@ -619,7 +629,7 @@ def _extract_distributions(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
 
     details = metadata.get("DistributionDetails")
     if isinstance(details, Mapping):
-        distributions.append(
+        add_distribution(
             _compact_mapping(
                 {
                     "title": _normalize_string(details.get("ProtocolName")),
@@ -663,10 +673,31 @@ def _extract_distributions(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
                         "notes": _normalize_string(item.get("TypeTranslated")),
                     }
                 )
-                if entry:
-                    distributions.append(entry)
+                add_distribution(entry)
 
     return [entry for entry in distributions if entry]
+
+
+def _distribution_key(entry: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    access = entry.get("access")
+    if isinstance(access, Mapping):
+        href = _normalize_string(access.get("href"))
+        protocol = _normalize_string(access.get("protocol"))
+    else:
+        href = None
+        protocol = None
+    fmt = entry.get("format")
+    if isinstance(fmt, Mapping):
+        fmt_value = _normalize_string(fmt.get("format"))
+    else:
+        fmt_value = _normalize_string(fmt)
+    title = _normalize_string(entry.get("title"))
+    return (
+        href or "",
+        protocol or "",
+        fmt_value or "",
+        title or "",
+    )
 
 
 def _extract_distribution_format(value: Any) -> str | None:
