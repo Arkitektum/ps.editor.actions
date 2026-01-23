@@ -81,6 +81,8 @@ runs:
     - name: Prepare product specification artefacts
       id: generate
       shell: bash
+      env:
+        INPUT_SCOPES: ${{ inputs.scopes }}
       run: |
         set -eo pipefail
         SUMMARY="$RUNNER_TEMP/product_spec_summary.txt"
@@ -98,8 +100,8 @@ runs:
         if [ -n "${{ inputs.feature-type-filter }}" ]; then
           ARGS+=("--feature-type-filter" "${{ inputs.feature-type-filter }}")
         fi
-        if [ -n "${{ inputs.scopes }}" ]; then
-          ARGS+=("--scopes" "${{ inputs.scopes }}")
+        if [ -n "$INPUT_SCOPES" ]; then
+          ARGS+=("--scopes" "$INPUT_SCOPES")
         fi
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")
