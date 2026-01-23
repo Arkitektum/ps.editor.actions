@@ -20,6 +20,9 @@ inputs:
   feature-type-filter:
     description: Optional list of feature type names to include (case-insensitive exact match). Provide multiple values as a comma-separated list.
     required: false
+  scopes:
+    description: Optional YAML/JSON scopes definition or path to a file containing a scopes list.
+    required: false
   updated:
     description: Optional override for the updated field in the rendered specification.
     required: false
@@ -94,6 +97,9 @@ runs:
         fi
         if [ -n "${{ inputs.feature-type-filter }}" ]; then
           ARGS+=("--feature-type-filter" "${{ inputs.feature-type-filter }}")
+        fi
+        if [ -n "${{ inputs.scopes }}" ]; then
+          ARGS+=("--scopes" "${{ inputs.scopes }}")
         fi
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")

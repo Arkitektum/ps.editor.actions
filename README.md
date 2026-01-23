@@ -61,6 +61,7 @@ Inputs:
 - `metadata-id` (required): Geonorge metadata UUID used to fetch psdata content.
 - `ogc-feature-api`: Fully qualified URL to an OGC API - Features `/collections` endpoint. Optional; omit when you only want psdata or when using `xmi-model` instead.
 - `feature-type-filter`: Optional list of feature type names to include (case-insensitive exact match). Provide multiple values to keep only selected feature types (applies to both OGC API and XMI).
+- `scopes`: Optional YAML/JSON list (or file path) describing multiple scopes. When supplied, each scope generates its own `objektkatalog.md` under a scope-named folder, and the main `index.md` links to each scope catalogue while keeping the main data model diagram.
 - `output-directory` (default `produktspesifikasjon`): Directory that will contain the generated artefacts.
 - `product-slug`: Overrides the auto-generated folder name (derived from the psdata title).
 - `template-path`: Path to a Handlebars-style template if you want to replace `data/template/ps.md.hbs`.
@@ -175,6 +176,22 @@ If you want to filter the feature catalogue, pass `--feature-type-filter` multip
 python scripts/generate_product_spec.py <metadata-id> https://dirmin.no/kart/server/wfs3/collections \
   --feature-type-filter Uttak --feature-type-filter Konsesjon
 ```
+
+To split the specification into multiple scopes, pass a YAML/JSON payload (or a path to a YAML/JSON file) via `scopes`:
+
+```yaml
+scopes:
+  - name: datafangst
+    url: https://sosi.geonorge.no/svn/SOSI/SOSI Del 3/Kommunal- og moderniseringsdepartementet/Arealplan/Arealplan 5.0/PlanleggingIgangsatt.xml
+    generator: xmi
+    description: Datamodellen brukes for å legge ved gml filer for planområdet som brukes i tjenesten for varsel om planoppstart.
+  - name: innsynstjeneste
+    url: https://plandata.ft-test.dibk.no/services/planleggingigangsatt/collections
+    generator: ogc_feature_api
+    description: Tjeneste for innsyn i planområder som er varslet for planlegging igangsatt.
+```
+
+Each scope writes its catalogue to `<spec-directory>/<scope-name>/objektkatalog.md`, and the main specification links to them.
 
 If you have a SOSI UML XMI export instead of an OGC API, omit the second positional argument and pass `--xmi-model <path-or-url>` (optionally override the default `sosi`/`sosi` credentials with `--xmi-username` and `--xmi-password`). You can also omit the OGC API argument entirely to only fetch psdata (feature catalogue artefacts will still be created but remain empty). The generated files will use the `_xmi_feature_catalogue.*` suffix to keep them separate from OGC-based artefacts.
 

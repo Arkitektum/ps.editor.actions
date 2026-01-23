@@ -7,9 +7,11 @@ import json
 import re
 import sys
 import unicodedata
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -18,7 +20,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from geonorge.psdata import fetch_psdata  # noqa: E402
 from md.feature_types import render_feature_types_to_markdown  # noqa: E402
-from md.product_specification import IncludeResource, render_template  # noqa: E402
+from md.product_specification import (  # noqa: E402
+    IncludeResource,
+    build_context,
+    render_product_specification,
+    render_template,
+)
 from ogc_api.feature_types import load_feature_types  # noqa: E402
 from puml.feature_types import render_feature_types_to_puml  # noqa: E402
 from xmi.feature_catalog import load_feature_types_from_xmi  # noqa: E402
@@ -68,6 +75,18 @@ def _format_json_block(data: Any) -> str:
     return f"```json\n{serialized}\n```"
 
 
+_SCOPE_CATALOG_TEMPLATE = """### Datamodell
+{{incl_datamodell}}
+{{incl_featuretypes_xmi_uml}}
+
+{{incl_featuretypes_xmi_table}}
+
+{{incl_featuretypes_uml}}
+
+{{incl_featuretypes_table}}
+"""
+
+
 def _parse_feature_type_filter(values: Sequence[str] | None) -> list[str]:
     if not values:
         return []
@@ -95,6 +114,134 @@ def _filter_feature_types(
         if isinstance(name, str) and name.strip().lower() in allowed:
             filtered.append(feature_type)
     return filtered
+
+
+def _parse_scopes(scopes_value: str | None) -> list[dict[str, Any]]:
+    if not scopes_value:
+        return []
+
+    data: Any = None
+    path = Path(scopes_value)
+    if path.exists():
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    else:
+        data = yaml.safe_load(scopes_value)
+
+    if isinstance(data, Mapping) and "scopes" in data:
+        data = data["scopes"]
+
+    if isinstance(data, (str, bytes)) or not isinstance(data, Sequence):
+        raise ValueError("Scopes must be a list of mappings or a mapping containing a scopes list.")
+
+    scopes: list[dict[str, Any]] = []
+    for entry in data:
+        if isinstance(entry, Mapping):
+            scopes.append(dict(entry))
+    return scopes
+
+
+def _normalize_scope_generator(value: str | None) -> str:
+    if not value:
+        return ""
+    normalized = value.strip().lower().replace("-", "_")
+    if normalized in {"xmi", "xmi_model"}:
+        return "xmi"
+    if normalized in {"ogc", "ogc_api", "ogc_feature_api"}:
+        return "ogc"
+    return ""
+
+
+def _build_scope_catalogues(
+    *,
+    context: Mapping[str, Any],
+    scopes: Sequence[Mapping[str, Any]],
+    spec_dir: Path,
+    product_title: str,
+    feature_type_filter: Sequence[str] | None,
+    xmi_username: str | None,
+    xmi_password: str | None,
+) -> str:
+    if not scopes:
+        return ""
+
+    links: list[str] = []
+    for index, scope in enumerate(scopes, start=1):
+        name = scope.get("name")
+        scope_name = name.strip() if isinstance(name, str) and name.strip() else f"Scope {index}"
+        description = scope.get("description")
+        url = scope.get("url")
+        generator = _normalize_scope_generator(scope.get("generator"))
+        if not isinstance(url, str) or not url.strip():
+            raise ValueError(f"Scope '{scope_name}' is missing a valid url.")
+        if not generator:
+            raise ValueError(
+                f"Scope '{scope_name}' has unsupported generator '{scope.get('generator')}'."
+            )
+
+        if generator == "xmi":
+            feature_types = load_feature_types_from_xmi(
+                url,
+                username=xmi_username or "sosi",
+                password=xmi_password or "sosi",
+            )
+        else:
+            feature_types = load_feature_types(url)
+
+        feature_types = _filter_feature_types(feature_types, feature_type_filter)
+        scope_slug = _normalize_slug(scope_name) or f"scope_{index}"
+        scope_dir = spec_dir / scope_slug
+        scope_title = f"{product_title} - {scope_name}".strip(" -")
+        assets = _build_feature_catalogue_assets(
+            feature_types,
+            slug=scope_slug,
+            spec_dir=scope_dir,
+            product_title=scope_title,
+        )
+
+        scope_includes: list[IncludeResource] = []
+        if generator == "xmi":
+            if assets["markdown_content"].strip():
+                scope_includes.append(
+                    IncludeResource("incl_featuretypes_xmi_table", assets["markdown_content"].strip()),
+                )
+            if assets["uml_content"].strip():
+                scope_includes.append(
+                    IncludeResource(
+                        "incl_featuretypes_xmi_uml",
+                        f"```plantuml\n{assets['uml_content'].strip()}\n```",
+                    ),
+                )
+        else:
+            if assets["markdown_content"].strip():
+                scope_includes.append(
+                    IncludeResource("incl_featuretypes_table", assets["markdown_content"].strip()),
+                )
+            if assets["uml_content"].strip():
+                scope_includes.append(
+                    IncludeResource(
+                        "incl_featuretypes_uml",
+                        f"```plantuml\n{assets['uml_content'].strip()}\n```",
+                    ),
+                )
+
+        scope_context = dict(context)
+        if isinstance(description, str) and description.strip():
+            scope_context["scope"] = description.strip()
+
+        scope_markdown = render_product_specification(
+            _SCOPE_CATALOG_TEMPLATE,
+            scope_context,
+            resources=scope_includes,
+        ).rstrip()
+        if scope_markdown:
+            scope_path = scope_dir / "objektkatalog.md"
+            _write_text_file(scope_path, scope_markdown)
+            relative = Path(scope_slug) / "objektkatalog.md"
+            links.append(f"- [Objektkatalog - {scope_name}]({relative.as_posix()})")
+
+    if not links:
+        return ""
+    return "Objektkataloger:\n" + "\n".join(links).rstrip()
 
 
 def _build_feature_catalogue_assets(
@@ -157,6 +304,7 @@ def generate_product_specification(
     xmi_username: str | None = None,
     xmi_password: str | None = None,
     feature_type_filter: Sequence[str] | None = None,
+    scopes: Sequence[Mapping[str, Any]] | None = None,
     render_spec_markdown: bool = True,
 ) -> dict[str, Path | None]:
     psdata = fetch_psdata(metadata_id)
@@ -245,6 +393,21 @@ def generate_product_specification(
                 ),
             )
 
+    context = build_context(psdata, updated=updated)
+    scope_links = _build_scope_catalogues(
+        context=context,
+        scopes=scopes or [],
+        spec_dir=spec_dir,
+        product_title=product_title,
+        feature_type_filter=feature_type_filter,
+        xmi_username=xmi_username,
+        xmi_password=xmi_password,
+    )
+    if scope_links:
+        scope_links_path = spec_dir / "scope_catalogues.md"
+        _write_text_file(scope_links_path, scope_links)
+        includes.append(IncludeResource("incl_scope_catalogues", scope_links))
+
     spec_markdown_path = spec_dir / "index.md"
     if render_spec_markdown:
         spec_markdown = render_template(
@@ -331,12 +494,20 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "Use multiple times or provide a comma-separated list."
         ),
     )
+    parser.add_argument(
+        "--scopes",
+        help=(
+            "Optional YAML/JSON list of scope definitions or a path to a file containing "
+            "a scopes list."
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     feature_type_filter = _parse_feature_type_filter(args.feature_type_filter)
+    scopes = _parse_scopes(args.scopes)
 
     template_path = args.template or _default_template_path()
     if not template_path.exists():
@@ -364,6 +535,7 @@ def main(argv: list[str] | None = None) -> int:
             xmi_username=args.xmi_username,
             xmi_password=args.xmi_password,
             feature_type_filter=feature_type_filter,
+            scopes=scopes,
             render_spec_markdown=not args.skip_spec_markdown,
         )
     except Exception as error:  # pragma: no cover - defensive logging
