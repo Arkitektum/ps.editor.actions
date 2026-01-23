@@ -100,19 +100,17 @@ def _write_placeholder_png(path: Path) -> None:
     path.write_bytes(base64.b64decode(_PNG_PLACEHOLDER))
 
 
-def _format_scope_descriptions(scopes: Sequence[Mapping[str, Any]]) -> str:
+def _format_scope_level(scopes: Sequence[Mapping[str, Any]]) -> str:
     lines: list[str] = []
     for index, scope in enumerate(scopes, start=1):
         name = scope.get("name")
         scope_name = name.strip() if isinstance(name, str) and name.strip() else f"Scope {index}"
         description = scope.get("description")
+        lines.append(f"#### {scope_name}")
         if isinstance(description, str) and description.strip():
-            lines.append(f"### Spesifikasjonsomfang - {scope_name}")
-            lines.append("")
             lines.append(description.strip())
-        else:
-            lines.append(f"### Spesifikasjonsomfang - {scope_name}")
-    return "\n\n".join(line for line in lines if line is not None).strip()
+        lines.append("")
+    return "\n".join(line for line in lines if line is not None).strip()
 
 
 def _parse_feature_type_filter(values: Sequence[str] | None) -> list[str]:
@@ -346,9 +344,15 @@ def generate_product_specification(
 ) -> dict[str, Path | None]:
     psdata = fetch_psdata(metadata_id)
     if scopes:
-        scope_descriptions = _format_scope_descriptions(scopes)
-        if scope_descriptions:
-            psdata["scope"] = scope_descriptions
+        scope_level = _format_scope_level(scopes)
+        if scope_level:
+            scope_value = psdata.get("scope")
+            if isinstance(scope_value, Mapping):
+                scope_value = dict(scope_value)
+            else:
+                scope_value = {}
+            scope_value["level"] = scope_level
+            psdata["scope"] = scope_value
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
         ogc_feature_types = load_feature_types(ogc_feature_api)
