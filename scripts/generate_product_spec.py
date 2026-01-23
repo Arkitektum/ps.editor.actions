@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import re
 import sys
@@ -85,6 +86,31 @@ _SCOPE_CATALOG_TEMPLATE = """### Datamodell
 
 {{incl_featuretypes_table}}
 """
+
+_PNG_PLACEHOLDER = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJ"
+    "TYQAAAAASUVORK5CYII="
+)
+
+
+def _write_placeholder_png(path: Path) -> None:
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(base64.b64decode(_PNG_PLACEHOLDER))
+
+
+def _format_scope_descriptions(scopes: Sequence[Mapping[str, Any]]) -> str:
+    lines: list[str] = []
+    for index, scope in enumerate(scopes, start=1):
+        name = scope.get("name")
+        scope_name = name.strip() if isinstance(name, str) and name.strip() else f"Scope {index}"
+        description = scope.get("description")
+        if isinstance(description, str) and description.strip():
+            lines.append(f"- **{scope_name}**: {description.strip()}")
+        else:
+            lines.append(f"- **{scope_name}**")
+    return "\n".join(lines).strip()
 
 
 def _parse_feature_type_filter(values: Sequence[str] | None) -> list[str]:
@@ -196,6 +222,7 @@ def _build_scope_catalogues(
             slug=scope_slug,
             spec_dir=scope_dir,
             product_title=scope_title,
+            create_png=True,
         )
 
         scope_includes: list[IncludeResource] = []
@@ -251,6 +278,7 @@ def _build_feature_catalogue_assets(
     spec_dir: Path,
     prefix: str = "",
     product_title: str = "",
+    create_png: bool = False,
 ) -> dict[str, Any]:
     suffix = f"{prefix}_" if prefix else ""
     base_name = f"{slug}_{suffix}feature_catalogue"
@@ -283,12 +311,17 @@ def _build_feature_catalogue_assets(
         uml_path.parent.mkdir(parents=True, exist_ok=True)
         uml_path.touch(exist_ok=True)
 
+    png_path = spec_dir / f"{base_name}.png"
+    if create_png:
+        _write_placeholder_png(png_path)
+
     return {
         "json_path": json_path,
         "markdown_path": markdown_path,
         "markdown_content": markdown_content,
         "uml_path": uml_path,
         "uml_content": uml_content,
+        "png_path": png_path if create_png else None,
     }
 
 
@@ -308,6 +341,10 @@ def generate_product_specification(
     render_spec_markdown: bool = True,
 ) -> dict[str, Path | None]:
     psdata = fetch_psdata(metadata_id)
+    if scopes:
+        scope_descriptions = _format_scope_descriptions(scopes)
+        if scope_descriptions:
+            psdata["scope"] = scope_descriptions
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
         ogc_feature_types = load_feature_types(ogc_feature_api)
