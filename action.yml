@@ -17,6 +17,9 @@ inputs:
   template-path:
     description: Optional path to a Handlebars-style template to override the default.
     required: false
+  feature-type-filter:
+    description: Optional list of feature type names to include (case-insensitive exact match). Provide multiple values as a comma-separated list.
+    required: false
   updated:
     description: Optional override for the updated field in the rendered specification.
     required: false
@@ -88,6 +91,9 @@ runs:
         fi
         if [ -n "${{ inputs.template-path }}" ]; then
           ARGS+=("--template" "${{ inputs.template-path }}")
+        fi
+        if [ -n "${{ inputs.feature-type-filter }}" ]; then
+          ARGS+=("--feature-type-filter" "${{ inputs.feature-type-filter }}")
         fi
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")
