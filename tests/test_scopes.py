@@ -72,8 +72,9 @@ class ScopeRenderingTests(unittest.TestCase):
                 xmi_password="sosi",
             )
 
-        self.assertIn("Objektkataloger:", scopes_text)
+        self.assertIn("### Datamodell - datafangst", scopes_text)
         self.assertIn("- [Objektkatalog - datafangst](datafangst/objektkatalog.md)", scopes_text)
+        self.assertIn("### Datamodell - innsynstjeneste", scopes_text)
         self.assertIn(
             "- [Objektkatalog - innsynstjeneste](innsynstjeneste/objektkatalog.md)",
             scopes_text,

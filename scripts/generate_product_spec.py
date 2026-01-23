@@ -107,10 +107,12 @@ def _format_scope_descriptions(scopes: Sequence[Mapping[str, Any]]) -> str:
         scope_name = name.strip() if isinstance(name, str) and name.strip() else f"Scope {index}"
         description = scope.get("description")
         if isinstance(description, str) and description.strip():
-            lines.append(f"- **{scope_name}**: {description.strip()}")
+            lines.append(f"### Spesifikasjonsomfang - {scope_name}")
+            lines.append("")
+            lines.append(description.strip())
         else:
-            lines.append(f"- **{scope_name}**")
-    return "\n".join(lines).strip()
+            lines.append(f"### Spesifikasjonsomfang - {scope_name}")
+    return "\n\n".join(line for line in lines if line is not None).strip()
 
 
 def _parse_feature_type_filter(values: Sequence[str] | None) -> list[str]:
@@ -190,7 +192,7 @@ def _build_scope_catalogues(
     if not scopes:
         return ""
 
-    links: list[str] = []
+    sections: list[str] = []
     for index, scope in enumerate(scopes, start=1):
         name = scope.get("name")
         scope_name = name.strip() if isinstance(name, str) and name.strip() else f"Scope {index}"
@@ -264,11 +266,13 @@ def _build_scope_catalogues(
             scope_path = scope_dir / "objektkatalog.md"
             _write_text_file(scope_path, scope_markdown)
             relative = Path(scope_slug) / "objektkatalog.md"
-            links.append(f"- [Objektkatalog - {scope_name}]({relative.as_posix()})")
+            sections.append(f"### Datamodell - {scope_name}")
+            sections.append("")
+            sections.append(f"- [Objektkatalog - {scope_name}]({relative.as_posix()})")
 
-    if not links:
+    if not sections:
         return ""
-    return "Objektkataloger:\n" + "\n".join(links).rstrip()
+    return "\n\n".join(section for section in sections if section is not None).rstrip()
 
 
 def _build_feature_catalogue_assets(
