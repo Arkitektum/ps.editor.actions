@@ -113,6 +113,16 @@ def _format_scope_level(scopes: Sequence[Mapping[str, Any]]) -> str:
     return "\n".join(line for line in lines if line is not None).strip()
 
 
+def _format_scope_png_link(scope_name: str, relative_path: Path) -> str:
+    alt_text = f"Datamodell {scope_name}".strip()
+    href = relative_path.as_posix()
+    return (
+        f'<a href="{href}" title="Klikk for stor visning">'
+        f'<img src="{href}" alt="{alt_text}" style="max-width: 100%; height: auto;" />'
+        "</a>"
+    )
+
+
 def _parse_feature_type_filter(values: Sequence[str] | None) -> list[str]:
     if not values:
         return []
@@ -264,9 +274,12 @@ def _build_scope_catalogues(
             scope_path = scope_dir / "objektkatalog.md"
             _write_text_file(scope_path, scope_markdown)
             relative = Path(scope_slug) / "objektkatalog.html"
+            png_relative = Path(scope_slug) / f"{scope_slug}_feature_catalogue.png"
             sections.append(f"### Datamodell - {scope_name}")
             sections.append("")
             sections.append(f"[Objektkatalog - {scope_name}]({relative.as_posix()})")
+            sections.append("")
+            sections.append(_format_scope_png_link(scope_name, png_relative))
 
     if not sections:
         return ""
