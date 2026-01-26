@@ -669,6 +669,62 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
     return metadata
 
 
+def _render_markdown_file(
+    markdown_path: Path,
+    output_path: Path,
+    source_root: Path,
+) -> None:
+    text = markdown_path.read_text(encoding="utf-8")
+    metadata, body = _parse_front_matter(text)
+    if not text.startswith("---"):
+        fallback_title = markdown_path.stem.replace("_", " ").strip().capitalize()
+        if fallback_title:
+            metadata = PageMetadata(
+                title=fallback_title,
+                updated=None,
+                description=None,
+                organization=None,
+                logo=None,
+            )
+
+    md = markdown.Markdown(extensions=_MARKDOWN_EXTENSIONS)
+    html_content = md.convert(body)
+    toc_tokens = getattr(md, "toc_tokens", None)
+    toc_block = ""
+    if toc_tokens:
+        toc_html = _render_toc(toc_tokens)
+        toc_block = f"          {toc_html}\n"
+
+    try:
+        relative_dir = markdown_path.parent.relative_to(source_root)
+        depth = len(relative_dir.parts)
+        root_href = "../" * depth or "./"
+        crumb_items = [("Produktspesifikasjon", root_href)]
+    except ValueError:
+        crumb_items = [("Produktspesifikasjon", "./")]
+
+    crumb_items.append((metadata.title, None))
+    breadcrumbs = _render_breadcrumbs(crumb_items)
+
+    description = metadata.description or metadata.title
+    page_html = _HTML_TEMPLATE.substitute(
+        page_title=html.escape(metadata.title),
+        page_description=html.escape(description),
+        title=html.escape(metadata.title),
+        meta_block="",
+        breadcrumbs_block=breadcrumbs,
+        toc_block=toc_block,
+        content=html_content,
+        logo_block="",
+    )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(page_html, encoding="utf-8")
+
+    assets = _extract_assets(body)
+    _copy_assets(assets, markdown_path.parent, output_path.parent)
+
+
 def _render_index(pages: list[dict[str, str | None]] | None, output_dir: Path) -> None:
     cards: list[str] = []
     if pages:
@@ -742,6 +798,21 @@ def build_site(source_dir: Path, output_dir: Path) -> None:
                 "organization": metadata.organization,
             }
         )
+
+    katalog_paths = sorted(
+        path for path in source_dir.rglob("*.md") if path.name.lower() == "objektkatalog.md"
+    )
+    rendered_katalogs: list[Path] = []
+    for markdown_path in katalog_paths:
+        rel_dir = markdown_path.parent.relative_to(source_dir)
+        destination_dir = output_dir / rel_dir
+        output_path = destination_dir / "objektkatalog.html"
+        _render_markdown_file(markdown_path, output_path, source_dir)
+        rendered_katalogs.append(output_path)
+
+    if rendered_katalogs:
+        for path in rendered_katalogs:
+            print(f"Rendered objektkatalog: {path}")
 
     _render_index(pages, output_dir)
 
