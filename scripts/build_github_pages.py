@@ -409,9 +409,8 @@ _INDEX_TEMPLATE = Template(
   <body>
     <main class=\"page-section\">
       <header class=\"hero\">
-        <p class=\"page-header__kicker\">Produktspesifikasjoner</p>
-        <h1>Tilgjengelige dokumenter</h1>
-        <p>Utforsk de publiserte produktspesifikasjonene fra produktspesifikasjon.</p>
+        <h1>Produktspesifikasjoner</h1>
+        <p>Utforsk de publiserte produktspesifikasjonene.</p>
       </header>
       <section class=\"spec-grid\">
         $items

@@ -263,10 +263,10 @@ def _build_scope_catalogues(
         if scope_markdown:
             scope_path = scope_dir / "objektkatalog.md"
             _write_text_file(scope_path, scope_markdown)
-            relative = Path(scope_slug) / "objektkatalog.md"
+            relative = Path(scope_slug) / "objektkatalog.html"
             sections.append(f"### Datamodell - {scope_name}")
             sections.append("")
-            sections.append(f"- [Objektkatalog - {scope_name}]({relative.as_posix()})")
+            sections.append(f"[Objektkatalog - {scope_name}]({relative.as_posix()})")
 
     if not sections:
         return ""
