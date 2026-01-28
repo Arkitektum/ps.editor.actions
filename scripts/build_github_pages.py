@@ -32,8 +32,8 @@ _HTML_TEMPLATE = Template(
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <title>$page_title</title>
     <meta name=\"description\" content=$page_description />
-    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@digdir/designsystemet-css@1.6.0/dist/src/index.css\" integrity=\"sha384-XFjU1ON2Tn7gVe20jrkLTcttGZN5EoIbB1bzLtn8JCzfTYDltv46ytrDiAjcYENV\" crossorigin=\"anonymous\" />
-    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@digdir/designsystemet-theme@1.6.0/src/themes/designsystemet.css\" integrity=\"sha384-3uAT5IuMDqQqM1uVQs7tRSZmVd6WzJKFP3+3UbG8Ghy8oAJyX+FI5HGyl2zWphyC\" crossorigin=\"anonymous\" />
+    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@digdir/designsystemet-css@1.6.0/dist/src/index.css\" />
+    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@digdir/designsystemet-theme@1.6.0/src/themes/designsystemet.css\" />
     <link rel=\"stylesheet\" href=\"https://altinncdn.no/fonts/inter/v4.1/inter.css\" integrity=\"sha384-OcHzc/By/OPw9uJREawUCjP2inbOGKtKb4A/I2iXxmknUfog2H8Adx71tWVZRscD\" crossorigin=\"anonymous\" />
     <style>
       :root {
@@ -147,7 +147,7 @@ _HTML_TEMPLATE = Template(
       }
 
       .breadcrumbs li::after {
-        content: '\203A';
+        content: '/';
         margin: 0 0.5rem;
         color: var(--ds-color-text-subtle, #4f4f4f);
       }
