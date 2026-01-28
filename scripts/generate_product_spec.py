@@ -123,6 +123,15 @@ def _format_scope_png_link(scope_name: str, relative_path: Path) -> str:
     )
 
 
+def _format_png_embed(scope_name: str, png_name: str) -> str:
+    alt_text = f"Datamodell {scope_name}".strip()
+    return (
+        f'<a href="{png_name}" title="Klikk for stor visning">'
+        f'<img src="{png_name}" alt="{alt_text}" style="max-width: 100%; height: auto;" />'
+        "</a>"
+    )
+
+
 def _parse_feature_type_filter(values: Sequence[str] | None) -> list[str]:
     if not values:
         return []
@@ -236,12 +245,20 @@ def _build_scope_catalogues(
         )
 
         scope_includes: list[IncludeResource] = []
+        png_path = assets.get("png_path")
+        png_name = ""
+        if isinstance(png_path, Path):
+            png_name = png_path.name
         if generator == "xmi":
             if assets["markdown_content"].strip():
                 scope_includes.append(
                     IncludeResource("incl_featuretypes_xmi_table", assets["markdown_content"].strip()),
                 )
-            if assets["uml_content"].strip():
+            if png_name:
+                scope_includes.append(
+                    IncludeResource("incl_featuretypes_xmi_uml", _format_png_embed(scope_name, png_name)),
+                )
+            elif assets["uml_content"].strip():
                 scope_includes.append(
                     IncludeResource(
                         "incl_featuretypes_xmi_uml",
@@ -253,7 +270,11 @@ def _build_scope_catalogues(
                 scope_includes.append(
                     IncludeResource("incl_featuretypes_table", assets["markdown_content"].strip()),
                 )
-            if assets["uml_content"].strip():
+            if png_name:
+                scope_includes.append(
+                    IncludeResource("incl_featuretypes_uml", _format_png_embed(scope_name, png_name)),
+                )
+            elif assets["uml_content"].strip():
                 scope_includes.append(
                     IncludeResource(
                         "incl_featuretypes_uml",

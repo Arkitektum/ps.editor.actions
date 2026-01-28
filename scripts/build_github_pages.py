@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import os
 import re
 import shlex
 import shutil
@@ -531,6 +532,53 @@ def _render_breadcrumbs(items: list[tuple[str, str | None]]) -> str:
     return "".join(parts)
 
 
+def _find_spec_index(source_root: Path, markdown_path: Path) -> Path | None:
+    try:
+        markdown_path.parent.relative_to(source_root)
+    except ValueError:
+        return None
+
+    current = markdown_path.parent
+    while True:
+        candidate = current / "index.md"
+        if candidate.exists():
+            return candidate
+        if current == source_root:
+            break
+        current = current.parent
+    return None
+
+
+def _build_breadcrumbs_block(
+    metadata: PageMetadata,
+    markdown_path: Path,
+    output_dir: Path,
+    source_root: Path,
+) -> str:
+    try:
+        relative_dir = markdown_path.parent.relative_to(source_root)
+        depth = len(relative_dir.parts)
+        root_href = "../" * depth or "./"
+    except ValueError:
+        relative_dir = Path()
+        root_href = "./"
+
+    crumb_items: list[tuple[str, str | None]] = [("Produktspesifikasjon", root_href)]
+    spec_index = _find_spec_index(source_root, markdown_path)
+    if spec_index and spec_index != markdown_path:
+        spec_meta, _ = _parse_front_matter(spec_index.read_text(encoding="utf-8"))
+        output_root = output_dir
+        for _ in relative_dir.parts:
+            output_root = output_root.parent
+        spec_rel_dir = spec_index.parent.relative_to(source_root)
+        spec_output_path = output_root / spec_rel_dir / "index.html"
+        spec_href = os.path.relpath(spec_output_path, output_dir)
+        crumb_items.append((spec_meta.title, Path(spec_href).as_posix()))
+
+    crumb_items.append((metadata.title, None))
+    return _render_breadcrumbs(crumb_items)
+
+
 def _parse_markdown_asset_target(target: str) -> str | None:
     """Extract the path component from a Markdown image target.
 
@@ -618,16 +666,7 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
         toc_html = _render_toc(toc_tokens)
         toc_block = f"          {toc_html}\n"
 
-    try:
-        relative_dir = markdown_path.parent.relative_to(source_root)
-        depth = len(relative_dir.parts)
-        root_href = "../" * depth or "./"
-        crumb_items = [("Produktspesifikasjon", root_href)]
-    except ValueError:
-        crumb_items = [("Produktspesifikasjon", "./")]
-
-    crumb_items.append((metadata.title, None))
-    breadcrumbs = _render_breadcrumbs(crumb_items)
+    breadcrumbs = _build_breadcrumbs_block(metadata, markdown_path, output_dir, source_root)
 
     updated_text = _format_updated(metadata.updated)
     meta_block = ""
@@ -694,16 +733,7 @@ def _render_markdown_file(
         toc_html = _render_toc(toc_tokens)
         toc_block = f"          {toc_html}\n"
 
-    try:
-        relative_dir = markdown_path.parent.relative_to(source_root)
-        depth = len(relative_dir.parts)
-        root_href = "../" * depth or "./"
-        crumb_items = [("Produktspesifikasjon", root_href)]
-    except ValueError:
-        crumb_items = [("Produktspesifikasjon", "./")]
-
-    crumb_items.append((metadata.title, None))
-    breadcrumbs = _render_breadcrumbs(crumb_items)
+    breadcrumbs = _build_breadcrumbs_block(metadata, markdown_path, output_dir, source_root)
 
     description = metadata.description or metadata.title
     page_html = _HTML_TEMPLATE.substitute(
