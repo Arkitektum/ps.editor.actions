@@ -136,7 +136,7 @@ def build_psdata(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any
 
     result = _compact_mapping(
         {
-            "identification": _build_identification(metadata_id, metadata),
+            "identificationSection": _build_identification(metadata_id, metadata),
             "scope": _compact_mapping(
                 {
                     "level": _normalize_string(
@@ -161,13 +161,18 @@ def build_psdata(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any
                 }
             ),
             "dataQuality": _extract_quality(metadata),
-            "maintenance": _compact_mapping(
+            "maintenanceSection": _compact_mapping(
                 {
-                    "maintenanceFrequency": _normalize_string(
+                    "maintenanceAndUpdateFrequency": _normalize_string(
                         metadata.get("MaintenanceFrequency")
                     ),
                     "maintenanceNote": _normalize_string(metadata.get("SpecificUsage")),
-                    "status": _normalize_string(metadata.get("Status")),
+                    "maintenanceAndUpdateStatement": _normalize_string(metadata.get("Status")),
+                    "dataAcquisitionAndProcessing": _compact_mapping(
+                        {
+                            "processStep": _build_process_steps(metadata),
+                        }
+                    ),
                 }
             ),
             "portrayal": _extract_portrayal(metadata),
@@ -219,6 +224,60 @@ def _build_identification(metadata_id: str, metadata: Mapping[str, Any]) -> dict
         identification.setdefault("supplementalInformation", supplemental)
 
     return identification
+
+
+def _build_process_steps(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | None:
+    raw = metadata.get("ProcessHistory")
+    if raw is None:
+        return None
+
+    steps: list[dict[str, Any]] = []
+
+    def add_step(description: str, date_value: Any = None) -> None:
+        desc = _normalize_string(description)
+        if not desc:
+            return
+        step = _compact_mapping(
+            {
+                "description": desc,
+                "date": _parse_date(date_value),
+            }
+        )
+        if step:
+            steps.append(step)
+
+    if isinstance(raw, str):
+        add_step(raw)
+        return steps or None
+
+    if isinstance(raw, Mapping):
+        description = _select_first_string(
+            raw.get("Description"),
+            raw.get("ProcessStep"),
+            raw.get("ProcessDescription"),
+            raw.get("Text"),
+            raw.get("Value"),
+        )
+        add_step(description, raw.get("Date") or raw.get("ProcessDate"))
+        return steps or None
+
+    if isinstance(raw, Sequence):
+        for item in raw:
+            if isinstance(item, str):
+                add_step(item)
+                continue
+            if isinstance(item, Mapping):
+                description = _select_first_string(
+                    item.get("Description"),
+                    item.get("ProcessStep"),
+                    item.get("ProcessDescription"),
+                    item.get("Text"),
+                    item.get("Value"),
+                )
+                add_step(description, item.get("Date") or item.get("ProcessDate"))
+        return steps or None
+
+    return None
 
 
 def _build_temporal_extent(metadata: Mapping[str, Any]) -> Mapping[str, Any] | None:

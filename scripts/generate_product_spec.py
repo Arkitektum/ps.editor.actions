@@ -45,7 +45,7 @@ def _derive_slug(metadata_id: str, psdata: dict[str, Any], override: str | None)
         if slug:
             return slug
 
-    identification = psdata.get("identification")
+    identification = psdata.get("identificationSection")
     if isinstance(identification, dict):
         title = identification.get("title")
         if isinstance(title, str):
@@ -415,7 +415,7 @@ def generate_product_specification(
     psdata_path = spec_dir / psdata_filename
     _write_text_file(psdata_path, json.dumps(psdata, indent=2, ensure_ascii=False))
 
-    identification = psdata.get("identification")
+    identification = psdata.get("identificationSection")
     product_title = ""
     if isinstance(identification, dict):
         title_value = identification.get("title")

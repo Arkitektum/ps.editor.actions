@@ -1,11 +1,11 @@
 ---
-title: "{{identification.title}}"
+title: "{{identificationSection.title}}"
 updated: "{{updated}}"
-organization: "{{identification.responsibleParties.[0].organization}}"
-logo: "{{identification.organizationLogoUrl}}"
+organization: "{{identificationSection.responsibleParties.[0].organization}}"
+logo: "{{identificationSection.organizationLogoUrl}}"
 ---
 
-# Produktspesifikasjon: {{identification.title}}
+# Produktspesifikasjon: {{identificationSection.title}}
 
 ## Innledning, historikk og endringslogg
 {{incl_innledning_historikk_og_endringslogg}}
@@ -36,43 +36,43 @@ logo: "{{identification.organizationLogoUrl}}"
 
 ### Unik identifisering
 {{incl_unik_identifisering}}
-{{identification.id}}
+{{identificationSection.id}}
 
 #### Fullstendig navn
 {{incl_fullstendig_navn}}
-{{identification.title}}
+{{identificationSection.title}}
 
 #### Versjon
 {{incl_versjon}}
-{{identification.dates.publication}}
+{{identificationSection.dates.publication}}
 
 ### Referansedato
 {{incl_referansedato}}
-{{identification.dates.revision}}
+{{identificationSection.dates.revision}}
 
 ### Ansvarlig organisasjon
 {{incl_ansvarlig_organisasjon}}
-{{identification.responsibleParties.[0].organization}}
+{{identificationSection.responsibleParties.[0].organization}}
 
 ### Språk
 {{incl_spraak}}
-{{identification.language}}
+{{identificationSection.language}}
 
 ### Hovedtema
 {{incl_hovedtema}}
-{{identification.keywords}}
+{{identificationSection.keywords}}
 
 ### Temakategori
 {{incl_temakategori}}
-{{identification.topicCategories}}
+{{identificationSection.topicCategories}}
 
 ### Sammendrag
 {{incl_sammendrag}}
-{{identification.abstract}}
+{{identificationSection.abstract}}
 
 ### Formål
 {{incl_formaal}}
-{{identification.purpose}}
+{{identificationSection.purpose}}
 
 ## Spesifikasjonsomfang
 {{incl_spesifikasjonsomfang}}
@@ -112,7 +112,7 @@ logo: "{{identification.organizationLogoUrl}}"
 
 ## Datavedlikehold
 {{incl_datavedlikehold}}
-{{maintenance}}
+{{maintenanceSection}}
 
 ## Presentasjon
 {{incl_presentasjon}}
