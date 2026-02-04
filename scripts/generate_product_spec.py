@@ -324,7 +324,10 @@ def _build_feature_catalogue_assets(
 
     markdown_path = spec_dir / f"{base_name}.md"
     if feature_types:
-        markdown_content = render_feature_types_to_markdown(feature_types)
+        markdown_content = render_feature_types_to_markdown(
+            feature_types,
+            include_codelists=True,
+        )
         _write_text_file(markdown_path, markdown_content)
     else:
         markdown_content = ""

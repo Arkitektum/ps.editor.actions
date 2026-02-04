@@ -28,6 +28,7 @@ def render_feature_types_to_markdown(
     *,
     heading_level: int = 4,
     include_descriptions: bool = True,
+    include_codelists: bool = False,
 ) -> str:
     """Convert feature type metadata into Markdown tables."""
 
@@ -101,7 +102,19 @@ def render_feature_types_to_markdown(
 
         sections.append("\n".join(section_lines))
 
-    return "\n\n".join(sections)
+    output = "\n\n".join(sections)
+    if not include_codelists:
+        return output
+
+    codelists_body = _render_codelists_section(feature_types, heading_level=heading_level)
+    if not codelists_body:
+        return output
+
+    title_level = max(1, heading_level - 1)
+    codelists_heading = "#" * title_level + " Kodelister"
+    if output:
+        return f"{output}\n\n{codelists_heading}\n\n{codelists_body}"
+    return f"{codelists_heading}\n\n{codelists_body}"
 
 
 def _collect_codelists(
@@ -763,7 +776,9 @@ def _render_markdown_section(
     feature_types: Sequence[Mapping[str, Any]],
 ) -> str:
     section_heading = "### Objekttyper"
-    body = render_feature_types_to_markdown(feature_types, heading_level=4)
+    body = render_feature_types_to_markdown(
+        feature_types, heading_level=4, include_codelists=False
+    )
     codelists_body = _render_codelists_section(feature_types, heading_level=4)
 
     parts: list[str] = [section_heading]
