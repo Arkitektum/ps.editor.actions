@@ -48,6 +48,7 @@ def render_feature_types_to_puml(
     package: str | None = None,
     include_notes: bool = True,
     include_descriptions: bool = True,
+    include_generalization: bool = True,
 ) -> str:
     """Convert feature type metadata into a PlantUML class diagram."""
 
@@ -94,7 +95,11 @@ def render_feature_types_to_puml(
         lines.append("")
         indent = "  "
 
-    for index, feature_type in enumerate(feature_types):
+    feature_type_entries = list(feature_types)
+    if include_generalization:
+        feature_type_entries = _apply_inheritance_attributes(feature_type_entries)
+
+    for index, feature_type in enumerate(feature_type_entries):
         if not isinstance(feature_type, Mapping):
             raise TypeError("Each feature type entry must be a mapping")
         if index:
@@ -123,7 +128,9 @@ def render_feature_types_to_puml(
     if package:
         lines.append("}")
 
-    relation_lines = _build_relationship_lines(feature_types, alias_map, indent)
+    relation_lines = _build_relationship_lines(
+        feature_type_entries, alias_map, indent, include_generalization=include_generalization
+    )
     if relation_lines:
         lines.append("")
         lines.extend(relation_lines)
@@ -442,10 +449,86 @@ def _collect_datatypes(feature_types: Sequence[Mapping[str, Any]]) -> dict[str, 
     return datatypes
 
 
+def _apply_inheritance_attributes(
+    feature_types: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    by_name: dict[str, Mapping[str, Any]] = {}
+    children: dict[str, list[str]] = {}
+    parents_by_child: dict[str, list[str]] = {}
+
+    for entry in feature_types:
+        if not isinstance(entry, Mapping):
+            continue
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            continue
+        by_name[name] = entry
+        relationships = entry.get("relationships")
+        if not isinstance(relationships, Mapping):
+            continue
+        inheritance = relationships.get("inheritance")
+        if isinstance(inheritance, Sequence) and not isinstance(inheritance, (str, bytes)):
+            parents = [str(p).strip() for p in inheritance if str(p).strip()]
+            if parents:
+                parents_by_child[name] = parents
+                for parent in parents:
+                    children.setdefault(parent, []).append(name)
+
+    def collect_inherited(child: str, seen: set[str]) -> list[Mapping[str, Any]]:
+        inherited: list[Mapping[str, Any]] = []
+        for parent in parents_by_child.get(child, []):
+            if parent in seen:
+                continue
+            seen.add(parent)
+            parent_entry = by_name.get(parent)
+            if not parent_entry:
+                continue
+            parent_attrs = parent_entry.get("attributes")
+            if isinstance(parent_attrs, Sequence) and not isinstance(parent_attrs, (str, bytes)):
+                for attr in parent_attrs:
+                    if isinstance(attr, Mapping):
+                        inherited.append(attr)
+            inherited.extend(collect_inherited(parent, seen))
+        return inherited
+
+    transformed: list[Mapping[str, Any]] = []
+    for entry in feature_types:
+        if not isinstance(entry, Mapping):
+            transformed.append(entry)
+            continue
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            transformed.append(entry)
+            continue
+
+        inherited = collect_inherited(name, set())
+        own_attrs = entry.get("attributes")
+        combined_attrs: list[Mapping[str, Any]] = []
+        if inherited:
+            combined_attrs.extend(inherited)
+        if isinstance(own_attrs, Sequence) and not isinstance(own_attrs, (str, bytes)):
+            combined_attrs.extend([attr for attr in own_attrs if isinstance(attr, Mapping)])
+
+        new_entry = dict(entry)
+        if combined_attrs:
+            new_entry["attributes"] = combined_attrs
+        elif "attributes" in new_entry:
+            new_entry["attributes"] = []
+
+        if name in children:
+            new_entry["attributes"] = []
+
+        transformed.append(new_entry)
+
+    return transformed
+
+
 def _build_relationship_lines(
     feature_types: Sequence[Mapping[str, Any]],
     alias_map: Mapping[str, str],
     indent: str,
+    *,
+    include_generalization: bool = True,
 ) -> list[str]:
     lines: list[str] = []
 
@@ -467,12 +550,13 @@ def _build_relationship_lines(
         if not child_alias:
             continue
 
-        inheritance = relationships.get("inheritance")
-        if isinstance(inheritance, Sequence) and not isinstance(inheritance, (str, bytes)):
-            for parent in inheritance:
-                parent_alias = _alias_for(str(parent))
-                if parent_alias:
-                    lines.append(f"{indent}{parent_alias} <|-- {child_alias}")
+        if include_generalization:
+            inheritance = relationships.get("inheritance")
+            if isinstance(inheritance, Sequence) and not isinstance(inheritance, (str, bytes)):
+                for parent in inheritance:
+                    parent_alias = _alias_for(str(parent))
+                    if parent_alias:
+                        lines.append(f"{indent}{parent_alias} <|-- {child_alias}")
 
         associations = relationships.get("associations")
         if isinstance(associations, Sequence) and not isinstance(associations, (str, bytes)):
