@@ -132,9 +132,12 @@ def _collect_codelists(
                     "name": name,
                     "codeList": None,
                     "listedValues": [],
+                    "hasValueDomain": True,
                 }
                 codelists[name] = entry
                 ordered.append(name)
+            else:
+                entry["hasValueDomain"] = True
 
             definition = value_domain.get("definition")
             if isinstance(definition, str) and definition.strip() and not entry.get("definition"):
@@ -234,6 +237,14 @@ def _render_codelists_section(
             lines.append("Koder")
             lines.append("")
             lines.extend(_render_codelist_values_table(listed_values))
+        elif not (
+            isinstance(definition, str) and definition.strip()
+        ) and not (
+            (isinstance(code_list, str) and code_list)
+            or (isinstance(as_dictionary, str) and as_dictionary.strip())
+        ):
+            lines.append("")
+            lines.append("(ingen)")
 
         lines.append("")
 
