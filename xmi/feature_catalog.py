@@ -256,7 +256,7 @@ def _collect_global_tagged_values(root: ET.Element) -> dict[str, dict[str, str]]
         if not tag:
             continue
         value = tagged.get("value") or ""
-        values.setdefault(model_element, {})[tag] = value
+        values.setdefault(model_element, {})[tag] = _strip_tagged_notes(value)
     return values
 
 
@@ -607,8 +607,16 @@ def _extract_tagged_values(element: ET.Element) -> dict[str, str]:
         tag = tagged.get("tag")
         value = tagged.get("value")
         if tag:
-            values[tag] = value if value is not None else ""
+            values[tag] = _strip_tagged_notes(value if value is not None else "")
     return values
+
+
+def _strip_tagged_notes(value: str) -> str:
+    if not value:
+        return ""
+    if "#NOTES#" in value:
+        return value.split("#NOTES#", 1)[0].strip()
+    return value.strip()
 
 
 def _is_codelist_stereotype(stereotype: str | None) -> bool:
