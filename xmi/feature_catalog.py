@@ -15,18 +15,6 @@ except Exception:  # pragma: no cover
 HTTPGet = Callable[..., Any]
 
 _NS = {"UML": "omg.org/UML1.3"}
-_GEOMETRY_NAMES = {
-    "PUNKT",
-    "LINJE",
-    "KURVE",
-    "FLATE",
-    "OMRÅDE",
-    "OMRADE",
-    "GRENSE",
-    "REPRESENTASJONSPUNKT",
-    "REPRESENTASJONSLINJE",
-    "REPRESENTASJONSFLATE",
-}
 
 
 @dataclass
@@ -353,13 +341,9 @@ def _build_feature_type(
 ) -> dict[str, Any]:
     inherited = _collect_attributes_with_inheritance(class_info.id, classes_by_id, parents)
 
-    geometry: dict[str, Any] | None = None
     attributes: list[dict[str, Any]] = []
 
     for attribute in inherited:
-        if geometry is None and _is_geometry_attribute(attribute):
-            geometry = _build_geometry_attribute(attribute)
-            continue
         converted = _convert_attribute(
             attribute,
             classes_by_id,
@@ -387,9 +371,6 @@ def _build_feature_type(
         "abstract": class_info.abstract,
         "relationships": relationships,
     }
-
-    if geometry:
-        feature_dict["geometry"] = geometry
 
     return feature_dict
 
@@ -533,36 +514,6 @@ def _build_value_domain(
         domain["codeList"] = code_list.strip()
 
     return domain or None
-
-
-def _build_geometry_attribute(attribute: _UmlAttribute) -> dict[str, Any]:
-    geom_type = attribute.tags.get("type") or attribute.type_name or "geometry"
-    name = attribute.name or "geometry"
-    geometry: dict[str, Any] = {
-        "name": name,
-        "type": geom_type,
-        "ogcRole": "primary-geometry",
-    }
-    if attribute.description:
-        geometry["description"] = attribute.description
-    return geometry
-
-
-def _is_geometry_attribute(attribute: _UmlAttribute) -> bool:
-    type_name = (attribute.tags.get("type") or attribute.type_name or "").upper()
-    if type_name.startswith("GM_") or type_name in {
-        "GMPOINT",
-        "GMCURVE",
-        "GMSURFACE",
-        "GMOBJECT",
-    }:
-        return True
-
-    name = (attribute.name or "").upper()
-    if any(token in name for token in _GEOMETRY_NAMES):
-        return True
-
-    return False
 
 
 def _attribute_display_name(attribute: _UmlAttribute) -> str:
