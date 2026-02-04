@@ -666,9 +666,7 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
         toc_html = _render_toc(toc_tokens)
         toc_block = f"          {toc_html}\n"
 
-    breadcrumbs = _build_breadcrumbs_block(
-        metadata, markdown_path, output_path.parent, source_root
-    )
+    breadcrumbs = _build_breadcrumbs_block(metadata, markdown_path, output_dir, source_root)
 
     updated_text = _format_updated(metadata.updated)
     meta_block = ""
