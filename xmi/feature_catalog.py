@@ -246,15 +246,22 @@ def _collect_associations(root: ET.Element, classes: Mapping[str, _UmlClass]) ->
         if len(ends) < 2:
             continue
 
-        for idx, end in enumerate(ends):
+        end_infos: list[tuple[ET.Element, str, bool | None]] = []
+        explicit_true = False
+        for end in ends:
             source_id = end.get("type")
             if not source_id:
                 continue
-            for other_idx, other in enumerate(ends):
+            nav_value = _association_end_is_navigable(end)
+            if nav_value is True:
+                explicit_true = True
+            end_infos.append((end, source_id, nav_value))
+
+        for idx, (end, source_id, _) in enumerate(end_infos):
+            for other_idx, (other, target_id, other_nav) in enumerate(end_infos):
                 if idx == other_idx:
                     continue
-                target_id = other.get("type")
-                if not target_id:
+                if explicit_true and other_nav is not True:
                     continue
                 target_info = classes.get(target_id)
                 if not target_info:
@@ -572,6 +579,39 @@ def _extract_association_bounds(end: ET.Element) -> tuple[str | None, str | None
     if multiplicity is not None:
         return multiplicity.get("lower"), multiplicity.get("upper")
     return None, None
+
+
+def _association_end_is_navigable(end: ET.Element) -> bool | None:
+    raw = end.get("isNavigable") or end.get("navigable")
+    parsed = _parse_bool(raw)
+    if parsed is not None:
+        return parsed
+
+    nav_elem = end.find("UML:AssociationEnd.isNavigable", _NS)
+    if nav_elem is not None:
+        raw = nav_elem.get("xmi.value") or nav_elem.get("value")
+        parsed = _parse_bool(raw)
+        if parsed is not None:
+            return parsed
+        bool_expr = nav_elem.find(".//UML:BooleanExpression", _NS)
+        if bool_expr is not None:
+            raw = bool_expr.get("body") or (bool_expr.text or "")
+            parsed = _parse_bool(raw)
+            if parsed is not None:
+                return parsed
+
+    return None
+
+
+def _parse_bool(value: str | None) -> bool | None:
+    if value is None:
+        return None
+    text = value.strip().lower()
+    if text in {"true", "1", "yes"}:
+        return True
+    if text in {"false", "0", "no"}:
+        return False
+    return None
 
 
 def _get_identifier(element: ET.Element) -> str | None:
