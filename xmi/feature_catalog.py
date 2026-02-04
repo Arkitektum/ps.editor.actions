@@ -148,13 +148,18 @@ def _read_file(path: Path) -> str:
 
 def _parse_feature_types(text: str) -> list[dict[str, Any]]:
     root = ET.fromstring(text)
-    classes, order = _collect_classes(root)
+    extra_tagged = _collect_global_tagged_values(root)
+    classes, order = _collect_classes(root, extra_tagged)
     parents = _collect_generalizations(root)
     associations = _collect_associations(root, classes)
 
     classes_by_name = {info.name: info for info in classes.values()}
     codelists = _build_code_lists(
-        {cid: info for cid, info in classes.items() if info.stereotype == "CodeList"}
+        {
+            cid: info
+            for cid, info in classes.items()
+            if _is_codelist_stereotype(info.stereotype)
+        }
     )
 
     feature_types: list[dict[str, Any]] = []
@@ -176,9 +181,13 @@ def _parse_feature_types(text: str) -> list[dict[str, Any]]:
     return feature_types
 
 
-def _collect_classes(root: ET.Element) -> tuple[dict[str, _UmlClass], list[str]]:
+def _collect_classes(
+    root: ET.Element,
+    extra_tagged: Mapping[str, Mapping[str, str]] | None = None,
+) -> tuple[dict[str, _UmlClass], list[str]]:
     classes: dict[str, _UmlClass] = {}
     order: list[str] = []
+    extra_tagged = extra_tagged or {}
 
     for class_elem in root.findall(".//UML:Class", _NS):
         class_id = _get_identifier(class_elem)
@@ -187,7 +196,8 @@ def _collect_classes(root: ET.Element) -> tuple[dict[str, _UmlClass], list[str]]
         name = class_elem.get("name", "").strip()
         stereotype = _extract_stereotype(class_elem)
         tagged_values = _extract_tagged_values(class_elem)
-        attributes = _collect_attributes(class_elem, class_id)
+        tagged_values.update(extra_tagged.get(class_id, {}))
+        attributes = _collect_attributes(class_elem, class_id, extra_tagged)
         abstract = class_elem.get("isAbstract", "false").lower() == "true"
         info = _UmlClass(
             id=class_id,
@@ -203,14 +213,22 @@ def _collect_classes(root: ET.Element) -> tuple[dict[str, _UmlClass], list[str]]
     return classes, order
 
 
-def _collect_attributes(class_elem: ET.Element, owner_id: str) -> list[_UmlAttribute]:
+def _collect_attributes(
+    class_elem: ET.Element,
+    owner_id: str,
+    extra_tagged: Mapping[str, Mapping[str, str]] | None = None,
+) -> list[_UmlAttribute]:
     attributes: list[_UmlAttribute] = []
+    extra_tagged = extra_tagged or {}
     feature_container = class_elem.find("UML:Classifier.feature", _NS)
     if feature_container is None:
         return attributes
 
     for attr_elem in feature_container.findall("UML:Attribute", _NS):
         tags = _extract_tagged_values(attr_elem)
+        attr_id = _get_identifier(attr_elem)
+        if attr_id:
+            tags.update(extra_tagged.get(attr_id, {}))
         type_name = tags.get("type") or _extract_type_name(attr_elem)
         lower, upper = _extract_bounds(attr_elem, tags)
         description = _clean_text(tags.get("description"))
@@ -226,6 +244,20 @@ def _collect_attributes(class_elem: ET.Element, owner_id: str) -> list[_UmlAttri
         attributes.append(attribute)
 
     return attributes
+
+
+def _collect_global_tagged_values(root: ET.Element) -> dict[str, dict[str, str]]:
+    values: dict[str, dict[str, str]] = {}
+    for tagged in root.findall(".//UML:TaggedValue", _NS):
+        model_element = tagged.get("modelElement")
+        if not model_element:
+            continue
+        tag = tagged.get("tag")
+        if not tag:
+            continue
+        value = tagged.get("value") or ""
+        values.setdefault(model_element, {})[tag] = value
+    return values
 
 
 def _collect_generalizations(root: ET.Element) -> dict[str, list[str]]:
@@ -577,6 +609,13 @@ def _extract_tagged_values(element: ET.Element) -> dict[str, str]:
         if tag:
             values[tag] = value if value is not None else ""
     return values
+
+
+def _is_codelist_stereotype(stereotype: str | None) -> bool:
+    if not stereotype:
+        return False
+    normalized = stereotype.strip().lower()
+    return normalized in {"codelist", "enumeration"}
 
 
 def _extract_type_name(attribute: ET.Element) -> str | None:
