@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import os
 import re
 import shlex
 import shutil
@@ -32,8 +33,8 @@ _HTML_TEMPLATE = Template(
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <title>$page_title</title>
     <meta name=\"description\" content=$page_description />
-    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@digdir/designsystemet-css@1.6.0/dist/src/index.css\" integrity=\"sha384-XFjU1ON2Tn7gVe20jrkLTcttGZN5EoIbB1bzLtn8JCzfTYDltv46ytrDiAjcYENV\" crossorigin=\"anonymous\" />
-    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@digdir/designsystemet-theme@1.6.0/src/themes/designsystemet.css\" integrity=\"sha384-3uAT5IuMDqQqM1uVQs7tRSZmVd6WzJKFP3+3UbG8Ghy8oAJyX+FI5HGyl2zWphyC\" crossorigin=\"anonymous\" />
+    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@digdir/designsystemet-css@1.6.0/dist/src/index.css\" />
+    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@digdir/designsystemet-theme@1.6.0/src/themes/designsystemet.css\" />
     <link rel=\"stylesheet\" href=\"https://altinncdn.no/fonts/inter/v4.1/inter.css\" integrity=\"sha384-OcHzc/By/OPw9uJREawUCjP2inbOGKtKb4A/I2iXxmknUfog2H8Adx71tWVZRscD\" crossorigin=\"anonymous\" />
     <style>
       :root {
@@ -147,7 +148,7 @@ _HTML_TEMPLATE = Template(
       }
 
       .breadcrumbs li::after {
-        content: '\203A';
+        content: '/';
         margin: 0 0.5rem;
         color: var(--ds-color-text-subtle, #4f4f4f);
       }
@@ -409,9 +410,8 @@ _INDEX_TEMPLATE = Template(
   <body>
     <main class=\"page-section\">
       <header class=\"hero\">
-        <p class=\"page-header__kicker\">Produktspesifikasjoner</p>
-        <h1>Tilgjengelige dokumenter</h1>
-        <p>Utforsk de publiserte produktspesifikasjonene fra produktspesifikasjon.</p>
+        <h1>Produktspesifikasjoner</h1>
+        <p>Utforsk de publiserte produktspesifikasjonene.</p>
       </header>
       <section class=\"spec-grid\">
         $items
@@ -532,6 +532,53 @@ def _render_breadcrumbs(items: list[tuple[str, str | None]]) -> str:
     return "".join(parts)
 
 
+def _find_spec_index(source_root: Path, markdown_path: Path) -> Path | None:
+    try:
+        markdown_path.parent.relative_to(source_root)
+    except ValueError:
+        return None
+
+    current = markdown_path.parent
+    while True:
+        candidate = current / "index.md"
+        if candidate.exists():
+            return candidate
+        if current == source_root:
+            break
+        current = current.parent
+    return None
+
+
+def _build_breadcrumbs_block(
+    metadata: PageMetadata,
+    markdown_path: Path,
+    output_dir: Path,
+    source_root: Path,
+) -> str:
+    try:
+        relative_dir = markdown_path.parent.relative_to(source_root)
+        depth = len(relative_dir.parts)
+        root_href = "../" * depth or "./"
+    except ValueError:
+        relative_dir = Path()
+        root_href = "./"
+
+    crumb_items: list[tuple[str, str | None]] = [("Produktspesifikasjon", root_href)]
+    spec_index = _find_spec_index(source_root, markdown_path)
+    if spec_index and spec_index != markdown_path:
+        spec_meta, _ = _parse_front_matter(spec_index.read_text(encoding="utf-8"))
+        output_root = output_dir
+        for _ in relative_dir.parts:
+            output_root = output_root.parent
+        spec_rel_dir = spec_index.parent.relative_to(source_root)
+        spec_output_path = output_root / spec_rel_dir / "index.html"
+        spec_href = os.path.relpath(spec_output_path, output_dir)
+        crumb_items.append((spec_meta.title, Path(spec_href).as_posix()))
+
+    crumb_items.append((metadata.title, None))
+    return _render_breadcrumbs(crumb_items)
+
+
 def _parse_markdown_asset_target(target: str) -> str | None:
     """Extract the path component from a Markdown image target.
 
@@ -619,16 +666,7 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
         toc_html = _render_toc(toc_tokens)
         toc_block = f"          {toc_html}\n"
 
-    try:
-        relative_dir = markdown_path.parent.relative_to(source_root)
-        depth = len(relative_dir.parts)
-        root_href = "../" * depth or "./"
-        crumb_items = [("Produktspesifikasjon", root_href)]
-    except ValueError:
-        crumb_items = [("Produktspesifikasjon", "./")]
-
-    crumb_items.append((metadata.title, None))
-    breadcrumbs = _render_breadcrumbs(crumb_items)
+    breadcrumbs = _build_breadcrumbs_block(metadata, markdown_path, output_dir, source_root)
 
     updated_text = _format_updated(metadata.updated)
     meta_block = ""
@@ -667,6 +705,53 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
     _copy_assets(assets, markdown_path.parent, output_dir)
 
     return metadata
+
+
+def _render_markdown_file(
+    markdown_path: Path,
+    output_path: Path,
+    source_root: Path,
+) -> None:
+    text = markdown_path.read_text(encoding="utf-8")
+    metadata, body = _parse_front_matter(text)
+    if not text.startswith("---"):
+        fallback_title = markdown_path.stem.replace("_", " ").strip().capitalize()
+        if fallback_title:
+            metadata = PageMetadata(
+                title=fallback_title,
+                updated=None,
+                description=None,
+                organization=None,
+                logo=None,
+            )
+
+    md = markdown.Markdown(extensions=_MARKDOWN_EXTENSIONS)
+    html_content = md.convert(body)
+    toc_tokens = getattr(md, "toc_tokens", None)
+    toc_block = ""
+    if toc_tokens:
+        toc_html = _render_toc(toc_tokens)
+        toc_block = f"          {toc_html}\n"
+
+    breadcrumbs = _build_breadcrumbs_block(metadata, markdown_path, output_dir, source_root)
+
+    description = metadata.description or metadata.title
+    page_html = _HTML_TEMPLATE.substitute(
+        page_title=html.escape(metadata.title),
+        page_description=html.escape(description),
+        title=html.escape(metadata.title),
+        meta_block="",
+        breadcrumbs_block=breadcrumbs,
+        toc_block=toc_block,
+        content=html_content,
+        logo_block="",
+    )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(page_html, encoding="utf-8")
+
+    assets = _extract_assets(body)
+    _copy_assets(assets, markdown_path.parent, output_path.parent)
 
 
 def _render_index(pages: list[dict[str, str | None]] | None, output_dir: Path) -> None:
@@ -742,6 +827,21 @@ def build_site(source_dir: Path, output_dir: Path) -> None:
                 "organization": metadata.organization,
             }
         )
+
+    katalog_paths = sorted(
+        path for path in source_dir.rglob("*.md") if path.name.lower() == "objektkatalog.md"
+    )
+    rendered_katalogs: list[Path] = []
+    for markdown_path in katalog_paths:
+        rel_dir = markdown_path.parent.relative_to(source_dir)
+        destination_dir = output_dir / rel_dir
+        output_path = destination_dir / "objektkatalog.html"
+        _render_markdown_file(markdown_path, output_path, source_dir)
+        rendered_katalogs.append(output_path)
+
+    if rendered_katalogs:
+        for path in rendered_katalogs:
+            print(f"Rendered objektkatalog: {path}")
 
     _render_index(pages, output_dir)
 

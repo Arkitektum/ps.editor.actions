@@ -20,6 +20,9 @@ inputs:
   feature-type-filter:
     description: Optional list of feature type names to include (case-insensitive exact match). Provide multiple values as a comma-separated list.
     required: false
+  scopes:
+    description: Optional YAML/JSON scopes definition or path to a file containing a scopes list.
+    required: false
   updated:
     description: Optional override for the updated field in the rendered specification.
     required: false
@@ -78,6 +81,8 @@ runs:
     - name: Prepare product specification artefacts
       id: generate
       shell: bash
+      env:
+        INPUT_SCOPES: ${{ inputs.scopes }}
       run: |
         set -eo pipefail
         SUMMARY="$RUNNER_TEMP/product_spec_summary.txt"
@@ -94,6 +99,9 @@ runs:
         fi
         if [ -n "${{ inputs.feature-type-filter }}" ]; then
           ARGS+=("--feature-type-filter" "${{ inputs.feature-type-filter }}")
+        fi
+        if [ -n "$INPUT_SCOPES" ]; then
+          ARGS+=("--scopes" "$INPUT_SCOPES")
         fi
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")

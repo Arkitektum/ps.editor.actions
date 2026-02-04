@@ -50,6 +50,7 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+
 def _build_diagram_content(
     png_path: Path | None,
     uml_path: Path | None,
