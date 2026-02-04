@@ -281,8 +281,8 @@ def _collect_associations(root: ET.Element, classes: Mapping[str, _UmlClass]) ->
     return associations
 
 
-def _build_code_lists(classes: Mapping[str, _UmlClass]) -> dict[str, list[dict[str, str]]]:
-    listings: dict[str, list[dict[str, str]]] = {}
+def _build_code_lists(classes: Mapping[str, _UmlClass]) -> dict[str, dict[str, Any]]:
+    listings: dict[str, dict[str, Any]] = {}
     for class_info in classes.values():
         values: list[dict[str, str]] = []
         for attribute in class_info.attributes:
@@ -294,8 +294,20 @@ def _build_code_lists(classes: Mapping[str, _UmlClass]) -> dict[str, list[dict[s
                     "label": label,
                 }
             )
+        definition = _clean_text(class_info.tagged_values.get("documentation"))
+        entry: dict[str, Any] = {}
         if values:
-            listings[class_info.name] = values
+            entry["listedValues"] = values
+        if definition:
+            entry["definition"] = definition
+        as_dictionary = class_info.tagged_values.get("asDictionary")
+        if as_dictionary:
+            entry["asDictionary"] = as_dictionary
+        code_list = class_info.tagged_values.get("codeList")
+        if code_list:
+            entry["codeList"] = code_list
+        if entry:
+            listings[class_info.name] = entry
     return listings
 
 
@@ -304,7 +316,7 @@ def _build_feature_type(
     classes_by_id: Mapping[str, _UmlClass],
     classes_by_name: Mapping[str, _UmlClass],
     parents: Mapping[str, Sequence[str]],
-    codelists: Mapping[str, list[dict[str, str]]],
+    codelists: Mapping[str, Mapping[str, Any]],
     associations: Mapping[str, Sequence[Mapping[str, Any]]],
 ) -> dict[str, Any]:
     inherited = _collect_attributes_with_inheritance(class_info.id, classes_by_id, parents)
@@ -397,7 +409,7 @@ def _convert_attribute(
     classes_by_id: Mapping[str, _UmlClass],
     classes_by_name: Mapping[str, _UmlClass],
     parents: Mapping[str, Sequence[str]],
-    codelists: Mapping[str, list[dict[str, str]]],
+    codelists: Mapping[str, Mapping[str, Any]],
     visited_types: set[str],
 ) -> dict[str, Any]:
     name = _attribute_display_name(attribute)
@@ -429,6 +441,13 @@ def _convert_attribute(
         else:
             value_domain = dict(value_domain)
         value_domain["codeList"] = external_codelist
+    as_dictionary = attribute.tags.get("asDictionary")
+    if as_dictionary:
+        if value_domain is None:
+            value_domain = {}
+        else:
+            value_domain = dict(value_domain)
+        value_domain["asDictionary"] = as_dictionary
     if value_domain:
         entry["valueDomain"] = value_domain
 
@@ -457,14 +476,31 @@ def _convert_attribute(
 
 def _build_value_domain(
     attr_type: str | None,
-    codelists: Mapping[str, list[dict[str, str]]],
-) -> Mapping[str, Sequence[Mapping[str, str]]] | None:
+    codelists: Mapping[str, Mapping[str, Any]],
+) -> Mapping[str, Any] | None:
     if not attr_type:
         return None
-    values = codelists.get(attr_type)
-    if not values:
+    codelist = codelists.get(attr_type)
+    if not codelist:
         return None
-    return {"listedValues": values}
+    if not isinstance(codelist, Mapping):
+        return None
+
+    domain: dict[str, Any] = {}
+    listed_values = codelist.get("listedValues")
+    if isinstance(listed_values, Sequence) and not isinstance(listed_values, (str, bytes)):
+        domain["listedValues"] = list(listed_values)
+    definition = codelist.get("definition")
+    if isinstance(definition, str) and definition.strip():
+        domain["definition"] = definition.strip()
+    as_dictionary = codelist.get("asDictionary")
+    if isinstance(as_dictionary, str) and as_dictionary.strip():
+        domain["asDictionary"] = as_dictionary.strip()
+    code_list = codelist.get("codeList")
+    if isinstance(code_list, str) and code_list.strip():
+        domain["codeList"] = code_list.strip()
+
+    return domain or None
 
 
 def _build_geometry_attribute(attribute: _UmlAttribute) -> dict[str, Any]:

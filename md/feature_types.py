@@ -104,6 +104,235 @@ def render_feature_types_to_markdown(
     return "\n\n".join(sections)
 
 
+def _collect_codelists(
+    feature_types: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    ordered: list[str] = []
+    codelists: dict[str, dict[str, Any]] = {}
+
+    for feature_type in feature_types:
+        if not isinstance(feature_type, Mapping):
+            continue
+        attributes_obj = feature_type.get("attributes")
+        if not isinstance(attributes_obj, Sequence) or isinstance(attributes_obj, (str, bytes)):
+            continue
+        flattened = _flatten_attributes(
+            [attr for attr in attributes_obj if isinstance(attr, Mapping)]
+        )
+        for attr in flattened:
+            value_domain = attr.get("valueDomain")
+            if not isinstance(value_domain, Mapping):
+                continue
+            name = str(attr.get("type", "")).strip()
+            if not name:
+                continue
+            entry = codelists.get(name)
+            if entry is None:
+                entry = {
+                    "name": name,
+                    "codeList": None,
+                    "listedValues": [],
+                }
+                codelists[name] = entry
+                ordered.append(name)
+
+            definition = value_domain.get("definition")
+            if isinstance(definition, str) and definition.strip() and not entry.get("definition"):
+                entry["definition"] = definition.strip()
+
+            as_dictionary = value_domain.get("asDictionary")
+            if isinstance(as_dictionary, str) and as_dictionary.strip() and not entry.get("asDictionary"):
+                entry["asDictionary"] = as_dictionary.strip()
+
+            code_list = value_domain.get("codeList")
+            if isinstance(code_list, str) and code_list.strip():
+                entry["codeList"] = code_list.strip()
+
+            listed_values = value_domain.get("listedValues")
+            if isinstance(listed_values, Sequence) and not isinstance(listed_values, (str, bytes)):
+                entry["listedValues"] = _merge_listed_values(
+                    entry.get("listedValues"), listed_values
+                )
+
+    return [codelists[name] for name in ordered]
+
+
+def _merge_listed_values(
+    existing: Any,
+    incoming: Sequence[Mapping[str, Any]],
+) -> list[dict[str, str]]:
+    merged: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    if isinstance(existing, Sequence) and not isinstance(existing, (str, bytes)):
+        for entry in existing:
+            if not isinstance(entry, Mapping):
+                continue
+            value = str(entry.get("value", "")).strip()
+            label = str(entry.get("label", "")).strip()
+            key = (value, label)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append({"value": value, "label": label})
+
+    for entry in incoming:
+        if not isinstance(entry, Mapping):
+            continue
+        value = str(entry.get("value", "")).strip()
+        label = str(entry.get("label", "")).strip()
+        if not value and not label:
+            continue
+        key = (value, label)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append({"value": value, "label": label})
+
+    return merged
+
+
+def _render_codelists_section(
+    feature_types: Sequence[Mapping[str, Any]],
+    *,
+    heading_level: int,
+) -> str:
+    codelists = _collect_codelists(feature_types)
+    if not codelists:
+        return ""
+
+    heading_prefix = "#" * max(1, heading_level)
+    lines: list[str] = []
+
+    for entry in codelists:
+        name = entry.get("name", "").strip()
+        if not name:
+            continue
+        listed_values = entry.get("listedValues") or []
+        code_list = entry.get("codeList")
+        definition = entry.get("definition")
+        as_dictionary = entry.get("asDictionary")
+
+        stereotype = "Enumeration" if listed_values else "CodeList"
+        lines.append(f"{heading_prefix} «{stereotype}» {name}")
+
+        if isinstance(definition, str) and definition.strip():
+            lines.append("")
+            lines.append(f"**Definisjon:** {_escape_html(definition)}")
+
+        if (
+            (isinstance(code_list, str) and code_list)
+            or (isinstance(as_dictionary, str) and as_dictionary.strip())
+        ):
+            lines.append("")
+            lines.append("Profilparametre i tagged values")
+            lines.append("")
+            lines.extend(_render_profile_parameters_table(code_list, as_dictionary))
+
+        if listed_values:
+            lines.append("")
+            lines.append("Koder")
+            lines.append("")
+            lines.extend(_render_codelist_values_table(listed_values))
+
+        lines.append("")
+
+    while lines and not lines[-1].strip():
+        lines.pop()
+
+    return "\n".join(lines)
+
+
+def _render_profile_parameters_table(
+    code_list: str | None,
+    as_dictionary: str | None,
+) -> list[str]:
+    code_list_html = _escape_html(code_list) if isinstance(code_list, str) else ""
+    as_dictionary_value = (
+        _escape_html(as_dictionary) if isinstance(as_dictionary, str) else ""
+    )
+    lines = [
+        '<table class="feature-attribute-table">',
+        "  <colgroup>",
+        '    <col style="width: 35%;" />',
+        '    <col style="width: 65%;" />',
+        "  </colgroup>",
+        "  <tbody>",
+    ]
+    if as_dictionary_value:
+        lines.extend(
+            [
+                "    <tr>",
+                '      <th scope="row">asDictionary</th>',
+                f"      <td>{as_dictionary_value}</td>",
+                "    </tr>",
+            ]
+        )
+    if code_list_html:
+        lines.extend(
+            [
+                "    <tr>",
+                '      <th scope="row">codeList</th>',
+                f"      <td>{code_list_html}</td>",
+                "    </tr>",
+            ]
+        )
+    lines.extend(
+        [
+            "  </tbody>",
+            "</table>",
+        ]
+    )
+    return lines
+
+
+def _render_codelist_values_table(values: Sequence[Mapping[str, Any]]) -> list[str]:
+    lines = [
+        '<table class="code-list-table">',
+        "  <thead>",
+        "    <tr>",
+        "      <th>Kodenavn:</th>",
+        "      <th>Definisjon:</th>",
+        "      <th>Kodeverdi:</th>",
+        "    </tr>",
+        "  </thead>",
+        "  <tbody>",
+    ]
+
+    for entry in values:
+        if not isinstance(entry, Mapping):
+            continue
+        value = str(entry.get("value", "")).strip()
+        label = str(entry.get("label", "")).strip()
+
+        if not value and not label:
+            continue
+
+        definition = ""
+        if label and label != value:
+            definition = label
+
+        kodenavn = value
+        kodeverdi = ""
+        if value.isdigit():
+            kodenavn = ""
+            kodeverdi = value
+
+        lines.append("    <tr>")
+        lines.append(f"      <td>{_escape_html(kodenavn)}</td>")
+        lines.append(f"      <td>{_escape_html(definition)}</td>")
+        lines.append(f"      <td>{_escape_html(kodeverdi)}</td>")
+        lines.append("    </tr>")
+
+    lines.extend(
+        [
+            "  </tbody>",
+            "</table>",
+        ]
+    )
+    return lines
+
+
 def _normalize_text(value: str) -> str:
     text = unescape(value)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -524,10 +753,14 @@ def _render_markdown_section(
 ) -> str:
     section_heading = "### Objekttyper"
     body = render_feature_types_to_markdown(feature_types, heading_level=4)
+    codelists_body = _render_codelists_section(feature_types, heading_level=4)
 
+    parts: list[str] = [section_heading]
     if body:
-        return f"{section_heading}\n\n{body}"
-    return section_heading
+        parts.extend(["", body])
+    if codelists_body:
+        parts.extend(["", "### Kodelister", "", codelists_body])
+    return "\n".join(parts)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
