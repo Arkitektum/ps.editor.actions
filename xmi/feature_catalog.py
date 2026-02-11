@@ -44,6 +44,7 @@ def load_feature_types_from_xmi(
     username: str = "sosi",
     password: str = "sosi",
     http_get: HTTPGet | None = None,
+    include_only_features: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return feature type metadata extracted from an Enterprise Architect XMI file.
 
@@ -62,7 +63,8 @@ def load_feature_types_from_xmi(
     """
 
     text = _load_xmi_text(xmi_source, username=username, password=password, http_get=http_get)
-    return _parse_feature_types(text)
+    feature_types = _parse_feature_types(text)
+    return _filter_feature_types(feature_types, include_only_features)
 
 
 def _load_xmi_text(
@@ -167,6 +169,23 @@ def _parse_feature_types(text: str) -> list[dict[str, Any]]:
         )
 
     return feature_types
+
+
+def _filter_feature_types(
+    feature_types: list[dict[str, Any]],
+    allowed_names: Sequence[str] | None,
+) -> list[dict[str, Any]]:
+    if not allowed_names:
+        return feature_types
+    allowed = {name.strip().lower() for name in allowed_names if name.strip()}
+    if not allowed:
+        return feature_types
+    filtered: list[dict[str, Any]] = []
+    for feature_type in feature_types:
+        name = feature_type.get("name")
+        if isinstance(name, str) and name.strip().lower() in allowed:
+            filtered.append(feature_type)
+    return filtered
 
 
 def _collect_classes(
