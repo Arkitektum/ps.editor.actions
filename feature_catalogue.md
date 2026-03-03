@@ -2,8 +2,7 @@
 
 inndeling i administrative og politiske enheter innenfor fylket<br /><br />Merknad: Tilsvarer NUTS 5 og LAU 2 på internasjonalt statistisk nivå
 
-Geometri:
-- type: GM_MultiSurface
+Geometri:<br />Type: GM_MultiSurface
 
 Egenskaper
 
@@ -153,6 +152,10 @@ Egenskaper
     <tr>
       <th scope="row">Type:</th>
       <td>Kommunenummer</td>
+    </tr>
+    <tr>
+      <th scope="row">Tillatte verdier:</th>
+      <td>- Kodeliste: <a href="https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/kommunenummer">https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/kommunenummer</a></td>
     </tr>
   </tbody>
 </table>
@@ -305,8 +308,7 @@ SOSI_Fellesegenskaper
 
 Generell avgrensingslinje
 
-Geometri:
-- type: GM_Curve
+Geometri:<br />Type: GM_Curve
 
 Egenskaper
 
@@ -634,6 +636,10 @@ Egenskaper
       <th scope="row">Type:</th>
       <td>Målemetode</td>
     </tr>
+    <tr>
+      <th scope="row">Tillatte verdier:</th>
+      <td>- Kodeliste: <a href="https://register.geonorge.no/sosi-kodelister/generelle-konsepter/4.5/m%C3%A5lemetodekode">https://register.geonorge.no/sosi-kodelister/generelle-konsepter/4.5/m%C3%A5lemetodekode</a></td>
+    </tr>
   </tbody>
 </table>
 
@@ -721,8 +727,7 @@ SOSI_Fellesegenskaper
 
 administrativ inndeling av nasjonen på regionalt nivå<br /><br />Merknad: Tilsvarer NUTS 3 på internasjonalt statistisk nivå
 
-Geometri:
-- type: GM_MultiSurface
+Geometri:<br />Type: GM_MultiSurface
 
 Egenskaper
 
@@ -872,6 +877,10 @@ Egenskaper
     <tr>
       <th scope="row">Type:</th>
       <td>Fylkesnummer</td>
+    </tr>
+    <tr>
+      <th scope="row">Tillatte verdier:</th>
+      <td>- Kodeliste: <a href="https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/fylkesnummer">https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/fylkesnummer</a>?</td>
     </tr>
   </tbody>
 </table>

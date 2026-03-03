@@ -1,0 +1,138 @@
+@startuml
+title Feature catalogue
+
+skinparam backgroundColor #F5F5F5
+skinparam shadowing false
+skinparam RoundCorner 6
+skinparam ArrowColor #6C8198
+skinparam class {
+  BackgroundColor #FBF2E8
+  BorderColor #9C8578
+  FontColor #2D201A
+  HeaderBackgroundColor #EFE1D6
+  HeaderFontColor #2D201A
+  AttributeIconSize 0
+}
+skinparam note {
+  BackgroundColor #FFFFFF
+  BorderColor #6C8198
+  FontColor #2D201A
+}
+skinparam stereotypeCBackgroundColor #EAD9CE
+skinparam stereotypeCBorderColor #9C8578
+skinparam stereotypeCFontColor #2D201A
+
+class Kommune <<featureType>> {
+  + område [1] : GM_MultiSurface  ' den geografiske avgrensingen av stemmekretsen.
+  + datafangstdato [0..1] : Date  ' dato når objektet siste gang ble registrert/observert/målt i terrenget Merknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen. Ved førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.
+  + datauttaksdato [0..1] : Date  ' dato for uttak fra en database Merknad: Skiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.
+  + opphav [0..1] : CharacterString  ' referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde Merknad: Kan også beskrive navn på person og årsak til oppdatering
+  + identifikasjon [1] : Identifikasjon  ' unik identifikasjon av et objekt
+  + oppdateringsdato [1] : Date  ' tidspunkt for siste endring på objektet Merknad: Oppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).
+  + gyldigFra [0..1] : Date  ' Tidspunktet når objektet oppstod i den virkelige verden
+  + gyldigTil [0..1] : Date  ' Tidspunktet når objektet opphørte å eksistere i den virkelige verden
+  + administrativEnhetNavn [1..*] : AdministrativEnhetNavn  ' offisielt navn på en kommune, et fylke eller en nasjon
+  + kommunenummer [1] : Kommunenummer  ' nummerering av kommunen i henhold til Statistisk sentralbyrå sin offisielle liste Merknad: Det presiseres at kommune alltid skal ha 4 siffer, dvs. eventuelt med ledende null. Kommune benyttes for kopling mot en rekke andre registre som også benytter 4 siffer.
+  + kommunenavn [1] : CharacterString  ' Offisielt navn på en kommune. Merk: Hvis kommunen har flere vedtatte parallellnavn, framstår disse i en sammenhengende tekststreng.
+  + samiskForvaltningsområde [0..1] : Boolean  ' angir om kommunen er en del ac samisk forvaltningaområde
+}
+note right of Kommune
+  inndeling i administrative og politiske enheter innenfor fylket
+  Merknad: Tilsvarer NUTS 5 og LAU 2 på internasjonalt statistisk nivå
+  
+  Type: GM_MultiSurface
+end note
+
+abstract class SOSI_Objekt_flate <<featureType>> {
+  ' Ingen attributter
+}
+note right of SOSI_Objekt_flate
+  abstrakt objekttype som bærer en rekke egenskaper som er fagområde-uavhengige og kan benyttes for alle objekttyper
+  Merknad:
+  Spesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.
+end note
+
+class Grense <<featureType>> {
+  + grense [1] : GM_Curve  ' Geometri for avgrensingslinjer
+  + datafangstdato [0..1] : Date  ' dato når objektet siste gang ble registrert/observert/målt i terrenget Merknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen. Ved førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.
+  + kvalitet [0..1] : Posisjonskvalitet  ' beskrivelse av kvaliteten på stedfestingen
+  + datauttaksdato [0..1] : Date  ' dato for uttak fra en database Merknad: Skiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.
+  + opphav [0..1] : CharacterString  ' referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde Merknad: Kan også beskrive navn på person og årsak til oppdatering
+  + identifikasjon [1] : Identifikasjon  ' unik identifikasjon av et objekt
+  + oppdateringsdato [1] : Date  ' tidspunkt for siste endring på objektet Merknad: Oppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).
+  + gyldigFra [0..1] : Date  ' Tidspunktet når objektet oppstod i den virkelige verden
+  + gyldigTil [0..1] : Date  ' Tidspunktet når objektet opphørte å eksistere i den virkelige verden
+  + avgrensningstype [1] : TypeAvgrensning  ' angir type avgreisningslinje. Ulike objekter avgrenses av ulike typer grenser.
+}
+note right of Grense
+  Generell avgrensingslinje
+  
+  Type: GM_Curve
+end note
+
+abstract class SOSI_Fellesegenskaper <<featureType>> {
+  ' Ingen attributter
+}
+note right of SOSI_Fellesegenskaper
+  abstrakt objekttype som bærer sentrale egenskaper som er anbefalt for bruk i produktspesifikasjoner.
+  Merknad: Disse egenskapene skal derfor ikke modelleres inn i fagområdemodeller.
+end note
+
+abstract class SOSI_Objekt_grense <<featureType>> {
+  ' Ingen attributter
+}
+note right of SOSI_Objekt_grense
+  abstrakt objekttype som bærer en rekke egenskaper som er fagområde-uavhengige og kan benyttes for alle objekttyper
+  Merknad:
+  Spesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.
+end note
+
+class Fylke <<featureType>> {
+  + område [1] : GM_MultiSurface  ' den geografiske avgrensingen av stemmekretsen.
+  + datafangstdato [0..1] : Date  ' dato når objektet siste gang ble registrert/observert/målt i terrenget Merknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen. Ved førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.
+  + datauttaksdato [0..1] : Date  ' dato for uttak fra en database Merknad: Skiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.
+  + opphav [0..1] : CharacterString  ' referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde Merknad: Kan også beskrive navn på person og årsak til oppdatering
+  + identifikasjon [1] : Identifikasjon  ' unik identifikasjon av et objekt
+  + oppdateringsdato [1] : Date  ' tidspunkt for siste endring på objektet Merknad: Oppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).
+  + gyldigFra [0..1] : Date  ' Tidspunktet når objektet oppstod i den virkelige verden
+  + gyldigTil [0..1] : Date  ' Tidspunktet når objektet opphørte å eksistere i den virkelige verden
+  + administrativEnhetNavn [1..*] : AdministrativEnhetNavn  ' offisielt navn på en kommune, et fylke eller en nasjon
+  + fylkesnummer [1] : Fylkesnummer  ' nummerering av fylker i henhold til Statistisk sentralbyrå sin offisielle liste Merknad: Det presiseres at fylkesnummer alltid skal ha 2 sifre, dvs. eventuelt med ledende null. Fylkesnummer benyttes for kopling mot en rekke andre registre som også benytter 2 sifre.
+  + fylkesnavn [1] : CharacterString  ' Offisielt navn på et fylke. Merk: Hvis fylket har flere vedtatte parallellnavn, framstår disse i en sammenhengende tekststreng.
+  + samiskForvaltningsområde [0..1] : Boolean  ' angir om fylket er en del ac samisk forvaltningaområde
+}
+note right of Fylke
+  administrativ inndeling av nasjonen på regionalt nivå
+  Merknad: Tilsvarer NUTS 3 på internasjonalt statistisk nivå
+  
+  Type: GM_MultiSurface
+end note
+
+class AdministrativEnhetNavn {
+  + navn [1] : CharacterString  ' navnet på den administrative enheten i angitt språk.
+  + språk [1] : Språkkode  ' angir språk for det administrative navnet.
+  + rekkefølge [0..1] : Integer  ' angir presentasjonsrekkefølge i sammenstaninger av nav på administretiv enhet ved presentasjon på alle sprøkformer.
+}
+
+class Identifikasjon {
+  + lokalId [1] : CharacterString  ' lokal identifikator av et objekt Merknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.
+  + navnerom [1] : CharacterString  ' navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI Eksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0 Merknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no
+  + versjonId [0..1] : CharacterString  ' identifikasjon av en spesiell versjon av et geografisk objekt (instans)
+}
+
+class Posisjonskvalitet {
+  + målemetode [1] : Målemetode  ' metode for måling i grunnriss (x,y), og høyde (z) når metoden er den samme som ved måling i grunnriss
+  + nøyaktighet [0..1] : Integer  ' punktstandardavviket i grunnriss for punkter samt tverravvik for linjer Merknad: Oppgitt i cm
+}
+
+SOSI_Objekt_flate <|-- Kommune
+Kommune --> Grense : avgrensesAvGrense [0..*]
+SOSI_Fellesegenskaper <|-- SOSI_Objekt_flate
+SOSI_Objekt_grense <|-- Grense
+Grense --> Kommune
+Grense --> Fylke
+SOSI_Fellesegenskaper <|-- SOSI_Objekt_grense
+SOSI_Objekt_flate <|-- Fylke
+Fylke --> Grense : avgrensesAvGrense [0..*]
+
+@enduml

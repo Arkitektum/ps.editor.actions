@@ -136,95 +136,599 @@ def build_psdata(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any
 
     result = _compact_mapping(
         {
-            "identificationSection": _build_identification(metadata_id, metadata),
-            "scope": _compact_mapping(
+            "title": _select_first_string(
+                metadata.get("NorwegianTitle"), metadata.get("EnglishTitle"), metadata.get("Title")
+            ),
+            "date": _compact_mapping(
                 {
-                    "level": _normalize_string(
-                        metadata.get("HierarchyLevel") or metadata.get("Type")
-                    ),
-                    "extent": _compact_mapping(
-                        {
-                            "spatial": spatial_extent,
-                            "temporal": _build_temporal_extent(metadata),
-                        }
-                    ),
-                    "legalConstraints": _extract_legal_constraints(metadata),
+                    "creation": _parse_date(metadata.get("DatePublished")),
+                    "revision": _parse_date(metadata.get("DateUpdated")),
                 }
             ),
-            "dataContent": _build_data_content(metadata),
-            "referenceSystems": _compact_mapping(
+            "language": _normalize_string(metadata.get("DatasetLanguage")),
+            "contact": _build_top_level_contact(metadata),
+            "identificationSection": _build_identification(
+                metadata_id, metadata, spatial_extent=spatial_extent,
+            ),
+            "scopeSection": _build_scope_section(metadata),
+            "dataContentAndStructureSection": _build_data_content_section(metadata),
+            "referenceSystemSection": _compact_mapping(
                 {
-                    "spatialReferenceSystems": spatial_reference_systems,
-                    "spatialRepresentationType": _normalize_string(
-                        metadata.get("SpatialRepresentation")
-                    ),
+                    "spatialReferenceSystem": spatial_reference_systems,
                 }
             ),
-            "dataQuality": _extract_quality(metadata),
+            "dataQualitySection": _extract_quality(metadata),
             "maintenanceSection": _compact_mapping(
                 {
                     "maintenanceAndUpdateFrequency": _normalize_string(
                         metadata.get("MaintenanceFrequency")
                     ),
-                    "maintenanceNote": _normalize_string(metadata.get("SpecificUsage")),
                     "maintenanceAndUpdateStatement": _normalize_string(metadata.get("Status")),
-                    "dataAcquisitionAndProcessing": _compact_mapping(
-                        {
-                            "processStep": _build_process_steps(metadata),
-                        }
-                    ),
                 }
             ),
+            "dataCaptureAndProductionSection": _build_data_capture_section(metadata),
             "portrayal": _extract_portrayal(metadata),
-            "delivery": _compact_mapping(
-                {
-                    "distributions": _extract_distributions(metadata),
-                }
-            ),
-            "metadata": _build_metadata_section(metadata_id, metadata),
-            "links": _collect_links(metadata),
+            "deliverySection": _extract_deliveries(metadata),
+            "metadataSection": _build_metadata_section(metadata_id, metadata),
         }
     )
 
     return result
 
 
-def _build_identification(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any]:
+# ---------------------------------------------------------------------------
+# Top-level contact (specification owner)
+# ---------------------------------------------------------------------------
+
+def _build_top_level_contact(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
+    owner = metadata.get("ContactOwner")
+    if not isinstance(owner, Mapping):
+        return None
+
+    contact = _compact_mapping(
+        {
+            "individualName": _normalize_string(owner.get("Name")),
+            "organizationName": _select_first_string(
+                owner.get("Organization"), owner.get("OrganizationEnglish")
+            ),
+            "logo": _normalize_string(metadata.get("OrganizationLogoUrl")),
+            "electronicMailAddress": _normalize_string(owner.get("Email")),
+            "role": _normalize_string(owner.get("Role")),
+        }
+    )
+    return contact or None
+
+
+# ---------------------------------------------------------------------------
+# identificationSection
+# ---------------------------------------------------------------------------
+
+def _build_identification(
+    metadata_id: str,
+    metadata: Mapping[str, Any],
+    *,
+    spatial_extent: dict[str, Any] | None,
+) -> dict[str, Any]:
     keywords = _collect_keywords(metadata)
     topic_categories = _collect_topic_categories(metadata)
 
-    dates = _compact_mapping(
+    date = _compact_mapping(
         {
             "creation": _parse_date(metadata.get("DatePublished")),
             "publication": _parse_date(metadata.get("DatePublished")),
             "revision": _parse_date(metadata.get("DateUpdated")),
-            "metadata": _parse_date(metadata.get("DateMetadataUpdated")),
         }
     )
 
+    purpose_text = _normalize_string(metadata.get("Purpose"))
+    specific_usage = _normalize_string(metadata.get("SpecificUsage"))
+    purpose = _compact_mapping(
+        {
+            "summary": purpose_text,
+            "useCase": _compact_mapping(
+                {
+                    "name": "Bruksområde" if specific_usage else "",
+                    "summary": specific_usage,
+                }
+            ),
+        }
+    )
+
+    restriction = _build_restriction(metadata)
+    extent = _build_identification_extent(spatial_extent, metadata)
+
     identification = _compact_mapping(
         {
-            "id": metadata.get("Uuid") or metadata_id,
             "title": _select_first_string(
                 metadata.get("NorwegianTitle"), metadata.get("EnglishTitle"), metadata.get("Title")
             ),
             "abstract": _normalize_string(metadata.get("Abstract")),
-            "purpose": _normalize_string(metadata.get("Purpose")),
+            "purpose": purpose,
+            "topicCategory": topic_categories,
+            "spatialRepresentationType": _normalize_string(
+                metadata.get("SpatialRepresentation")
+            ),
+            "spatialResolution": _build_spatial_resolution(metadata),
+            "supplementalInformation": _normalize_string(metadata.get("SupplementalDescription")),
+            "uniqueId": metadata.get("Uuid") or metadata_id,
+            "keyword": keywords,
+            "restriction": restriction,
+            "contact": _collect_contacts(metadata),
+            "maintenance": _normalize_string(metadata.get("MaintenanceFrequency")),
+            "extent": extent,
+            "date": date,
             "language": _normalize_string(metadata.get("DatasetLanguage")),
-            "keywords": keywords,
-            "topicCategories": topic_categories,
-            "dates": dates,
-            "responsibleParties": _collect_contacts(metadata),
-            "organizationLogoUrl": _normalize_string(metadata.get("OrganizationLogoUrl")),
         }
     )
 
-    supplemental = _normalize_string(metadata.get("SupplementalDescription"))
-    if supplemental:
-        identification.setdefault("supplementalInformation", supplemental)
-
     return identification
 
+
+def _build_restriction(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
+    constraints = metadata.get("Constraints")
+    if not isinstance(constraints, Mapping):
+        return None
+
+    use_limitations = _normalize_string(constraints.get("UseLimitations"))
+    access_constraints = _normalize_string(constraints.get("AccessConstraints"))
+    use_constraints = _normalize_string(constraints.get("UseConstraints"))
+    license_text = _select_first_string(
+        constraints.get("OtherConstraintsLinkText"),
+        constraints.get("OtherConstraintsAccess"),
+    )
+    license_url = _normalize_string(constraints.get("OtherConstraintsLink"))
+    other_constraints = _normalize_string(constraints.get("OtherConstraints"))
+    security_constraints_value = _normalize_string(constraints.get("SecurityConstraints"))
+
+    # Reference from securityConstraints/userNote in metadata
+    reference = _normalize_string(constraints.get("SecurityConstraintsNote"))
+
+    restriction = _compact_mapping(
+        {
+            "resourceConstraints": _compact_mapping(
+                {
+                    "useLimitations": use_limitations,
+                }
+            ),
+            "legalConstraints": _compact_mapping(
+                {
+                    "accessConstraints": access_constraints,
+                    "useConstraints": use_constraints,
+                    "license": license_text,
+                    "licenseUrl": license_url,
+                    "otherConstraints": other_constraints,
+                    "reference": reference,
+                }
+            ),
+            "securityConstraints": _compact_mapping(
+                {
+                    "classification": security_constraints_value,
+                }
+            ),
+        }
+    )
+    return restriction or None
+
+
+def _build_spatial_resolution(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
+    resolution = metadata.get("ResolutionScale")
+    distance_value = metadata.get("ResolutionDistance")
+
+    if not resolution and not distance_value:
+        return None
+
+    distance = None
+    if distance_value:
+        distance = _compact_mapping(
+            {
+                "uom": "meter",
+                "value": distance_value,
+            }
+        )
+
+    result = _compact_mapping(
+        {
+            "distance": distance,
+            "equivalentScale": _normalize_string(resolution) if resolution else None,
+        }
+    )
+    return result or None
+
+
+def _build_identification_extent(
+    spatial_extent: dict[str, Any] | None,
+    metadata: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    geographic = None
+    if spatial_extent:
+        bbox = spatial_extent.get("boundingBox")
+        if isinstance(bbox, Mapping):
+            geographic = _compact_mapping(
+                {
+                    "westBoundLongitude": str(bbox.get("west", "")) if bbox.get("west") is not None else "",
+                    "eastBoundLongitude": str(bbox.get("east", "")) if bbox.get("east") is not None else "",
+                    "southBoundLatitude": str(bbox.get("south", "")) if bbox.get("south") is not None else "",
+                    "northBoundLatitude": str(bbox.get("north", "")) if bbox.get("north") is not None else "",
+                }
+            )
+
+    temporal = None
+    temporal_start = _parse_date(metadata.get("DatePublished"))
+    temporal_end = _parse_date(metadata.get("DateUpdated"))
+    if temporal_start or temporal_end:
+        temporal = _compact_mapping(
+            {
+                "timePeriod": _compact_mapping(
+                    {
+                        "beginPosition": temporal_start or temporal_end,
+                        "endPosition": temporal_end or temporal_start,
+                    }
+                ),
+            }
+        )
+
+    extent = _compact_mapping(
+        {
+            "geographicElement": geographic,
+            "temporalElement": temporal,
+        }
+    )
+    return extent or None
+
+
+# ---------------------------------------------------------------------------
+# scopeSection
+# ---------------------------------------------------------------------------
+
+def _build_scope_section(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | None:
+    level = _normalize_string(metadata.get("HierarchyLevel") or metadata.get("Type"))
+    spatial_scope = _normalize_string(metadata.get("SpatialScope"))
+
+    if not level:
+        return None
+
+    scope_entry = _compact_mapping(
+        {
+            "specificationScope": _compact_mapping(
+                {
+                    "scopeIdentification": "hele datasettet",
+                    "level": level,
+                    "levelName": "",
+                    "levelDescription": "",
+                    "extent": _compact_mapping(
+                        {
+                            "description": spatial_scope,
+                        }
+                    ),
+                }
+            ),
+        }
+    )
+
+    return [scope_entry] if scope_entry else None
+
+
+# ---------------------------------------------------------------------------
+# dataContentAndStructureSection
+# ---------------------------------------------------------------------------
+
+def _build_data_content_section(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
+    specific_usage = _normalize_string(metadata.get("SpecificUsage"))
+
+    if not specific_usage:
+        return None
+
+    return _compact_mapping(
+        {
+            "narrativeDescription": specific_usage,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# dataQualitySection
+# ---------------------------------------------------------------------------
+
+def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
+    elements: list[dict[str, Any]] = []
+
+    quality_specs = metadata.get("QualitySpecifications")
+    if isinstance(quality_specs, Sequence) and not isinstance(quality_specs, (str, bytes)):
+        for spec in quality_specs:
+            if not isinstance(spec, Mapping):
+                continue
+            explanation = _normalize_string(spec.get("Explanation"))
+            quantitative_result = _normalize_string(spec.get("QuantitativeResult"))
+            entry = _compact_mapping(
+                {
+                    "nameOfMeasure": _normalize_string(spec.get("Title")),
+                    "measureDescription": explanation,
+                    "descriptiveResult": explanation if not quantitative_result else None,
+                    "result": quantitative_result,
+                }
+            )
+            if entry:
+                elements.append(entry)
+
+    quantitative = metadata.get("QuantitativeResult")
+    if isinstance(quantitative, Mapping):
+        for key, value in quantitative.items():
+            entry = _compact_mapping(
+                {
+                    "nameOfMeasure": _normalize_string(key),
+                    "result": _normalize_string(value),
+                }
+            )
+            if entry:
+                elements.append(entry)
+
+    lineage_statement = _normalize_string(metadata.get("SupplementalDescription"))
+
+    result = _compact_mapping(
+        {
+            "scope": _compact_mapping(
+                {
+                    "level": _normalize_string(
+                        metadata.get("HierarchyLevel") or metadata.get("Type")
+                    )
+                }
+            ),
+            "report": elements if elements else None,
+            "resourceLineage": _compact_mapping({"statement": lineage_statement}),
+        }
+    )
+
+    return result if result else None
+
+
+# ---------------------------------------------------------------------------
+# dataCaptureAndProductionSection
+# ---------------------------------------------------------------------------
+
+def _build_data_capture_section(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
+    process_steps = _build_process_steps(metadata)
+    if not process_steps:
+        return None
+
+    return _compact_mapping(
+        {
+            "DataAcquisitionAndProcessing": _compact_mapping(
+                {
+                    "processStep": process_steps,
+                }
+            ),
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# portrayal
+# ---------------------------------------------------------------------------
+
+def _extract_portrayal(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
+    legend_url = _normalize_string(metadata.get("LegendDescriptionUrl"))
+
+    portrayal = _compact_mapping(
+        {
+            "name": "Tegneregler" if legend_url else "",
+            "linkage": legend_url,
+        }
+    )
+    return portrayal or None
+
+
+# ---------------------------------------------------------------------------
+# deliverySection
+# ---------------------------------------------------------------------------
+
+def _extract_deliveries(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | None:
+    deliveries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add_delivery(entry: dict[str, Any] | None) -> None:
+        if not entry:
+            return
+        key = json.dumps(entry, sort_keys=True, ensure_ascii=False)
+        if key in seen:
+            return
+        seen.add(key)
+        deliveries.append(entry)
+
+    # Top-level distribution fields
+    protocol = _normalize_string(metadata.get("DistributionProtocol"))
+    distribution_url = _normalize_string(metadata.get("DistributionUrl"))
+    download_url = _normalize_string(metadata.get("DownloadUrl"))
+
+    if protocol or distribution_url or download_url:
+        delivery = _compact_mapping(
+            {
+                "delivery": _compact_mapping(
+                    {
+                        "deliveryMedium": _compact_mapping(
+                            {
+                                "deliveryMediumName": protocol or "",
+                                "deliveryService": _compact_mapping(
+                                    {
+                                        "serviceEndpoint": distribution_url or download_url,
+                                        "serviceProperty": _compact_mapping(
+                                            {
+                                                "type": protocol,
+                                                "value": protocol,
+                                            }
+                                        ),
+                                    }
+                                ),
+                            }
+                        ),
+                    }
+                ),
+            }
+        )
+        add_delivery(delivery)
+
+    # DistributionDetails
+    details = metadata.get("DistributionDetails")
+    if isinstance(details, Mapping):
+        detail_protocol = _normalize_string(details.get("Protocol"))
+        detail_url = _normalize_string(details.get("URL"))
+        detail_name = _normalize_string(details.get("ProtocolName"))
+        delivery = _compact_mapping(
+            {
+                "delivery": _compact_mapping(
+                    {
+                        "deliveryMedium": _compact_mapping(
+                            {
+                                "deliveryMediumName": detail_name,
+                                "deliveryService": _compact_mapping(
+                                    {
+                                        "serviceEndpoint": detail_url,
+                                        "serviceProperty": _compact_mapping(
+                                            {
+                                                "type": detail_name,
+                                                "value": detail_protocol,
+                                            }
+                                        ),
+                                    }
+                                ),
+                            }
+                        ),
+                    }
+                ),
+            }
+        )
+        add_delivery(delivery)
+
+    # Nested Distributions
+    nested = metadata.get("Distributions")
+    if isinstance(nested, Mapping):
+        for group in DISTRIBUTION_GROUPS:
+            items = nested.get(group)
+            if not isinstance(items, Sequence) or isinstance(items, (str, bytes)):
+                continue
+            for item in items:
+                if not isinstance(item, Mapping):
+                    continue
+                format_name = _extract_distribution_format(item.get("DistributionFormats"))
+                format_version = _extract_distribution_format_version(item.get("DistributionFormats"))
+                access_href = _normalize_string(
+                    item.get("DistributionUrl") or item.get("MapUrl")
+                )
+                item_protocol = _normalize_string(item.get("Protocol"))
+                item_title = _normalize_string(item.get("Title"))
+
+                delivery_format = None
+                if format_name:
+                    delivery_format = [
+                        _compact_mapping(
+                            {
+                                "formatName": format_name,
+                                "version": format_version or "",
+                            }
+                        )
+                    ]
+
+                delivery = _compact_mapping(
+                    {
+                        "delivery": _compact_mapping(
+                            {
+                                "deliveryMedium": _compact_mapping(
+                                    {
+                                        "deliveryMediumName": item_title,
+                                        "deliveryService": _compact_mapping(
+                                            {
+                                                "serviceEndpoint": access_href,
+                                                "serviceProperty": _compact_mapping(
+                                                    {
+                                                        "type": item_title,
+                                                        "value": item_protocol,
+                                                    }
+                                                ),
+                                            }
+                                        ),
+                                    }
+                                ),
+                                "deliveryFormat": delivery_format,
+                                "deliveryScope": _normalize_string(item.get("TypeTranslated")),
+                            }
+                        ),
+                    }
+                )
+                add_delivery(delivery)
+
+    return deliveries if deliveries else None
+
+
+def _extract_distribution_format_version(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        return _normalize_string(value.get("Version")) or None
+
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for item in value:
+            extracted = _extract_distribution_format_version(item)
+            if extracted:
+                return extracted
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# metadataSection
+# ---------------------------------------------------------------------------
+
+def _build_metadata_section(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any]:
+    contact = None
+    metadata_contact = metadata.get("ContactMetadata")
+    if isinstance(metadata_contact, Mapping):
+        contact = _compact_mapping(
+            {
+                "organizationName": _normalize_string(
+                    metadata_contact.get("Organization")
+                    or metadata_contact.get("OrganizationEnglish")
+                ),
+                "individualName": _normalize_string(metadata_contact.get("Name")),
+                "logo": _normalize_string(metadata.get("OrganizationLogoUrl")),
+                "electronicMailAddress": _normalize_string(metadata_contact.get("Email")),
+                "role": _normalize_string(metadata_contact.get("Role")),
+            }
+        )
+
+    uuid = metadata.get("Uuid") or metadata_id
+    metadata_xml = _normalize_string(metadata.get("MetadataXmlUrl"))
+    landing_page = _normalize_string(
+        metadata.get("LandingPage")
+        or metadata.get("LandingPageUrl")
+        or metadata.get("Landingpage")
+    )
+
+    metadata_identifier = _compact_mapping(
+        {
+            "authority": "Geonorge",
+            "code": uuid,
+            "codeSpace": "https://kartkatalog.geonorge.no/metadata/",
+            "metadataLinkage": landing_page or f"https://kartkatalog.geonorge.no/metadata/{uuid}",
+        }
+    )
+
+    links = _collect_links(metadata)
+
+    metadata_section = _compact_mapping(
+        {
+            "metadataStandard": _normalize_string(metadata.get("MetadataStandard")),
+            "metadataStandardVersion": _normalize_string(metadata.get("MetadataStandardVersion")),
+            "metadataDate": _parse_date(metadata.get("DateMetadataUpdated")),
+            "language": _normalize_string(metadata.get("MetadataLanguage")),
+            "contact": contact,
+            "metadataIdentifier": metadata_identifier,
+            "links": links if links else None,
+        }
+    )
+
+    return metadata_section
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
 
 def _build_process_steps(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | None:
     raw = metadata.get("ProcessHistory")
@@ -280,112 +784,96 @@ def _build_process_steps(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | 
     return None
 
 
-def _build_temporal_extent(metadata: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    temporal_start = _parse_date(metadata.get("DatePublished"))
-    temporal_end = _parse_date(metadata.get("DateUpdated"))
+def _extract_spatial_extent(
+    metadata: Mapping[str, Any], *, default_crs: str | None
+) -> dict[str, Any] | None:
+    extent: dict[str, Any] = {}
 
-    if not temporal_start and not temporal_end:
-        return None
+    scope_description = _normalize_string(metadata.get("SpatialScope"))
+    if scope_description:
+        extent["spatialScope"] = scope_description
 
-    interval = [
-        temporal_start or temporal_end,
-        temporal_end or temporal_start,
-    ]
-
-    if interval[0] == interval[1]:
-        interval = [interval[0], interval[1]] if interval[0] else []
-
-    return _compact_mapping({"interval": [interval] if interval else None})
-
-
-def _build_data_content(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
-    feature_catalogue = None
-    if isinstance(metadata.get("OperatesOn"), Sequence) and not isinstance(
-        metadata.get("OperatesOn"), (str, bytes)
-    ):
-        feature_catalogue = [
-            _compact_mapping({
-                "title": _normalize_string(item.get("Title")),
-                "identifier": _normalize_string(item.get("Uuid")),
-            })
-            for item in metadata["OperatesOn"]
-            if isinstance(item, Mapping)
-        ]
-        feature_catalogue = [item for item in feature_catalogue if item]
-
-    if not feature_catalogue and metadata.get("OperatesOn") and isinstance(
-        metadata.get("OperatesOn"), Mapping
-    ):
-        item = metadata["OperatesOn"]
-        feature_catalogue = [
-            _compact_mapping(
-                {
-                    "title": _normalize_string(item.get("Title")),
-                    "identifier": _normalize_string(item.get("Uuid")),
-                }
-            )
-        ]
-        feature_catalogue = [entry for entry in feature_catalogue if entry]
-
-    specific_usage = _normalize_string(metadata.get("SpecificUsage"))
-
-    if not feature_catalogue and not specific_usage:
-        return None
-
-    return _compact_mapping(
-        {
-            "featureCatalogue": feature_catalogue,
-            "usage": specific_usage,
-        }
-    )
-
-
-def _build_metadata_section(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any]:
-    point_of_contact = None
-    metadata_contact = metadata.get("ContactMetadata")
-    if isinstance(metadata_contact, Mapping):
-        point_of_contact = _compact_mapping(
-            {
-                "organization": _normalize_string(
-                    metadata_contact.get("Organization")
-                    or metadata_contact.get("OrganizationEnglish")
-                ),
-                "email": _normalize_string(metadata_contact.get("Email")),
-                "role": _normalize_string(metadata_contact.get("Role")),
+    bbox = metadata.get("BoundingBox")
+    if isinstance(bbox, Mapping):
+        try:
+            west = float(bbox.get("WestBoundLongitude"))
+            south = float(bbox.get("SouthBoundLatitude"))
+            east = float(bbox.get("EastBoundLongitude"))
+            north = float(bbox.get("NorthBoundLatitude"))
+        except (TypeError, ValueError):  # pragma: no cover - invalid bounding box
+            west = south = east = north = None
+        else:
+            extent["bbox"] = [west, south, east, north]
+            bounding_box: dict[str, Any] = {
+                "west": west,
+                "south": south,
+                "east": east,
+                "north": north,
             }
-        )
 
-    identifiers = [
-        _compact_mapping({
-            "authority": "geonorge",
-            "code": metadata.get("Uuid") or metadata_id,
-        })
-    ]
+            crs = default_crs
+            if not crs:
+                reference_system = metadata.get("ReferenceSystem")
+                if isinstance(reference_system, Mapping):
+                    crs = _extract_epsg_code(reference_system.get("CoordinateSystemUrl")) or _normalize_string(
+                        reference_system.get("CoordinateSystem")
+                    )
+                else:
+                    crs = _normalize_string(reference_system)
 
-    metadata_section = _compact_mapping(
-        {
-            "standard": _normalize_string(metadata.get("MetadataStandard")),
-            "standardVersion": _normalize_string(metadata.get("MetadataStandardVersion")),
-            "metadataDate": _parse_date(metadata.get("DateMetadataUpdated")),
-            "language": _normalize_string(metadata.get("MetadataLanguage")),
-            "pointOfContact": point_of_contact,
-            "identifiers": [identifier for identifier in identifiers if identifier],
-        }
-    )
+            if isinstance(crs, str) and crs:
+                bounding_box["crs"] = crs
 
-    metadata_xml = _normalize_string(metadata.get("MetadataXmlUrl"))
-    if metadata_xml:
-        metadata_section.setdefault("metadataUrl", metadata_xml)
+            extent["boundingBox"] = bounding_box
 
-    landing_page = _normalize_string(
-        metadata.get("LandingPage")
-        or metadata.get("LandingPageUrl")
-        or metadata.get("Landingpage")
-    )
-    if landing_page:
-        metadata_section.setdefault("landingPage", landing_page)
+    return extent or None
 
-    return metadata_section
+
+def _extract_reference_systems(
+    metadata: Mapping[str, Any]
+) -> tuple[list[dict[str, Any]], str | None]:
+    systems: list[dict[str, Any]] = []
+    primary_code: str | None = None
+
+    candidates = []
+    reference_systems = metadata.get("ReferenceSystems")
+    if isinstance(reference_systems, Sequence) and not isinstance(
+        reference_systems, (str, bytes)
+    ):
+        candidates.extend(reference_systems)
+
+    reference_system = metadata.get("ReferenceSystem")
+    if isinstance(reference_system, Mapping):
+        candidates.append(reference_system)
+
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        code = _extract_epsg_code(candidate.get("CoordinateSystemUrl"))
+        name = _normalize_string(candidate.get("CoordinateSystem"))
+        entry = _compact_mapping({"code": code, "name": name})
+        if entry:
+            systems.append(entry)
+            if primary_code is None and code:
+                primary_code = code
+
+    return systems, primary_code
+
+
+def _extract_epsg_code(url: Any) -> str | None:
+    text = _normalize_string(url)
+    if not text:
+        return None
+
+    parts = text.rstrip("/").split("/")
+    if not parts:
+        return None
+
+    candidate = parts[-1]
+    if candidate.isdigit():
+        return f"EPSG:{candidate}"
+
+    return text
 
 
 def _collect_keywords(metadata: Mapping[str, Any]) -> list[str]:
@@ -466,11 +954,11 @@ def _collect_contacts(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
 
         entry = _compact_mapping(
             {
-                "name": _normalize_string(value.get("Name")),
-                "organization": _select_first_string(
+                "individualName": _normalize_string(value.get("Name")),
+                "organizationName": _select_first_string(
                     value.get("Organization"), value.get("OrganizationEnglish")
                 ),
-                "email": _normalize_string(value.get("Email")),
+                "electronicMailAddress": _normalize_string(value.get("Email")),
                 "role": _normalize_string(value.get("Role")),
             }
         )
@@ -478,285 +966,6 @@ def _collect_contacts(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
             contacts.append(entry)
 
     return contacts
-
-
-def _extract_spatial_extent(
-    metadata: Mapping[str, Any], *, default_crs: str | None
-) -> dict[str, Any] | None:
-    extent: dict[str, Any] = {}
-
-    scope_description = _normalize_string(metadata.get("SpatialScope"))
-    if scope_description:
-        extent["spatialScope"] = scope_description
-
-    bbox = metadata.get("BoundingBox")
-    if isinstance(bbox, Mapping):
-        try:
-            west = float(bbox.get("WestBoundLongitude"))
-            south = float(bbox.get("SouthBoundLatitude"))
-            east = float(bbox.get("EastBoundLongitude"))
-            north = float(bbox.get("NorthBoundLatitude"))
-        except (TypeError, ValueError):  # pragma: no cover - invalid bounding box
-            west = south = east = north = None
-        else:
-            extent["bbox"] = [west, south, east, north]
-            bounding_box: dict[str, Any] = {
-                "west": west,
-                "south": south,
-                "east": east,
-                "north": north,
-            }
-
-            crs = default_crs
-            if not crs:
-                reference_system = metadata.get("ReferenceSystem")
-                if isinstance(reference_system, Mapping):
-                    crs = _extract_epsg_code(reference_system.get("CoordinateSystemUrl")) or _normalize_string(
-                        reference_system.get("CoordinateSystem")
-                    )
-                else:
-                    crs = _normalize_string(reference_system)
-
-            if isinstance(crs, str) and crs:
-                bounding_box["crs"] = crs
-
-            extent["boundingBox"] = bounding_box
-
-    return extent or None
-
-
-def _extract_portrayal(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
-    portrayal = _compact_mapping(
-        {
-            "styleReferences": _normalize_sequence(metadata.get("StyleReferences")),
-            "defaultPortrayalNote": _normalize_string(metadata.get("DefaultPortrayal")),
-            "legendDescriptionUrl": _normalize_string(metadata.get("LegendDescriptionUrl")),
-        }
-    )
-    return portrayal or None
-
-
-def _extract_reference_systems(
-    metadata: Mapping[str, Any]
-) -> tuple[list[dict[str, Any]], str | None]:
-    systems: list[dict[str, Any]] = []
-    primary_code: str | None = None
-
-    candidates = []
-    reference_systems = metadata.get("ReferenceSystems")
-    if isinstance(reference_systems, Sequence) and not isinstance(
-        reference_systems, (str, bytes)
-    ):
-        candidates.extend(reference_systems)
-
-    reference_system = metadata.get("ReferenceSystem")
-    if isinstance(reference_system, Mapping):
-        candidates.append(reference_system)
-
-    for candidate in candidates:
-        if not isinstance(candidate, Mapping):
-            continue
-        code = _extract_epsg_code(candidate.get("CoordinateSystemUrl"))
-        name = _normalize_string(candidate.get("CoordinateSystem"))
-        entry = _compact_mapping({"code": code, "name": name})
-        if entry:
-            systems.append(entry)
-            if primary_code is None and code:
-                primary_code = code
-
-    return systems, primary_code
-
-
-def _extract_epsg_code(url: Any) -> str | None:
-    text = _normalize_string(url)
-    if not text:
-        return None
-
-    parts = text.rstrip("/").split("/")
-    if not parts:
-        return None
-
-    candidate = parts[-1]
-    if candidate.isdigit():
-        return f"EPSG:{candidate}"
-
-    return text
-
-
-def _extract_legal_constraints(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
-    constraints = metadata.get("Constraints")
-    if not isinstance(constraints, Mapping):
-        return None
-
-    return _compact_mapping(
-        {
-            "useLimitation": _normalize_string(constraints.get("UseLimitations")),
-            "accessConstraints": _normalize_string(constraints.get("AccessConstraints")),
-            "useConstraints": _normalize_string(constraints.get("UseConstraints")),
-            "license": _select_first_string(
-                constraints.get("OtherConstraintsLinkText"),
-                constraints.get("OtherConstraintsAccess"),
-            ),
-            "licenseUrl": _normalize_string(constraints.get("OtherConstraintsLink")),
-            "securityConstraints": _normalize_string(
-                constraints.get("SecurityConstraints")
-            ),
-        }
-    )
-
-
-def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
-    elements: list[dict[str, Any]] = []
-
-    quality_specs = metadata.get("QualitySpecifications")
-    if isinstance(quality_specs, Sequence) and not isinstance(quality_specs, (str, bytes)):
-        for spec in quality_specs:
-            if not isinstance(spec, Mapping):
-                continue
-            entry = _compact_mapping(
-                {
-                    "name": _normalize_string(spec.get("Title")),
-                    "measure": _normalize_string(spec.get("Explanation")),
-                    "result": _normalize_string(spec.get("QuantitativeResult")),
-                }
-            )
-            if entry:
-                elements.append(entry)
-
-    quantitative = metadata.get("QuantitativeResult")
-    if isinstance(quantitative, Mapping):
-        for key, value in quantitative.items():
-            entry = _compact_mapping(
-                {
-                    "name": _normalize_string(key),
-                    "result": _normalize_string(value),
-                }
-            )
-            if entry:
-                elements.append(entry)
-
-    lineage_statement = _normalize_string(metadata.get("SupplementalDescription"))
-
-    result = _compact_mapping(
-        {
-            "scope": _compact_mapping(
-                {
-                    "level": _normalize_string(
-                        metadata.get("HierarchyLevel") or metadata.get("Type")
-                    )
-                }
-            ),
-            "qualityElements": elements if elements else None,
-            "lineage": _compact_mapping({"statement": lineage_statement}),
-        }
-    )
-
-    return result if result else None
-
-
-def _extract_distributions(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
-    distributions: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str, str]] = set()
-
-    def add_distribution(entry: Mapping[str, Any] | None) -> None:
-        if not entry:
-            return
-        key = _distribution_key(entry)
-        if key in seen:
-            return
-        seen.add(key)
-        distributions.append(dict(entry))
-
-    protocol = _normalize_string(metadata.get("DistributionProtocol"))
-    distribution_url = _normalize_string(metadata.get("DistributionUrl"))
-    download_url = _normalize_string(metadata.get("DownloadUrl"))
-
-    if protocol or distribution_url or download_url:
-        add_distribution(
-            _compact_mapping(
-                {
-                    "format": _compact_mapping({"format": protocol}),
-                    "access": _compact_mapping(
-                        {
-                            "href": distribution_url or download_url,
-                            "protocol": protocol,
-                        }
-                    ),
-                }
-            )
-        )
-
-    details = metadata.get("DistributionDetails")
-    if isinstance(details, Mapping):
-        add_distribution(
-            _compact_mapping(
-                {
-                    "title": _normalize_string(details.get("ProtocolName")),
-                    "format": _compact_mapping(
-                        {"format": _normalize_string(details.get("ProtocolName"))}
-                    ),
-                    "access": _compact_mapping(
-                        {
-                            "href": _normalize_string(details.get("URL")),
-                            "protocol": _normalize_string(details.get("Protocol")),
-                        }
-                    ),
-                }
-            )
-        )
-
-    nested = metadata.get("Distributions")
-    if isinstance(nested, Mapping):
-        for group in DISTRIBUTION_GROUPS:
-            items = nested.get(group)
-            if not isinstance(items, Sequence) or isinstance(items, (str, bytes)):
-                continue
-            for item in items:
-                if not isinstance(item, Mapping):
-                    continue
-                format_name = _extract_distribution_format(item.get("DistributionFormats"))
-                access_href = _normalize_string(
-                    item.get("DistributionUrl") or item.get("MapUrl")
-                )
-                entry = _compact_mapping(
-                    {
-                        "title": _normalize_string(item.get("Title")),
-                        "format": _compact_mapping({"format": format_name}),
-                        "access": _compact_mapping(
-                            {
-                                "href": access_href,
-                                "protocol": _normalize_string(item.get("Protocol")),
-                                "license": _normalize_string(item.get("DataAccess")),
-                            }
-                        ),
-                        "notes": _normalize_string(item.get("TypeTranslated")),
-                    }
-                )
-                add_distribution(entry)
-
-    return [entry for entry in distributions if entry]
-
-
-def _distribution_key(entry: Mapping[str, Any]) -> tuple[str, str, str, str]:
-    access = entry.get("access")
-    if isinstance(access, Mapping):
-        href = _normalize_string(access.get("href"))
-        protocol = _normalize_string(access.get("protocol"))
-    else:
-        href = None
-        protocol = None
-    fmt = entry.get("format")
-    if isinstance(fmt, Mapping):
-        fmt_value = _normalize_string(fmt.get("format"))
-    else:
-        fmt_value = _normalize_string(fmt)
-    title = _normalize_string(entry.get("title"))
-    return (
-        href or "",
-        protocol or "",
-        fmt_value or "",
-        title or "",
-    )
 
 
 def _extract_distribution_format(value: Any) -> str | None:
@@ -832,6 +1041,10 @@ def _collect_links(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
 
     return links
 
+
+# ---------------------------------------------------------------------------
+# Utility functions
+# ---------------------------------------------------------------------------
 
 def _select_first_string(*values: Any) -> str:
     for value in values:

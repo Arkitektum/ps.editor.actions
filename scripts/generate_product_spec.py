@@ -383,13 +383,26 @@ def generate_product_specification(
     if scopes:
         scope_level = _format_scope_level(scopes)
         if scope_level:
-            scope_value = psdata.get("scope")
-            if isinstance(scope_value, Mapping):
-                scope_value = dict(scope_value)
+            scope_section = psdata.get("scopeSection")
+            if not isinstance(scope_section, list):
+                scope_section = []
+            # Inject the formatted scope level text into the first scope entry
+            if scope_section and isinstance(scope_section[0], Mapping):
+                first = dict(scope_section[0])
+                spec_scope = first.get("specificationScope")
+                if isinstance(spec_scope, Mapping):
+                    spec_scope = dict(spec_scope)
+                    spec_scope["levelDescription"] = scope_level
+                    first["specificationScope"] = spec_scope
+                scope_section[0] = first
             else:
-                scope_value = {}
-            scope_value["level"] = scope_level
-            psdata["scope"] = scope_value
+                scope_section.insert(0, {
+                    "specificationScope": {
+                        "scopeIdentification": "hele datasettet",
+                        "levelDescription": scope_level,
+                    }
+                })
+            psdata["scopeSection"] = scope_section
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
         ogc_feature_types = load_feature_types(ogc_feature_api)
