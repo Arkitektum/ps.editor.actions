@@ -534,71 +534,17 @@ def _extract_deliveries(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | N
         seen.add(key)
         deliveries.append(entry)
 
-    # Top-level distribution fields
-    protocol = _normalize_string(metadata.get("DistributionProtocol"))
-    distribution_url = _normalize_string(metadata.get("DistributionUrl"))
-    download_url = _normalize_string(metadata.get("DownloadUrl"))
+    units_of_distribution = _normalize_string(metadata.get("UnitsOfDistribution"))
 
-    if protocol or distribution_url or download_url:
-        delivery = _compact_mapping(
-            {
-                "delivery": _compact_mapping(
-                    {
-                        "deliveryMedium": _compact_mapping(
-                            {
-                                "deliveryMediumName": protocol or "",
-                                "deliveryService": _compact_mapping(
-                                    {
-                                        "serviceEndpoint": distribution_url or download_url,
-                                        "serviceProperty": _compact_mapping(
-                                            {
-                                                "type": protocol,
-                                                "value": protocol,
-                                            }
-                                        ),
-                                    }
-                                ),
-                            }
-                        ),
-                    }
-                ),
-            }
-        )
-        add_delivery(delivery)
+    # Prefer DistributionsFormats (rich, grouped by protocol+format)
+    dist_formats = metadata.get("DistributionsFormats")
+    if isinstance(dist_formats, Sequence) and not isinstance(dist_formats, (str, bytes)) and dist_formats:
+        _build_deliveries_from_distributions_formats(dist_formats, units_of_distribution, add_delivery)
+    else:
+        # Fallback to top-level distribution fields
+        _build_deliveries_from_top_level(metadata, units_of_distribution, add_delivery)
 
-    # DistributionDetails
-    details = metadata.get("DistributionDetails")
-    if isinstance(details, Mapping):
-        detail_protocol = _normalize_string(details.get("Protocol"))
-        detail_url = _normalize_string(details.get("URL"))
-        detail_name = _normalize_string(details.get("ProtocolName"))
-        delivery = _compact_mapping(
-            {
-                "delivery": _compact_mapping(
-                    {
-                        "deliveryMedium": _compact_mapping(
-                            {
-                                "deliveryMediumName": detail_name,
-                                "deliveryService": _compact_mapping(
-                                    {
-                                        "serviceEndpoint": detail_url,
-                                        "serviceProperty": _compact_mapping(
-                                            {
-                                                "type": detail_name,
-                                                "value": detail_protocol,
-                                            }
-                                        ),
-                                    }
-                                ),
-                            }
-                        ),
-                    }
-                ),
-            }
-        )
-        add_delivery(delivery)
-
-    # Nested Distributions
+    # Nested Distributions (services like WMS, WFS etc.)
     nested = metadata.get("Distributions")
     if isinstance(nested, Mapping):
         for group in DISTRIBUTION_GROUPS:
@@ -656,6 +602,131 @@ def _extract_deliveries(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | N
                 add_delivery(delivery)
 
     return deliveries if deliveries else None
+
+
+def _build_deliveries_from_distributions_formats(
+    dist_formats: Sequence[Any],
+    units_of_distribution: str,
+    add_delivery: Callable[[dict[str, Any] | None], None],
+) -> None:
+    """Build delivery entries from the rich DistributionsFormats array.
+
+    Groups entries by (ProtocolName, URL, Protocol) so each unique service
+    endpoint becomes one delivery with multiple formats.
+    """
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    group_meta: dict[tuple[str, str, str], dict[str, str]] = {}
+
+    for item in dist_formats:
+        if not isinstance(item, Mapping):
+            continue
+        protocol_name = _normalize_string(item.get("ProtocolName"))
+        url = _normalize_string(item.get("URL"))
+        protocol = _normalize_string(item.get("Protocol"))
+        format_name = _normalize_string(item.get("FormatName"))
+        version = _normalize_string(item.get("Version"))
+        units = _normalize_string(item.get("UnitsOfDistribution")) or units_of_distribution
+
+        key = (protocol_name, url, protocol)
+        if key not in groups:
+            groups[key] = []
+            group_meta[key] = {"units": units}
+
+        if format_name:
+            groups[key].append(
+                _compact_mapping({"formatName": format_name, "version": version})
+            )
+
+    for key, formats in groups.items():
+        protocol_name, url, protocol = key
+        units = group_meta[key].get("units", "")
+
+        delivery = _compact_mapping(
+            {
+                "delivery": _compact_mapping(
+                    {
+                        "deliveryMedium": _compact_mapping(
+                            {
+                                "unitsOfDelivery": units,
+                                "deliveryMediumName": protocol_name,
+                                "deliveryService": _compact_mapping(
+                                    {
+                                        "serviceEndpoint": url,
+                                        "serviceProperty": _compact_mapping(
+                                            {
+                                                "type": protocol_name,
+                                                "value": protocol,
+                                            }
+                                        ),
+                                    }
+                                ),
+                            }
+                        ),
+                        "deliveryFormat": formats if formats else None,
+                    }
+                ),
+            }
+        )
+        add_delivery(delivery)
+
+
+def _build_deliveries_from_top_level(
+    metadata: Mapping[str, Any],
+    units_of_distribution: str,
+    add_delivery: Callable[[dict[str, Any] | None], None],
+) -> None:
+    """Fallback: build delivery entries from top-level distribution fields."""
+    protocol = _normalize_string(metadata.get("DistributionProtocol"))
+    distribution_url = _normalize_string(metadata.get("DistributionUrl"))
+    download_url = _normalize_string(metadata.get("DownloadUrl"))
+
+    # Collect top-level DistributionFormats for format list
+    top_formats: list[dict[str, Any]] = []
+    raw_formats = metadata.get("DistributionFormats")
+    if isinstance(raw_formats, Sequence) and not isinstance(raw_formats, (str, bytes)):
+        seen_names: set[str] = set()
+        for fmt in raw_formats:
+            if isinstance(fmt, Mapping):
+                name = _normalize_string(fmt.get("Name"))
+                if name and name not in seen_names:
+                    seen_names.add(name)
+                    top_formats.append(
+                        _compact_mapping({"formatName": name, "version": _normalize_string(fmt.get("Version"))})
+                    )
+
+    if protocol or distribution_url or download_url:
+        details = metadata.get("DistributionDetails")
+        detail_name = ""
+        if isinstance(details, Mapping):
+            detail_name = _normalize_string(details.get("ProtocolName"))
+
+        delivery = _compact_mapping(
+            {
+                "delivery": _compact_mapping(
+                    {
+                        "deliveryMedium": _compact_mapping(
+                            {
+                                "unitsOfDelivery": units_of_distribution,
+                                "deliveryMediumName": detail_name or protocol or "",
+                                "deliveryService": _compact_mapping(
+                                    {
+                                        "serviceEndpoint": distribution_url or download_url,
+                                        "serviceProperty": _compact_mapping(
+                                            {
+                                                "type": detail_name or protocol,
+                                                "value": protocol,
+                                            }
+                                        ),
+                                    }
+                                ),
+                            }
+                        ),
+                        "deliveryFormat": top_formats if top_formats else None,
+                    }
+                ),
+            }
+        )
+        add_delivery(delivery)
 
 
 def _extract_distribution_format_version(value: Any) -> str | None:
@@ -796,10 +867,10 @@ def _extract_spatial_extent(
     bbox = metadata.get("BoundingBox")
     if isinstance(bbox, Mapping):
         try:
-            west = float(bbox.get("WestBoundLongitude"))
-            south = float(bbox.get("SouthBoundLatitude"))
-            east = float(bbox.get("EastBoundLongitude"))
-            north = float(bbox.get("NorthBoundLatitude"))
+            west = _parse_coordinate(bbox.get("WestBoundLongitude"))
+            south = _parse_coordinate(bbox.get("SouthBoundLatitude"))
+            east = _parse_coordinate(bbox.get("EastBoundLongitude"))
+            north = _parse_coordinate(bbox.get("NorthBoundLatitude"))
         except (TypeError, ValueError):  # pragma: no cover - invalid bounding box
             west = south = east = north = None
         else:
@@ -1045,6 +1116,14 @@ def _collect_links(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
+
+def _parse_coordinate(value: Any) -> float:
+    """Parse a coordinate value, handling both dot and comma decimal separators."""
+    text = _normalize_string(value)
+    if not text:
+        raise ValueError("Empty coordinate value")
+    return float(text.replace(",", "."))
+
 
 def _select_first_string(*values: Any) -> str:
     for value in values:
