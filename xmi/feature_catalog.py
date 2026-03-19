@@ -155,7 +155,7 @@ def _parse_feature_types(text: str) -> list[dict[str, Any]]:
     feature_types: list[dict[str, Any]] = []
     for class_id in order:
         info = classes[class_id]
-        if info.stereotype != "FeatureType":
+        if not info.stereotype or info.stereotype.lower() != "featuretype":
             continue
         feature_types.append(
             _build_feature_type(
@@ -399,22 +399,23 @@ def _collect_attributes_with_inheritance(
     classes_by_id: Mapping[str, _UmlClass],
     parents: Mapping[str, Sequence[str]],
 ) -> list[_UmlAttribute]:
-    info = classes_by_id.get(class_id)
-    if not info:
-        return []
-    # Only include attributes declared directly on the class; inheritance is captured separately
-    direct_attrs: list[_UmlAttribute] = []
+    chain = _build_inheritance_chain(class_id, parents)
+    all_attrs: list[_UmlAttribute] = []
     positions: dict[str, int] = {}
-    for attribute in info.attributes:
-        key = _attribute_display_name(attribute)
-        if not key:
+    for ancestor_id in chain:
+        ancestor = classes_by_id.get(ancestor_id)
+        if not ancestor:
             continue
-        if key in positions:
-            direct_attrs[positions[key]] = attribute
-        else:
-            positions[key] = len(direct_attrs)
-            direct_attrs.append(attribute)
-    return direct_attrs
+        for attribute in ancestor.attributes:
+            key = _attribute_display_name(attribute)
+            if not key:
+                continue
+            if key in positions:
+                all_attrs[positions[key]] = attribute
+            else:
+                positions[key] = len(all_attrs)
+                all_attrs.append(attribute)
+    return all_attrs
 
 
 def _build_inheritance_chain(
@@ -484,7 +485,7 @@ def _convert_attribute(
         entry["valueDomain"] = value_domain
 
     data_type = classes_by_name.get(attr_type)
-    if data_type and data_type.stereotype == "dataType" and data_type.id not in visited_types:
+    if data_type and data_type.stereotype and data_type.stereotype.lower() == "datatype" and data_type.id not in visited_types:
         nested_types = set(visited_types)
         nested_types.add(data_type.id)
         nested_attributes = _collect_attributes_with_inheritance(data_type.id, classes_by_id, parents)

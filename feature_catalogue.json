@@ -4,6 +4,68 @@
     "description": "inndeling i administrative og politiske enheter innenfor fylket\n\nMerknad: Tilsvarer NUTS 5 og LAU 2 på internasjonalt statistisk nivå",
     "attributes": [
       {
+        "name": "identifikasjon",
+        "type": "Identifikasjon",
+        "description": "unik identifikasjon av et objekt",
+        "cardinality": "1",
+        "attributes": [
+          {
+            "name": "lokalId",
+            "type": "CharacterString",
+            "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.",
+            "cardinality": "1"
+          },
+          {
+            "name": "navnerom",
+            "type": "CharacterString",
+            "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no",
+            "cardinality": "1"
+          },
+          {
+            "name": "versjonId",
+            "type": "CharacterString",
+            "description": "identifikasjon av en spesiell versjon av et geografisk objekt (instans)",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "oppdateringsdato",
+        "type": "DateTime",
+        "description": "tidspunkt for siste endring på objektet\n\nMerknad:\nOppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).",
+        "cardinality": "1"
+      },
+      {
+        "name": "gyldigFra",
+        "type": "Date",
+        "description": "Tidspunktet når objektet oppstod i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "gyldigTil",
+        "type": "Date",
+        "description": "Tidspunktet når objektet opphørte å eksistere i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "datafangstdato",
+        "type": "DateTime",
+        "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "datauttaksdato",
+        "type": "DateTime",
+        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "opphav",
+        "type": "CharacterString",
+        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
+        "cardinality": "0..1"
+      },
+      {
         "name": "område",
         "type": "GM_MultiSurface",
         "description": "den geografiske avgrensingen av stemmekretsen.",
@@ -115,6 +177,50 @@
     "description": "abstrakt objekttype som bærer en rekke egenskaper som er fagområde-uavhengige og kan benyttes for alle objekttyper\n\nMerknad:\nSpesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.",
     "attributes": [
       {
+        "name": "identifikasjon",
+        "type": "Identifikasjon",
+        "description": "unik identifikasjon av et objekt",
+        "cardinality": "1",
+        "attributes": [
+          {
+            "name": "lokalId",
+            "type": "CharacterString",
+            "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.",
+            "cardinality": "1"
+          },
+          {
+            "name": "navnerom",
+            "type": "CharacterString",
+            "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no",
+            "cardinality": "1"
+          },
+          {
+            "name": "versjonId",
+            "type": "CharacterString",
+            "description": "identifikasjon av en spesiell versjon av et geografisk objekt (instans)",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "oppdateringsdato",
+        "type": "DateTime",
+        "description": "tidspunkt for siste endring på objektet\n\nMerknad:\nOppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).",
+        "cardinality": "1"
+      },
+      {
+        "name": "gyldigFra",
+        "type": "Date",
+        "description": "Tidspunktet når objektet oppstod i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "gyldigTil",
+        "type": "Date",
+        "description": "Tidspunktet når objektet opphørte å eksistere i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
         "name": "datafangstdato",
         "type": "DateTime",
         "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
@@ -145,6 +251,93 @@
     "name": "Grense",
     "description": "Generell avgrensingslinje",
     "attributes": [
+      {
+        "name": "identifikasjon",
+        "type": "Identifikasjon",
+        "description": "unik identifikasjon av et objekt",
+        "cardinality": "1",
+        "attributes": [
+          {
+            "name": "lokalId",
+            "type": "CharacterString",
+            "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.",
+            "cardinality": "1"
+          },
+          {
+            "name": "navnerom",
+            "type": "CharacterString",
+            "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no",
+            "cardinality": "1"
+          },
+          {
+            "name": "versjonId",
+            "type": "CharacterString",
+            "description": "identifikasjon av en spesiell versjon av et geografisk objekt (instans)",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "oppdateringsdato",
+        "type": "DateTime",
+        "description": "tidspunkt for siste endring på objektet\n\nMerknad:\nOppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).",
+        "cardinality": "1"
+      },
+      {
+        "name": "gyldigFra",
+        "type": "Date",
+        "description": "Tidspunktet når objektet oppstod i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "gyldigTil",
+        "type": "Date",
+        "description": "Tidspunktet når objektet opphørte å eksistere i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "datafangstdato",
+        "type": "DateTime",
+        "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "kvalitet",
+        "type": "Posisjonskvalitet",
+        "description": "beskrivelse av kvaliteten på stedfestingen",
+        "cardinality": "0..1",
+        "attributes": [
+          {
+            "name": "målemetode",
+            "type": "Målemetode",
+            "description": "metode for måling i grunnriss (x,y), og høyde (z) når metoden er den samme som ved måling i grunnriss",
+            "cardinality": "1",
+            "valueDomain": {
+              "definition": "metode som ligger til grunn for registrering av posisjon\n\n\n-- Definition - -\nmethod on which registration of position is based",
+              "asDictionary": "true",
+              "codeList": "https://register.geonorge.no/sosi-kodelister/generelle-konsepter/4.5/m%C3%A5lemetodekode"
+            }
+          },
+          {
+            "name": "nøyaktighet",
+            "type": "Integer",
+            "description": "punktstandardavviket i grunnriss for punkter samt tverravvik for linjer\n\nMerknad:\nOppgitt i cm",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "datauttaksdato",
+        "type": "DateTime",
+        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "opphav",
+        "type": "CharacterString",
+        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
+        "cardinality": "0..1"
+      },
       {
         "name": "grense",
         "type": "GM_Curve",
@@ -264,6 +457,50 @@
     "description": "abstrakt objekttype som bærer en rekke egenskaper som er fagområde-uavhengige og kan benyttes for alle objekttyper\n\nMerknad:\nSpesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.",
     "attributes": [
       {
+        "name": "identifikasjon",
+        "type": "Identifikasjon",
+        "description": "unik identifikasjon av et objekt",
+        "cardinality": "1",
+        "attributes": [
+          {
+            "name": "lokalId",
+            "type": "CharacterString",
+            "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.",
+            "cardinality": "1"
+          },
+          {
+            "name": "navnerom",
+            "type": "CharacterString",
+            "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no",
+            "cardinality": "1"
+          },
+          {
+            "name": "versjonId",
+            "type": "CharacterString",
+            "description": "identifikasjon av en spesiell versjon av et geografisk objekt (instans)",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "oppdateringsdato",
+        "type": "DateTime",
+        "description": "tidspunkt for siste endring på objektet\n\nMerknad:\nOppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).",
+        "cardinality": "1"
+      },
+      {
+        "name": "gyldigFra",
+        "type": "Date",
+        "description": "Tidspunktet når objektet oppstod i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "gyldigTil",
+        "type": "Date",
+        "description": "Tidspunktet når objektet opphørte å eksistere i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
         "name": "datafangstdato",
         "type": "DateTime",
         "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
@@ -319,6 +556,68 @@
     "name": "Fylke",
     "description": "administrativ inndeling av nasjonen på regionalt nivå\n\nMerknad: Tilsvarer NUTS 3 på internasjonalt statistisk nivå",
     "attributes": [
+      {
+        "name": "identifikasjon",
+        "type": "Identifikasjon",
+        "description": "unik identifikasjon av et objekt",
+        "cardinality": "1",
+        "attributes": [
+          {
+            "name": "lokalId",
+            "type": "CharacterString",
+            "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.",
+            "cardinality": "1"
+          },
+          {
+            "name": "navnerom",
+            "type": "CharacterString",
+            "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no",
+            "cardinality": "1"
+          },
+          {
+            "name": "versjonId",
+            "type": "CharacterString",
+            "description": "identifikasjon av en spesiell versjon av et geografisk objekt (instans)",
+            "cardinality": "0..1"
+          }
+        ]
+      },
+      {
+        "name": "oppdateringsdato",
+        "type": "DateTime",
+        "description": "tidspunkt for siste endring på objektet\n\nMerknad:\nOppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).",
+        "cardinality": "1"
+      },
+      {
+        "name": "gyldigFra",
+        "type": "Date",
+        "description": "Tidspunktet når objektet oppstod i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "gyldigTil",
+        "type": "Date",
+        "description": "Tidspunktet når objektet opphørte å eksistere i den virkelige verden",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "datafangstdato",
+        "type": "DateTime",
+        "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "datauttaksdato",
+        "type": "DateTime",
+        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "opphav",
+        "type": "CharacterString",
+        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
+        "cardinality": "0..1"
+      },
       {
         "name": "område",
         "type": "GM_MultiSurface",
