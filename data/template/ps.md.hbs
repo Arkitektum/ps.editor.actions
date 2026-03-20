@@ -29,12 +29,13 @@ logo: "{{contact.logo}}"
 ## Termer og definisjoner
 {{incl_termer_og_definisjoner}}
 
-## Generelt om spesifikasjonen
-{{incl_generelt_om_spesifikasjonen}}
+## Om produktet {{identificationSection.title}}
+{{incl_om_produktet}}
 
-### Sammendrag
-{{incl_sammendrag}}
-{{identificationSection.abstract}}
+**Romlig representasjonstype:** {{identificationSection.spatialRepresentationType}}\
+**Romlig oppløsning:** {{identificationSection.spatialResolution}}\
+**Begrensninger:** {{identificationSection.restriction}}\
+**Kontaktinformasjon:** {{identificationSection.contact.[0].organizationName}}
 
 ### Formål
 {{incl_formaal}}
@@ -44,28 +45,12 @@ logo: "{{contact.logo}}"
 {{incl_bruksomraade}}
 {{identificationSection.purpose.useCase.summary}}
 
-### Romlig representasjonstype
-{{incl_romlig_representasjonstype}}
-{{identificationSection.spatialRepresentationType}}
-
-### Romlig oppløsning
-{{incl_romlig_opploesning}}
-{{identificationSection.spatialResolution}}
-
-### Tilleggsinformasjon
-{{incl_tilleggsinformasjon}}
-{{identificationSection.supplementalInformation}}
-
-### Begrensninger
-{{incl_begrensninger}}
-{{identificationSection.restriction}}
-
-## Spesifikasjonsomfang
-{{incl_spesifikasjonsomfang}}
+## Omfang
+{{incl_omfang}}
 {{scopeSection}}
 
-## Innhold og struktur
-{{incl_innhold_og_struktur}}
+## Datainnhold og struktur
+{{incl_datainnhold_og_struktur}}
 {{dataContentAndStructureSection}}
 
 ### Datamodell
@@ -84,20 +69,20 @@ logo: "{{contact.logo}}"
 {{incl_referansesystem}}
 {{referenceSystemSection}}
 
-## Kvalitet
-{{incl_kvalitet}}
+## Datakvalitet
+{{incl_datakvalitet}}
 {{dataQualitySection.scope}}
 
 {{dataQualitySection.report}}
 
 {{dataQualitySection.resourceLineage}}
 
-## Datafangst
-{{incl_datafangst}}
+## Datafangst og produksjon
+{{incl_datafangst_og_produksjon}}
 {{dataCaptureAndProductionSection}}
 
-## Datavedlikehold
-{{incl_datavedlikehold}}
+## Vedlikehold
+{{incl_vedlikehold}}
 {{maintenanceSection}}
 
 ## Presentasjon
@@ -111,3 +96,7 @@ logo: "{{contact.logo}}"
 ## Metadata
 {{incl_metadata}}
 {{metadataSection}}
+
+## Tilleggsinformasjon
+{{incl_tilleggsinformasjon}}
+{{identificationSection.supplementalInformation}}
