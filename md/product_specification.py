@@ -224,6 +224,7 @@ def render_product_specification(
         return _stringify(value)
 
     rendered = _PLACEHOLDER_RE.sub(substitute, template_text)
+    rendered = _propagate_blockquote_prefix(rendered)
     return _linkify_markdown(rendered)
 
 
@@ -377,6 +378,51 @@ def _should_force_block(raw_value: Any, rendered: str, level: int) -> bool:
         return True
 
     return False
+
+
+def _propagate_blockquote_prefix(text: str) -> str:
+    """Ensure multi-line content inside blockquotes keeps the ``>`` prefix.
+
+    When a placeholder on a ``> `` line expands to multiple lines, only the
+    first line retains the blockquote prefix.  This function detects such
+    situations and prepends ``> `` to continuation lines so the entire block
+    stays inside the blockquote.
+    """
+    if ">" not in text:
+        return text
+
+    lines = text.split("\n")
+    result: list[str] = []
+    in_blockquote = False
+
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("> ") or stripped == ">":
+            in_blockquote = True
+            result.append(line)
+        elif in_blockquote:
+            if stripped.startswith(("#",)):
+                in_blockquote = False
+                result.append(line)
+            elif not stripped:
+                # Look ahead: if next non-empty line is not a heading or
+                # already a blockquote, keep inside the blockquote.
+                next_content = ""
+                for j in range(i + 1, len(lines)):
+                    if lines[j].strip():
+                        next_content = lines[j].strip()
+                        break
+                if next_content and not next_content.startswith(("#", "> ")):
+                    result.append(">")
+                else:
+                    in_blockquote = False
+                    result.append(line)
+            else:
+                result.append(f"> {line}")
+        else:
+            result.append(line)
+
+    return "\n".join(result)
 
 
 def _linkify_markdown(text: str) -> str:
