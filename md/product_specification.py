@@ -141,6 +141,7 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "deliveryFormat": "Leveranseformat",
     "formatName": "Formatnavn",
     "deliveryScope": "Leveranseomfang",
+    "unitsOfDelivery": "Leveranseenheter",
     "metadataSection": "Metadata",
     "metadataStandard": "Metadatastandard",
     "metadataStandardVersion": "Metadatastandardversjon",
@@ -148,6 +149,7 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "metadataIdentifier": "Metadataidentifikator",
     "metadataLinkage": "Metadatalenke",
     "links": "Lenker",
+    "specificationUrl": "Denne versjonen av produktspesifikasjonen",
 }
 
 

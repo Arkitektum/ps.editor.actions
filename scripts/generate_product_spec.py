@@ -378,8 +378,11 @@ def generate_product_specification(
     feature_type_filter: Sequence[str] | None = None,
     scopes: Sequence[Mapping[str, Any]] | None = None,
     render_spec_markdown: bool = True,
+    spec_url: str | None = None,
 ) -> dict[str, Path | None]:
     psdata = fetch_psdata(metadata_id)
+    if spec_url:
+        psdata["specificationUrl"] = spec_url
     if scopes:
         scope_level = _format_scope_level(scopes)
         if scope_level:
@@ -596,6 +599,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "a scopes list."
         ),
     )
+    parser.add_argument(
+        "--spec-url",
+        help="URL to this version of the product specification.",
+    )
     return parser.parse_args(argv)
 
 
@@ -632,6 +639,7 @@ def main(argv: list[str] | None = None) -> int:
             feature_type_filter=feature_type_filter,
             scopes=scopes,
             render_spec_markdown=not args.skip_spec_markdown,
+            spec_url=args.spec_url,
         )
     except Exception as error:  # pragma: no cover - defensive logging
         print(f"Failed to generate product specification: {error}", file=sys.stderr)

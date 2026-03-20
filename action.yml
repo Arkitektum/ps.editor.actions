@@ -29,6 +29,9 @@ inputs:
   xmi-model:
     description: Optional path or URL to a SOSI UML XMI feature catalogue. When provided the OGC API input is ignored.
     required: false
+  spec-url:
+    description: URL to this version of the product specification. Shown in the "Om spesifikasjonen" section.
+    required: false
   xmi-username:
     description: "Optional username for downloading the XMI catalogue (default: sosi)."
     required: false
@@ -105,6 +108,9 @@ runs:
         fi
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")
+        fi
+        if [ -n "${{ inputs.spec-url }}" ]; then
+          ARGS+=("--spec-url" "${{ inputs.spec-url }}")
         fi
         if [ -n "${{ inputs.xmi-model }}" ]; then
           ARGS+=("--xmi-model" "${{ inputs.xmi-model }}")
