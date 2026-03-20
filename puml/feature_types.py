@@ -125,6 +125,9 @@ def render_feature_types_to_puml(
         )
         alias_map[dtype_name] = dtype_alias
 
+    # Declare placeholder classes for association targets not yet in the diagram
+    _declare_missing_targets(feature_type_entries, alias_map, lines, indent)
+
     if package:
         lines.append("}")
 
@@ -447,6 +450,33 @@ def _collect_datatypes(feature_types: Sequence[Mapping[str, Any]]) -> dict[str, 
             visit_attributes([entry for entry in attributes_obj if isinstance(entry, Mapping)])
 
     return datatypes
+
+
+def _declare_missing_targets(
+    feature_types: Sequence[Mapping[str, Any]],
+    alias_map: dict[str, str],
+    lines: list[str],
+    indent: str,
+) -> None:
+    """Add empty class declarations for association targets not already in the diagram."""
+    for ft in feature_types:
+        relationships = ft.get("relationships")
+        if not isinstance(relationships, Mapping):
+            continue
+        associations = relationships.get("associations")
+        if not isinstance(associations, Sequence) or isinstance(associations, (str, bytes)):
+            continue
+        for assoc in associations:
+            if not isinstance(assoc, Mapping):
+                continue
+            target = str(assoc.get("target", "")).strip()
+            if not target or target in alias_map:
+                continue
+            header, alias = _class_header_and_alias(target)
+            lines.append("")
+            lines.append(f"{indent}class {header} {{")
+            lines.append(f"{indent}}}")
+            alias_map[target] = alias
 
 
 def _apply_inheritance_attributes(
