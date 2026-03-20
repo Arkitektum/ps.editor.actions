@@ -13,7 +13,7 @@ logo: "{{contact.logo}}"
 
 **Emnekategorier:** {{identificationSection.topicCategory}}
 
-**Geografisk utstrekning:** {{identificationSection.extent}}
+{{identificationSection.extent}}
 
 ## Om spesifikasjonen
 {{incl_om_spesifikasjonen}}
@@ -31,9 +31,12 @@ logo: "{{contact.logo}}"
 {{incl_om_produktet}}
 
 > **Romlig representasjonstype:** {{identificationSection.spatialRepresentationType}}<br>
-> **Romlig oppløsning:** {{identificationSection.spatialResolution}}<br>
-> **Begrensninger:** {{identificationSection.restriction}}<br>
+> **Unik identifikator:** {{identificationSection.uniqueId}}<br>
 > **Kontaktinformasjon:** {{identificationSection.contact.[0].organizationName}}
+
+**Romlig oppløsning:** {{identificationSection.spatialResolution}}
+
+**Begrensninger:** {{identificationSection.restriction}}
 
 ### Formål
 {{incl_formaal}}

@@ -366,17 +366,19 @@ def _stringify(value: Any, *, level: int = 0, suppress_bullet: bool = False) -> 
 
 
 def _should_force_block(raw_value: Any, rendered: str, level: int) -> bool:
-    if level > 0:
-        return False
-
     if isinstance(raw_value, Mapping):
         return True
 
     if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes)):
-        return True
+        has_complex = any(
+            isinstance(item, (Mapping, Sequence)) and not isinstance(item, (str, bytes))
+            for item in raw_value
+        )
+        if has_complex or level == 0:
+            return True
 
     stripped = rendered.lstrip()
-    if stripped.startswith(("http://", "https://")):
+    if stripped.startswith(("http://", "https://")) and level == 0:
         return True
 
     return False

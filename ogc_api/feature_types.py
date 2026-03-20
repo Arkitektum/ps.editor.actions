@@ -175,22 +175,201 @@ def load_feature_types(collections_url: str, http_get: HTTPGet | None = None) ->
             schema=primary_schema,
             extra_sources=additional_sources,
         )
+        if geometry:
+            geometry = _verify_geometry_from_sample(
+                collection, geometry, getter, collections_url=resolved_collections_url
+            )
         attributes = _extract_attributes(
             collection,
             primary_schema,
             additional_sources,
         )
 
-        feature_types.append(
-            {
-                "name": name,
-                "description": description,
-                "geometry": geometry,
-                "attributes": attributes,
-            }
-        )
+        collection_id = collection.get("id")
+        ft_entry: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "geometry": geometry,
+            "attributes": attributes,
+        }
+        if isinstance(collection_id, str) and collection_id:
+            ft_entry["_collection_id"] = collection_id
+        feature_types.append(ft_entry)
+
+    _detect_link_associations(feature_types)
+
+    # Remove internal tracking key before returning
+    for ft in feature_types:
+        ft.pop("_collection_id", None)
 
     return feature_types
+
+
+def _detect_link_associations(feature_types: list[dict[str, Any]]) -> None:
+    """Detect ``link*`` attributes that reference other collections and convert
+    them to associations.
+
+    Attributes named ``link{CollectionName}`` whose sample values are URLs
+    pointing to ``/collections/{id}/items`` in the same API are converted to
+    association relationships.  The original attribute is removed from the
+    attributes list.  Hidden collections (not in the visible list) are also
+    detected by matching the suffix against known collection IDs, including
+    prefix matching for plural forms (e.g. ``linkPlandokumenter`` matches
+    collection ID ``plandokument``).
+    """
+    # Build lookup from normalized name/id → display name
+    collection_lookup: dict[str, str] = {}
+    collection_ids: list[str] = []
+    for ft in feature_types:
+        name = ft.get("name")
+        if isinstance(name, str):
+            collection_lookup[name.lower()] = name
+            ascii_name = _ascii_fold(name)
+            collection_lookup[ascii_name.lower()] = name
+        collection_id = ft.get("_collection_id")
+        if isinstance(collection_id, str):
+            collection_lookup[collection_id.lower()] = name or collection_id
+            collection_ids.append(collection_id.lower())
+
+    def _match_target(suffix: str) -> str | None:
+        key = suffix.lower()
+        # Exact match against known collection names and IDs
+        target = collection_lookup.get(key)
+        if target:
+            return target
+        # Prefix match: suffix may be a plural form of a collection ID
+        # e.g. "Plandokumenter" starts with "plandokument"
+        for cid in collection_ids:
+            if key.startswith(cid) and len(key) - len(cid) <= 3:
+                return collection_lookup.get(cid, cid.capitalize())
+        # Fallback: treat any link* attribute with a non-empty suffix as
+        # an association to a potentially hidden collection.  Use the
+        # suffix capitalised as the target name.
+        return suffix[0].upper() + suffix[1:] if suffix else None
+
+    for ft in feature_types:
+        attributes = ft.get("attributes")
+        if not isinstance(attributes, list):
+            continue
+
+        associations: list[dict[str, Any]] = []
+        to_remove: list[dict[str, Any]] = []
+
+        for attr in attributes:
+            attr_name = str(attr.get("name", ""))
+            if not attr_name.lower().startswith("link"):
+                continue
+            attr_type = str(attr.get("type", "")).lower()
+            if attr_type not in ("string", "characterstring", "uri", "url", "unknown"):
+                continue
+
+            suffix = attr_name[4:]
+            if not suffix:
+                continue
+
+            target = _match_target(suffix)
+            if target:
+                cardinality = attr.get("cardinality", "")
+                associations.append({
+                    "target": target,
+                    "role": suffix[0].lower() + suffix[1:] if suffix else suffix,
+                    "cardinality": cardinality,
+                })
+                to_remove.append(attr)
+
+        for attr in to_remove:
+            attributes.remove(attr)
+
+        if associations:
+            relationships = ft.setdefault("relationships", {})
+            existing = relationships.get("associations")
+            if not isinstance(existing, list):
+                existing = []
+                relationships["associations"] = existing
+            existing.extend(associations)
+
+
+def _ascii_fold(text: str) -> str:
+    """Fold Unicode characters to their ASCII equivalents."""
+    import unicodedata
+    normalized = unicodedata.normalize("NFKD", text)
+    return normalized.encode("ascii", "ignore").decode("ascii")
+
+
+def _verify_geometry_from_sample(
+    collection: Mapping[str, Any],
+    geometry: dict[str, Any],
+    getter: HTTPGet,
+    *,
+    collections_url: str,
+) -> dict[str, Any]:
+    """Sample one feature to check if geometry is actually present.
+
+    Some OGC APIs declare geometry in the schema even when the collection
+    has no spatial data.  Fetching a single item allows us to detect this
+    and drop the geometry entry so it does not appear in diagrams.
+    """
+    collection_id = collection.get("id") or ""
+    if not collection_id:
+        return geometry
+
+    items_url = _build_items_url(collection, collections_url)
+    if not items_url:
+        return geometry
+
+    sep = "&" if "?" in items_url else "?"
+    sample_url = f"{items_url}{sep}limit=1"
+    try:
+        response = getter(sample_url)
+        data = _response_json(response)
+    except Exception:
+        return geometry
+
+    if not isinstance(data, Mapping):
+        return geometry
+
+    features = data.get("features")
+    if not isinstance(features, Sequence) or isinstance(features, (str, bytes)):
+        return geometry
+
+    if not features:
+        return geometry
+
+    sample = features[0]
+    if not isinstance(sample, Mapping):
+        return geometry
+
+    sample_geom = sample.get("geometry")
+    if sample_geom is None:
+        return {}
+
+    return geometry
+
+
+def _build_items_url(
+    collection: Mapping[str, Any],
+    collections_url: str,
+) -> str | None:
+    """Derive the items URL for a collection."""
+    # Try links first
+    links = collection.get("links")
+    if isinstance(links, Sequence) and not isinstance(links, (str, bytes)):
+        for link in links:
+            if not isinstance(link, Mapping):
+                continue
+            rel = str(link.get("rel", "")).strip().lower()
+            if rel == "items":
+                href = link.get("href")
+                if isinstance(href, str) and href:
+                    return href.split("?")[0]
+
+    # Fallback: construct from collections URL
+    collection_id = collection.get("id")
+    if isinstance(collection_id, str) and collection_id:
+        base = collections_url.rstrip("/")
+        return f"{base}/{collection_id}/items"
+
+    return None
 
 
 def _find_schema_link(collection: Mapping[str, Any]) -> str | None:
