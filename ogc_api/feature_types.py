@@ -924,7 +924,9 @@ def _extract_attributes(
                 for depth in range(1, len(segments)):
                     parent_node = _get_or_create_node(segments[:depth])
                     if parent_node.type is None:
-                        parent_node.type = "object"
+                        parent_node.type = _derive_complex_type_name(
+                            details, parent_node.name,
+                        )
 
             _update_attribute_node(
                 node,
@@ -944,6 +946,33 @@ def _extract_attributes(
         attributes.append(_node_to_attribute(node))
 
     return attributes
+
+
+def _derive_complex_type_name(details: Any, attribute_name: str) -> str:
+    """Derive a type name for a complex object property.
+
+    Checks, in order:
+    1. ``$ref`` path – the last segment is typically the definition name
+       (e.g. ``#/definitions/Identifikasjon`` → ``Identifikasjon``).
+    2. ``title`` on the schema object, if it differs from the attribute name.
+    3. Capitalise the first letter of the attribute name as fallback.
+    """
+    if isinstance(details, Mapping):
+        ref = details.get("$ref")
+        if isinstance(ref, str) and ref:
+            fragment = ref.split("#")[-1] if "#" in ref else ref
+            parts = [p for p in fragment.split("/") if p]
+            if parts:
+                return parts[-1]
+
+        title = details.get("title")
+        if isinstance(title, str) and title and title != attribute_name:
+            return title
+
+    if attribute_name:
+        return attribute_name[0].upper() + attribute_name[1:]
+
+    return "Object"
 
 
 def _update_attribute_node(
@@ -991,7 +1020,7 @@ def _update_attribute_node(
     if isinstance(resolved_details, Mapping):
         child_properties = _get_properties_container(resolved_details)
         if child_properties:
-            node.type = "object"
+            node.type = _derive_complex_type_name(details, node.name)
             for child_name, child_details in _iter_attribute_definitions(child_properties):
                 if child_name == "geometry":
                     continue
@@ -1450,7 +1479,10 @@ def _resolve_attribute_details(
 def _node_to_attribute(node: _AttributeNode) -> dict[str, Any]:
     attr_type = node.type
     if not isinstance(attr_type, str) or not attr_type:
-        attr_type = "object" if node.children else "unknown"
+        if node.children:
+            attr_type = _derive_complex_type_name(node.details, node.name)
+        else:
+            attr_type = "unknown"
 
     attribute: dict[str, Any] = {
         "name": node.name,
