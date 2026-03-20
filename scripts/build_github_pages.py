@@ -236,6 +236,22 @@ _HTML_TEMPLATE = Template(
         text-align: left;
       }
 
+      .article-content blockquote {
+        background: var(--ds-color-surface-subtle, #f3f4f6);
+        border: 1px solid var(--ds-color-border-subtle, #e5e7eb);
+        border-radius: 0.75rem;
+        padding: 1.25rem 1.5rem;
+        margin: 1rem 0 1.5rem 0;
+      }
+
+      .article-content blockquote p {
+        margin-bottom: 0.25rem;
+      }
+
+      .article-content blockquote p:last-child {
+        margin-bottom: 0;
+      }
+
       .article-content pre {
         background: var(--ds-color-surface-subtle, #f3f4f6);
         padding: 1rem;
