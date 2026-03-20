@@ -194,6 +194,12 @@ def build_context(psdata: Mapping[str, Any], *, updated: str | None = None) -> d
         if isinstance(metadata_date, str):
             context["updated"] = metadata_date
 
+    ref_section = context.get("referenceSystemSection")
+    if isinstance(ref_section, Mapping):
+        formatted = _format_reference_system_table(ref_section)
+        if formatted:
+            context["referenceSystemSection"] = formatted
+
     return context
 
 
@@ -382,6 +388,46 @@ def _should_force_block(raw_value: Any, rendered: str, level: int) -> bool:
         return True
 
     return False
+
+
+def _format_reference_system_table(ref_section: Mapping[str, Any]) -> str:
+    """Format the reference system section as a Markdown table.
+
+    Deduplicates entries by EPSG code and renders a table with columns
+    for code and name, similar to the AsciiDoc mockup.
+    """
+    spatial = ref_section.get("spatialReferenceSystem")
+    if not isinstance(spatial, Sequence) or isinstance(spatial, (str, bytes)):
+        return ""
+
+    seen: set[str] = set()
+    rows: list[tuple[str, str]] = []
+    for entry in spatial:
+        if not isinstance(entry, Mapping):
+            continue
+        code = str(entry.get("code", "")).strip()
+        name = str(entry.get("name", "")).strip()
+        if not code:
+            continue
+        if code in seen:
+            continue
+        seen.add(code)
+        epsg_number = code.split(":")[-1] if ":" in code else code
+        code_link = f"[{code}](https://epsg.io/{epsg_number})"
+        name_link = f"[{name}](https://register.geonorge.no/epsg-koder)" if name else ""
+        rows.append((code_link, name_link or code))
+
+    if not rows:
+        return ""
+
+    lines = [
+        "| EPSG-kode | Navn på referansesystem |",
+        "| --- | --- |",
+    ]
+    for code_cell, name_cell in rows:
+        lines.append(f"| {code_cell} | {name_cell} |")
+
+    return "\n".join(lines)
 
 
 def _propagate_blockquote_prefix(text: str) -> str:
