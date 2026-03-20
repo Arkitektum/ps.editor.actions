@@ -222,7 +222,7 @@ def _append_data_type(
     include_descriptions: bool,
 ) -> str:
     class_header, class_alias = _class_header_and_alias(name)
-    lines.append(f"{indent}class {class_header} {{")
+    lines.append(f"{indent}class {class_header} <<dataType>> {{")
 
     _append_attributes(
         lines,
@@ -452,75 +452,9 @@ def _collect_datatypes(feature_types: Sequence[Mapping[str, Any]]) -> dict[str, 
 def _apply_inheritance_attributes(
     feature_types: Sequence[Mapping[str, Any]],
 ) -> list[Mapping[str, Any]]:
-    by_name: dict[str, Mapping[str, Any]] = {}
-    children: dict[str, list[str]] = {}
-    parents_by_child: dict[str, list[str]] = {}
-
-    for entry in feature_types:
-        if not isinstance(entry, Mapping):
-            continue
-        name = str(entry.get("name", "")).strip()
-        if not name:
-            continue
-        by_name[name] = entry
-        relationships = entry.get("relationships")
-        if not isinstance(relationships, Mapping):
-            continue
-        inheritance = relationships.get("inheritance")
-        if isinstance(inheritance, Sequence) and not isinstance(inheritance, (str, bytes)):
-            parents = [str(p).strip() for p in inheritance if str(p).strip()]
-            if parents:
-                parents_by_child[name] = parents
-                for parent in parents:
-                    children.setdefault(parent, []).append(name)
-
-    def collect_inherited(child: str, seen: set[str]) -> list[Mapping[str, Any]]:
-        inherited: list[Mapping[str, Any]] = []
-        for parent in parents_by_child.get(child, []):
-            if parent in seen:
-                continue
-            seen.add(parent)
-            parent_entry = by_name.get(parent)
-            if not parent_entry:
-                continue
-            parent_attrs = parent_entry.get("attributes")
-            if isinstance(parent_attrs, Sequence) and not isinstance(parent_attrs, (str, bytes)):
-                for attr in parent_attrs:
-                    if isinstance(attr, Mapping):
-                        inherited.append(attr)
-            inherited.extend(collect_inherited(parent, seen))
-        return inherited
-
-    transformed: list[Mapping[str, Any]] = []
-    for entry in feature_types:
-        if not isinstance(entry, Mapping):
-            transformed.append(entry)
-            continue
-        name = str(entry.get("name", "")).strip()
-        if not name:
-            transformed.append(entry)
-            continue
-
-        inherited = collect_inherited(name, set())
-        own_attrs = entry.get("attributes")
-        combined_attrs: list[Mapping[str, Any]] = []
-        if inherited:
-            combined_attrs.extend(inherited)
-        if isinstance(own_attrs, Sequence) and not isinstance(own_attrs, (str, bytes)):
-            combined_attrs.extend([attr for attr in own_attrs if isinstance(attr, Mapping)])
-
-        new_entry = dict(entry)
-        if combined_attrs:
-            new_entry["attributes"] = combined_attrs
-        elif "attributes" in new_entry:
-            new_entry["attributes"] = []
-
-        if name in children:
-            new_entry["attributes"] = []
-
-        transformed.append(new_entry)
-
-    return transformed
+    # Each class keeps only its own attributes.
+    # Inheritance is expressed via arrows in the diagram.
+    return list(feature_types)
 
 
 def _build_relationship_lines(

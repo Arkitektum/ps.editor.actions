@@ -399,23 +399,21 @@ def _collect_attributes_with_inheritance(
     classes_by_id: Mapping[str, _UmlClass],
     parents: Mapping[str, Sequence[str]],
 ) -> list[_UmlAttribute]:
-    chain = _build_inheritance_chain(class_id, parents)
-    all_attrs: list[_UmlAttribute] = []
+    info = classes_by_id.get(class_id)
+    if not info:
+        return []
+    direct_attrs: list[_UmlAttribute] = []
     positions: dict[str, int] = {}
-    for ancestor_id in chain:
-        ancestor = classes_by_id.get(ancestor_id)
-        if not ancestor:
+    for attribute in info.attributes:
+        key = _attribute_display_name(attribute)
+        if not key:
             continue
-        for attribute in ancestor.attributes:
-            key = _attribute_display_name(attribute)
-            if not key:
-                continue
-            if key in positions:
-                all_attrs[positions[key]] = attribute
-            else:
-                positions[key] = len(all_attrs)
-                all_attrs.append(attribute)
-    return all_attrs
+        if key in positions:
+            direct_attrs[positions[key]] = attribute
+        else:
+            positions[key] = len(direct_attrs)
+            direct_attrs.append(attribute)
+    return direct_attrs
 
 
 def _build_inheritance_chain(
