@@ -200,6 +200,12 @@ def build_context(psdata: Mapping[str, Any], *, updated: str | None = None) -> d
         if formatted:
             context["referenceSystemSection"] = formatted
 
+    scope_section = context.get("scopeSection")
+    if isinstance(scope_section, (list, Sequence)) and not isinstance(scope_section, (str, bytes)):
+        formatted = _format_scope_section(scope_section)
+        if formatted:
+            context["scopeSection"] = formatted
+
     return context
 
 
@@ -388,6 +394,55 @@ def _should_force_block(raw_value: Any, rendered: str, level: int) -> bool:
         return True
 
     return False
+
+
+def _format_scope_section(scope_section: Sequence[Any]) -> str:
+    """Format the scope section as structured Markdown.
+
+    Each scope entry is rendered as a block with identification, level, extent
+    and level-description.  When the level description contains a Markdown table
+    (injected by ``_format_scope_level``), it is rendered directly instead of
+    being wrapped with a bold label.
+    """
+    blocks: list[str] = []
+    for entry in scope_section:
+        if not isinstance(entry, Mapping):
+            continue
+        spec_scope = entry.get("specificationScope")
+        if not isinstance(spec_scope, Mapping):
+            continue
+
+        lines: list[str] = []
+
+        scope_id = spec_scope.get("scopeIdentification")
+        if isinstance(scope_id, str) and scope_id.strip():
+            lines.append(f"**Identifikasjon**: {scope_id.strip()}")
+
+        level = spec_scope.get("level")
+        if isinstance(level, str) and level.strip():
+            lines.append(f"**Nivå**: {level.strip()}")
+
+        level_name = spec_scope.get("levelName")
+        if isinstance(level_name, str) and level_name.strip():
+            lines.append(f"**Nivånavn**: {level_name.strip()}")
+
+        extent = spec_scope.get("extent")
+        if isinstance(extent, Mapping):
+            desc = extent.get("description")
+            if isinstance(desc, str) and desc.strip():
+                lines.append(f"**Utstrekning**: {desc.strip()}")
+
+        level_desc = spec_scope.get("levelDescription")
+        if isinstance(level_desc, str) and level_desc.strip():
+            lines.append("")
+            lines.append("**Nivåbeskrivelse**:")
+            lines.append("")
+            lines.append(level_desc.strip())
+
+        if lines:
+            blocks.append("\n".join(lines))
+
+    return "\n\n".join(blocks)
 
 
 def _format_reference_system_table(ref_section: Mapping[str, Any]) -> str:

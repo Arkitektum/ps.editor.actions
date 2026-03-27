@@ -100,17 +100,43 @@ def _write_placeholder_png(path: Path) -> None:
     path.write_bytes(base64.b64decode(_PNG_PLACEHOLDER))
 
 
-def _format_scope_level(scopes: Sequence[Mapping[str, Any]]) -> str:
-    lines: list[str] = []
+def _build_scope_entries(
+    scopes: Sequence[Mapping[str, Any]],
+    existing_section: list[Any],
+) -> list[dict[str, Any]]:
+    """Build one scope entry per config scope, inheriting level/extent from existing data."""
+    # Extract level and extent from the first existing entry as defaults
+    default_level = "dataset"
+    default_extent: dict[str, Any] | None = None
+    if existing_section and isinstance(existing_section[0], Mapping):
+        spec = existing_section[0].get("specificationScope")
+        if isinstance(spec, Mapping):
+            lvl = spec.get("level")
+            if isinstance(lvl, str) and lvl.strip():
+                default_level = lvl.strip()
+            ext = spec.get("extent")
+            if isinstance(ext, Mapping):
+                default_extent = dict(ext)
+
+    entries: list[dict[str, Any]] = []
     for index, scope in enumerate(scopes, start=1):
         name = scope.get("name")
         scope_name = name.strip() if isinstance(name, str) and name.strip() else f"Scope {index}"
         description = scope.get("description")
-        lines.append(f"#### {scope_name}")
-        if isinstance(description, str) and description.strip():
-            lines.append(description.strip())
-        lines.append("")
-    return "\n".join(line for line in lines if line is not None).strip()
+        desc_text = description.strip() if isinstance(description, str) and description.strip() else ""
+
+        spec_scope: dict[str, Any] = {
+            "scopeIdentification": scope_name,
+            "level": default_level,
+        }
+        if default_extent:
+            spec_scope["extent"] = default_extent
+        if desc_text:
+            spec_scope["levelDescription"] = desc_text
+
+        entries.append({"specificationScope": spec_scope})
+
+    return entries
 
 
 def _format_scope_png_link(scope_name: str, relative_path: Path) -> str:
@@ -384,28 +410,11 @@ def generate_product_specification(
     if spec_url:
         psdata["specificationUrl"] = spec_url
     if scopes:
-        scope_level = _format_scope_level(scopes)
-        if scope_level:
-            scope_section = psdata.get("scopeSection")
-            if not isinstance(scope_section, list):
-                scope_section = []
-            # Inject the formatted scope level text into the first scope entry
-            if scope_section and isinstance(scope_section[0], Mapping):
-                first = dict(scope_section[0])
-                spec_scope = first.get("specificationScope")
-                if isinstance(spec_scope, Mapping):
-                    spec_scope = dict(spec_scope)
-                    spec_scope["levelDescription"] = scope_level
-                    first["specificationScope"] = spec_scope
-                scope_section[0] = first
-            else:
-                scope_section.insert(0, {
-                    "specificationScope": {
-                        "scopeIdentification": "hele datasettet",
-                        "levelDescription": scope_level,
-                    }
-                })
-            psdata["scopeSection"] = scope_section
+        scope_section = psdata.get("scopeSection")
+        if not isinstance(scope_section, list):
+            scope_section = []
+        scope_entries = _build_scope_entries(scopes, scope_section)
+        psdata["scopeSection"] = scope_entries
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
         ogc_feature_types = load_feature_types(ogc_feature_api)
