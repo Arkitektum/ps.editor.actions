@@ -206,6 +206,12 @@ def build_context(psdata: Mapping[str, Any], *, updated: str | None = None) -> d
         if formatted:
             context["scopeSection"] = formatted
 
+    delivery_section = context.get("deliverySection")
+    if isinstance(delivery_section, (list, Sequence)) and not isinstance(delivery_section, (str, bytes)):
+        formatted = _format_delivery_section(delivery_section)
+        if formatted:
+            context["deliverySection"] = formatted
+
     return context
 
 
@@ -327,12 +333,15 @@ def _stringify(value: Any, *, level: int = 0, suppress_bullet: bool = False) -> 
         return "true" if value else "false"
     if isinstance(value, Mapping):
         lines: list[str] = []
+        has_block = False
         for key, inner in value.items():
             label = _translate_label(key)
             formatted = _stringify(inner, level=level + 1).strip()
             bullet = level > 0 and not suppress_bullet
             prefix = "- " if bullet else ""
             force_block = _should_force_block(inner, formatted, level)
+            if force_block:
+                has_block = True
             if formatted:
                 if "\n" in formatted or force_block:
                     if bullet:
@@ -349,7 +358,7 @@ def _stringify(value: Any, *, level: int = 0, suppress_bullet: bool = False) -> 
                     lines.append(f"{prefix}**{label}**: {formatted}")
             else:
                 lines.append(f"{prefix}**{label}**:")
-        joiner = "\n\n" if level == 0 else "\n"
+        joiner = "\n\n" if level == 0 or has_block else "\n"
         return joiner.join(line for line in lines if line)
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         primitive = [item for item in value if not isinstance(item, (Mapping, Sequence)) or isinstance(item, (str, bytes))]
@@ -399,10 +408,8 @@ def _should_force_block(raw_value: Any, rendered: str, level: int) -> bool:
 def _format_scope_section(scope_section: Sequence[Any]) -> str:
     """Format the scope section as structured Markdown.
 
-    Each scope entry is rendered as a block with identification, level, extent
-    and level-description.  When the level description contains a Markdown table
-    (injected by ``_format_scope_level``), it is rendered directly instead of
-    being wrapped with a bold label.
+    Each scope entry gets its own ``###`` heading (visible in the navigation
+    menu) followed by metadata fields rendered on separate lines.
     """
     blocks: list[str] = []
     for entry in scope_section:
@@ -415,34 +422,118 @@ def _format_scope_section(scope_section: Sequence[Any]) -> str:
         lines: list[str] = []
 
         scope_id = spec_scope.get("scopeIdentification")
-        if isinstance(scope_id, str) and scope_id.strip():
-            lines.append(f"**Identifikasjon**: {scope_id.strip()}")
+        scope_id_text = scope_id.strip() if isinstance(scope_id, str) else ""
+
+        if scope_id_text:
+            lines.append(f"### {scope_id_text}")
+            lines.append("")
 
         level = spec_scope.get("level")
         if isinstance(level, str) and level.strip():
             lines.append(f"**Nivå**: {level.strip()}")
+            lines.append("")
 
         level_name = spec_scope.get("levelName")
         if isinstance(level_name, str) and level_name.strip():
             lines.append(f"**Nivånavn**: {level_name.strip()}")
+            lines.append("")
 
         extent = spec_scope.get("extent")
         if isinstance(extent, Mapping):
             desc = extent.get("description")
             if isinstance(desc, str) and desc.strip():
                 lines.append(f"**Utstrekning**: {desc.strip()}")
+                lines.append("")
 
         level_desc = spec_scope.get("levelDescription")
         if isinstance(level_desc, str) and level_desc.strip():
-            lines.append("")
-            lines.append("**Nivåbeskrivelse**:")
-            lines.append("")
-            lines.append(level_desc.strip())
+            lines.append(f"**Nivåbeskrivelse**: {level_desc.strip()}")
 
         if lines:
             blocks.append("\n".join(lines))
 
     return "\n\n".join(blocks)
+
+
+def _format_delivery_section(delivery_section: Sequence[Any]) -> str:
+    """Format the delivery section as a compact Markdown table.
+
+    Entries sharing the same service endpoint are merged so that their
+    formats are combined and the most complete metadata is kept.
+    """
+    merged: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+
+    for entry in delivery_section:
+        if not isinstance(entry, Mapping):
+            continue
+        delivery = entry.get("delivery")
+        if not isinstance(delivery, Mapping):
+            continue
+
+        medium = delivery.get("deliveryMedium")
+        if not isinstance(medium, Mapping):
+            continue
+
+        name = str(medium.get("deliveryMediumName", "")).strip()
+        units = str(medium.get("unitsOfDelivery", "")).strip()
+
+        endpoint = ""
+        svc_type = ""
+        service = medium.get("deliveryService")
+        if isinstance(service, Mapping):
+            endpoint = str(service.get("serviceEndpoint", "")).strip()
+            prop = service.get("serviceProperty")
+            if isinstance(prop, Mapping):
+                svc_type = str(prop.get("value", "")).strip()
+
+        formats: list[str] = []
+        fmt_list = delivery.get("deliveryFormat")
+        if isinstance(fmt_list, Sequence) and not isinstance(fmt_list, (str, bytes)):
+            for fmt in fmt_list:
+                if isinstance(fmt, Mapping):
+                    fn = str(fmt.get("formatName", "")).strip()
+                    if fn:
+                        formats.append(fn)
+
+        key = endpoint or name
+        if key in merged:
+            existing = merged[key]
+            for f in formats:
+                if f not in existing["formats"]:
+                    existing["formats"].append(f)
+            if not existing["name"] and name:
+                existing["name"] = name
+            if not existing["units"] and units:
+                existing["units"] = units
+            if not existing["type"] and svc_type:
+                existing["type"] = svc_type
+        else:
+            merged[key] = {
+                "name": name,
+                "endpoint": endpoint,
+                "type": svc_type,
+                "formats": formats,
+                "units": units,
+            }
+            order.append(key)
+
+    if not merged:
+        return ""
+
+    lines = [
+        "| Tjeneste | Endepunkt | Type | Format | Leveranseenheter |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for key in order:
+        r = merged[key]
+        endpoint = r["endpoint"]
+        if endpoint:
+            endpoint = f"[Lenke]({endpoint})"
+        lines.append(
+            f"| {r['name']} | {endpoint} | {r['type']} | {', '.join(r['formats'])} | {r['units']} |"
+        )
+    return "\n".join(lines)
 
 
 def _format_reference_system_table(ref_section: Mapping[str, Any]) -> str:
