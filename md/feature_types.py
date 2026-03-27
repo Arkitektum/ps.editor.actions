@@ -368,7 +368,7 @@ def _normalize_text(value: str) -> str:
 
 
 def _format_geometry_metadata(geometry: Any) -> str:
-    if not isinstance(geometry, Mapping):
+    if not isinstance(geometry, Mapping) or not geometry:
         return ""
 
     lines: list[str] = ["Geometri:"]
@@ -549,7 +549,7 @@ def _flatten_attributes(
 
 
 def _build_geometry_attribute(geometry: Any) -> dict[str, Any] | None:
-    if not isinstance(geometry, Mapping):
+    if not isinstance(geometry, Mapping) or not geometry:
         return None
 
     type_value = "geometry"
