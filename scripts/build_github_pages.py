@@ -165,7 +165,10 @@ _HTML_TEMPLATE = Template(
         box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
         position: sticky;
         top: clamp(1rem, 3vw, 2rem);
-        align-self: start;
+        align-self: flex-start;
+        height: fit-content;
+        max-height: calc(100vh - 2rem);
+        overflow: auto;
       }
 
       .toc h2 {
