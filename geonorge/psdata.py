@@ -136,6 +136,13 @@ def build_psdata(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any
 
     result = _compact_mapping(
         {
+            "overview": (
+                "Denne produktspesifikasjonen er autogenerert fra metadata i Geonorge "
+                "og datamodell fra SOSI modellregister og/eller OGC API Features. "
+                "Noe ekstra informasjon kan ha blitt lagt til gjennom manuell prosess. "
+                "Produktspesifikasjonen er i henhold til standarden: "
+                "'Geografisk informasjon - Dataproduktspesifikasjoner' (ISO19131:2022)"
+            ),
             "title": _select_first_string(
                 metadata.get("NorwegianTitle"), metadata.get("EnglishTitle"), metadata.get("Title")
             ),
