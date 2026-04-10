@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import shutil
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -263,6 +264,31 @@ _HTML_TEMPLATE = Template(
         font-family: 'Fira Code', 'SFMono-Regular', Menlo, Consolas, monospace;
       }
 
+      .download-block {
+        margin-top: 1rem;
+      }
+
+      .download-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        background: var(--ds-color-accent-base-default, #0062ba);
+        color: #ffffff;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 0.95rem;
+        box-shadow: 0 2px 8px rgb(15 23 42 / 0.12);
+        transition: background 0.15s ease-in-out;
+      }
+
+      .download-link:hover,
+      .download-link:focus {
+        background: var(--ds-color-accent-base-hover, #004f96);
+        text-decoration: none;
+      }
+
       .page-footer {
         margin-top: auto;
         padding-block: clamp(1.5rem, 3vw, 2.5rem);
@@ -307,6 +333,7 @@ _HTML_TEMPLATE = Template(
             <p class=\"page-header__kicker\">Produktspesifikasjon</p>
             <h1>$title</h1>
             $meta_block
+            $download_block
           </div>
         </div>
         $breadcrumbs_block
@@ -670,7 +697,22 @@ def _copy_assets(asset_paths: set[str], source_dir: Path, output_dir: Path) -> N
         shutil.copy2(source_path, destination)
 
 
-def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> PageMetadata:
+@dataclass
+class DownloadEntry:
+    """A single HTML page (front page or objektkatalog) to bundle into a spec ZIP."""
+
+    arcname: str
+    html_content: str
+    assets: set[str]
+    asset_source_dir: Path
+
+
+def _render_page(
+    markdown_path: Path,
+    output_dir: Path,
+    source_root: Path,
+    download_link: str,
+) -> tuple[PageMetadata, DownloadEntry]:
     text = markdown_path.read_text(encoding="utf-8")
     metadata, body = _parse_front_matter(text)
 
@@ -701,6 +743,15 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
         )
 
     description = metadata.description or metadata.title
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    download_block = (
+        "<div class=\"download-block\">"
+        f"<a class=\"download-link\" href=\"{html.escape(download_link, quote=True)}\" "
+        "download>⬇ Last ned hele spesifikasjonen som ZIP (HTML + bilder)</a>"
+        "</div>"
+    )
+
     page_html = _HTML_TEMPLATE.substitute(
         page_title=html.escape(metadata.title),
         page_description=html.escape(description),
@@ -710,9 +761,21 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
         toc_block=toc_block,
         content=html_content,
         logo_block=logo_block,
+        download_block=download_block,
     )
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    download_html = _HTML_TEMPLATE.substitute(
+        page_title=html.escape(metadata.title),
+        page_description=html.escape(description),
+        title=html.escape(metadata.title),
+        meta_block=meta_block,
+        breadcrumbs_block="",
+        toc_block=toc_block,
+        content=html_content,
+        logo_block=logo_block,
+        download_block="",
+    )
+
     (output_dir / "index.html").write_text(page_html, encoding="utf-8")
 
     assets = _extract_assets(body)
@@ -720,14 +783,58 @@ def _render_page(markdown_path: Path, output_dir: Path, source_root: Path) -> Pa
         assets.add(metadata.logo)
     _copy_assets(assets, markdown_path.parent, output_dir)
 
-    return metadata
+    download_entry = DownloadEntry(
+        arcname="index.html",
+        html_content=download_html,
+        assets=assets,
+        asset_source_dir=markdown_path.parent,
+    )
+
+    return metadata, download_entry
+
+
+def _download_slug(metadata: PageMetadata, fallback_stem: str) -> str:
+    """Build a kebab-case slug from the page title."""
+    source = (metadata.title or fallback_stem).strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", source).strip("-")
+    return slug or fallback_stem
+
+
+def _write_download_zip(
+    zip_path: Path,
+    entries: list[DownloadEntry],
+) -> None:
+    """Write a ZIP archive containing one or more pages and their referenced assets."""
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    written_assets: set[str] = set()
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for entry in entries:
+            archive.writestr(entry.arcname, entry.html_content)
+            entry_dir = Path(entry.arcname).parent
+            for asset in sorted(entry.assets):
+                if asset.startswith(("http://", "https://", "data:")):
+                    continue
+                source = (entry.asset_source_dir / asset).resolve()
+                try:
+                    source.relative_to(entry.asset_source_dir.resolve())
+                except ValueError:
+                    continue
+                if not source.exists() or not source.is_file():
+                    continue
+                arcname = (entry_dir / asset).as_posix() if entry_dir.parts else asset
+                if arcname in written_assets:
+                    continue
+                written_assets.add(arcname)
+                archive.write(source, arcname=arcname)
 
 
 def _render_markdown_file(
     markdown_path: Path,
     output_path: Path,
     source_root: Path,
-) -> None:
+    download_link: str,
+    arcname: str,
+) -> DownloadEntry:
     text = markdown_path.read_text(encoding="utf-8")
     metadata, body = _parse_front_matter(text)
     if not text.startswith("---"):
@@ -754,6 +861,15 @@ def _render_markdown_file(
     )
 
     description = metadata.description or metadata.title
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    download_block = (
+        "<div class=\"download-block\">"
+        f"<a class=\"download-link\" href=\"{html.escape(download_link, quote=True)}\" "
+        "download>⬇ Last ned hele spesifikasjonen som ZIP (HTML + bilder)</a>"
+        "</div>"
+    )
+
     page_html = _HTML_TEMPLATE.substitute(
         page_title=html.escape(metadata.title),
         page_description=html.escape(description),
@@ -763,13 +879,32 @@ def _render_markdown_file(
         toc_block=toc_block,
         content=html_content,
         logo_block="",
+        download_block=download_block,
     )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    download_html = _HTML_TEMPLATE.substitute(
+        page_title=html.escape(metadata.title),
+        page_description=html.escape(description),
+        title=html.escape(metadata.title),
+        meta_block="",
+        breadcrumbs_block="",
+        toc_block=toc_block,
+        content=html_content,
+        logo_block="",
+        download_block="",
+    )
+
     output_path.write_text(page_html, encoding="utf-8")
 
     assets = _extract_assets(body)
     _copy_assets(assets, markdown_path.parent, output_path.parent)
+
+    return DownloadEntry(
+        arcname=arcname,
+        html_content=download_html,
+        assets=assets,
+        asset_source_dir=markdown_path.parent,
+    )
 
 
 def _render_index(pages: list[dict[str, str | None]] | None, output_dir: Path) -> None:
@@ -831,10 +966,21 @@ def build_site(source_dir: Path, output_dir: Path) -> None:
         path for path in source_dir.rglob("*.md") if path.name.lower() == "index.md"
     )
 
+    spec_entries: dict[Path, list[DownloadEntry]] = {}
+    spec_zip_links: dict[Path, str] = {}
+
     for markdown_path in markdown_paths:
         rel_dir = markdown_path.parent.relative_to(source_dir)
         destination_dir = output_dir / rel_dir
-        metadata = _render_page(markdown_path, destination_dir, source_dir)
+        spec_dir = markdown_path.parent
+        slug = spec_dir.name or "produktspesifikasjon"
+        download_filename = f"{slug}.zip"
+        spec_zip_links[spec_dir] = download_filename
+
+        metadata, entry = _render_page(
+            markdown_path, destination_dir, source_dir, download_filename
+        )
+        spec_entries.setdefault(spec_dir, []).append(entry)
         href = "/".join(rel_dir.parts) + "/" if rel_dir.parts else "./"
         pages.append(
             {
@@ -854,14 +1000,54 @@ def build_site(source_dir: Path, output_dir: Path) -> None:
         rel_dir = markdown_path.parent.relative_to(source_dir)
         destination_dir = output_dir / rel_dir
         output_path = destination_dir / "objektkatalog.html"
-        _render_markdown_file(markdown_path, output_path, source_dir)
+
+        spec_dir = _find_parent_spec_dir(markdown_path.parent, source_dir)
+        if spec_dir is None or spec_dir not in spec_zip_links:
+            _render_markdown_file(
+                markdown_path, output_path, source_dir, "", "objektkatalog.html"
+            )
+            rendered_katalogs.append(output_path)
+            continue
+
+        depth = len(markdown_path.parent.relative_to(spec_dir).parts)
+        relative_zip = ("../" * depth) + spec_zip_links[spec_dir]
+
+        rel_to_spec = markdown_path.parent.relative_to(spec_dir)
+        arcname = (rel_to_spec / "objektkatalog.html").as_posix()
+
+        entry = _render_markdown_file(
+            markdown_path, output_path, source_dir, relative_zip, arcname
+        )
+        spec_entries[spec_dir].append(entry)
         rendered_katalogs.append(output_path)
 
     if rendered_katalogs:
         for path in rendered_katalogs:
             print(f"Rendered objektkatalog: {path}")
 
+    for spec_dir, entries in spec_entries.items():
+        rel_dir = spec_dir.relative_to(source_dir)
+        destination_dir = output_dir / rel_dir
+        zip_filename = spec_zip_links[spec_dir]
+        _write_download_zip(destination_dir / zip_filename, entries)
+
     _render_index(pages, output_dir)
+
+
+def _find_parent_spec_dir(start: Path, source_dir: Path) -> Path | None:
+    """Walk up from ``start`` until we find a directory with ``index.md``."""
+    current = start.resolve()
+    source_resolved = source_dir.resolve()
+    while True:
+        if (current / "index.md").exists():
+            return current
+        if current == source_resolved or current.parent == current:
+            return None
+        try:
+            current.relative_to(source_resolved)
+        except ValueError:
+            return None
+        current = current.parent
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
