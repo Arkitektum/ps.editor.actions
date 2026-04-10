@@ -73,13 +73,18 @@ class ScopeRenderingTests(unittest.TestCase):
             )
 
         self.assertIn("### Datamodell - datafangst", scopes_text)
-        self.assertIn("[Objektkatalog - datafangst](datafangst/objektkatalog.html)", scopes_text)
+        self.assertIn(
+            'Se full datamodell for omfang "datafangst"',
+            scopes_text,
+        )
+        self.assertIn("(datafangst/objektkatalog.html)", scopes_text)
         self.assertIn("datafangst/datafangst_feature_catalogue.png", scopes_text)
         self.assertIn("### Datamodell - innsynstjeneste", scopes_text)
         self.assertIn(
-            "[Objektkatalog - innsynstjeneste](innsynstjeneste/objektkatalog.html)",
+            'Se full datamodell for omfang "innsynstjeneste"',
             scopes_text,
         )
+        self.assertIn("(innsynstjeneste/objektkatalog.html)", scopes_text)
         self.assertIn("innsynstjeneste/innsynstjeneste_feature_catalogue.png", scopes_text)
 
         xmi_path = Path("output") / "datafangst" / "objektkatalog.md"

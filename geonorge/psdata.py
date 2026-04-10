@@ -146,6 +146,7 @@ def build_psdata(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any
             "title": _select_first_string(
                 metadata.get("NorwegianTitle"), metadata.get("EnglishTitle"), metadata.get("Title")
             ),
+            "format": "text/html",
             "date": _compact_mapping(
                 {
                     "creation": _parse_date(metadata.get("DatePublished")),
@@ -210,6 +211,19 @@ def _build_top_level_contact(metadata: Mapping[str, Any]) -> dict[str, Any] | No
 # identificationSection
 # ---------------------------------------------------------------------------
 
+def _build_unique_id(metadata: Mapping[str, Any], metadata_id: str) -> str:
+    """Build the dataset unique id from ResourceReferenceCodespace and Code.
+
+    Falls back to ``Uuid`` and finally ``metadata_id`` when the resource
+    reference fields are not present.
+    """
+    code = _normalize_string(metadata.get("ResourceReferenceCode"))
+    codespace = _normalize_string(metadata.get("ResourceReferenceCodespace"))
+    if code and codespace:
+        return f"{codespace.rstrip('/')}/{code.lstrip('/')}"
+    return metadata.get("Uuid") or metadata_id
+
+
 def _build_identification(
     metadata_id: str,
     metadata: Mapping[str, Any],
@@ -257,7 +271,7 @@ def _build_identification(
             ),
             "spatialResolution": _build_spatial_resolution(metadata),
             "supplementalInformation": _normalize_string(metadata.get("SupplementalDescription")),
-            "uniqueId": metadata.get("Uuid") or metadata_id,
+            "uniqueId": _build_unique_id(metadata, metadata_id),
             "keyword": keywords,
             "restriction": restriction,
             "contact": _collect_contacts(metadata),
@@ -387,32 +401,18 @@ def _build_identification_extent(
 # scopeSection
 # ---------------------------------------------------------------------------
 
-def _build_scope_section(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | None:
-    level = _normalize_string(metadata.get("HierarchyLevel") or metadata.get("Type"))
-    spatial_scope = _normalize_string(metadata.get("SpatialScope"))
-
-    if not level:
-        return None
-
-    scope_entry = _compact_mapping(
-        {
-            "specificationScope": _compact_mapping(
-                {
-                    "scopeIdentification": "hele datasettet",
-                    "level": level,
-                    "levelName": "",
-                    "levelDescription": "",
-                    "extent": _compact_mapping(
-                        {
-                            "description": spatial_scope,
-                        }
-                    ),
-                }
+def _build_scope_section(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
+    default_entry = {
+        "specificationScope": {
+            "scopeIdentification": "Hele datasettet",
+            "level": "dataset",
+            "levelDescription": (
+                "Gjelder hele datasettet. Hvis omfang ikke er oppgitt under en overskrift, "
+                "gjelder teksten for hele datasettet og alle leveranser"
             ),
         }
-    )
-
-    return [scope_entry] if scope_entry else None
+    }
+    return [default_entry]
 
 
 # ---------------------------------------------------------------------------
@@ -420,16 +420,7 @@ def _build_scope_section(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | 
 # ---------------------------------------------------------------------------
 
 def _build_data_content_section(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
-    specific_usage = _normalize_string(metadata.get("SpecificUsage"))
-
-    if not specific_usage:
-        return None
-
-    return _compact_mapping(
-        {
-            "narrativeDescription": specific_usage,
-        }
-    )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -469,8 +460,6 @@ def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
             if entry:
                 elements.append(entry)
 
-    lineage_statement = _normalize_string(metadata.get("SupplementalDescription"))
-
     result = _compact_mapping(
         {
             "scope": _compact_mapping(
@@ -481,7 +470,6 @@ def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
                 }
             ),
             "report": elements if elements else None,
-            "resourceLineage": _compact_mapping({"statement": lineage_statement}),
         }
     )
 
@@ -787,8 +775,6 @@ def _build_metadata_section(metadata_id: str, metadata: Mapping[str, Any]) -> di
         }
     )
 
-    links = _collect_links(metadata)
-
     metadata_section = _compact_mapping(
         {
             "metadataStandard": _normalize_string(metadata.get("MetadataStandard")),
@@ -797,7 +783,6 @@ def _build_metadata_section(metadata_id: str, metadata: Mapping[str, Any]) -> di
             "language": _normalize_string(metadata.get("MetadataLanguage")),
             "contact": contact,
             "metadataIdentifier": metadata_identifier,
-            "links": links if links else None,
         }
     )
 

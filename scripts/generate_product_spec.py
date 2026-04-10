@@ -324,9 +324,12 @@ def _build_scope_catalogues(
             png_relative = Path(scope_slug) / f"{scope_slug}_feature_catalogue.png"
             sections.append(f"### Datamodell - {scope_name}")
             sections.append("")
-            sections.append(f"[Objektkatalog - {scope_name}]({relative.as_posix()})")
-            sections.append("")
             sections.append(_format_scope_png_link(scope_name, png_relative))
+            sections.append("")
+            sections.append(
+                f"➡️ [Se full datamodell for omfang \"{scope_name}\" "
+                f"(diagram og objektkatalog)]({relative.as_posix()})"
+            )
 
     if not sections:
         return ""
@@ -413,8 +416,8 @@ def generate_product_specification(
         scope_section = psdata.get("scopeSection")
         if not isinstance(scope_section, list):
             scope_section = []
-        scope_entries = _build_scope_entries(scopes, scope_section)
-        psdata["scopeSection"] = scope_entries
+        config_entries = _build_scope_entries(scopes, scope_section)
+        psdata["scopeSection"] = list(scope_section) + config_entries
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
         ogc_feature_types = load_feature_types(ogc_feature_api)
