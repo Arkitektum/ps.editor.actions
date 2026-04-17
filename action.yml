@@ -40,6 +40,12 @@ inputs:
     description: "Optional password for downloading the XMI catalogue (default: sosi)."
     required: false
     default: sosi
+  ogc-username:
+    description: "Optional username for HTTP Basic authentication when fetching from the OGC API."
+    required: false
+  ogc-password:
+    description: "Optional password for HTTP Basic authentication when fetching from the OGC API."
+    required: false
 outputs:
   spec-directory:
     description: Directory containing the generated product specification.
@@ -120,6 +126,12 @@ runs:
           if [ -n "${{ inputs.xmi-password }}" ]; then
             ARGS+=("--xmi-password" "${{ inputs.xmi-password }}")
           fi
+        fi
+        if [ -n "${{ inputs.ogc-username }}" ]; then
+          ARGS+=("--ogc-username" "${{ inputs.ogc-username }}")
+        fi
+        if [ -n "${{ inputs.ogc-password }}" ]; then
+          ARGS+=("--ogc-password" "${{ inputs.ogc-password }}")
         fi
         ARGS+=("--skip-spec-markdown")
         python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"

@@ -231,6 +231,8 @@ def _build_scope_catalogues(
     feature_type_filter: Sequence[str] | None,
     xmi_username: str | None,
     xmi_password: str | None,
+    ogc_username: str | None = None,
+    ogc_password: str | None = None,
 ) -> str:
     if not scopes:
         return ""
@@ -256,7 +258,9 @@ def _build_scope_catalogues(
                 password=xmi_password or "sosi",
             )
         else:
-            feature_types = load_feature_types(url)
+            feature_types = load_feature_types(
+                url, username=ogc_username, password=ogc_password
+            )
 
         feature_types = _filter_feature_types(feature_types, feature_type_filter)
         scope_slug = _normalize_slug(scope_name) or f"scope_{index}"
@@ -404,6 +408,8 @@ def generate_product_specification(
     xmi_model: str | Path | None = None,
     xmi_username: str | None = None,
     xmi_password: str | None = None,
+    ogc_username: str | None = None,
+    ogc_password: str | None = None,
     feature_type_filter: Sequence[str] | None = None,
     scopes: Sequence[Mapping[str, Any]] | None = None,
     render_spec_markdown: bool = True,
@@ -420,7 +426,9 @@ def generate_product_specification(
         psdata["scopeSection"] = list(scope_section) + config_entries
     ogc_feature_types: list[dict[str, Any]] = []
     if ogc_feature_api:
-        ogc_feature_types = load_feature_types(ogc_feature_api)
+        ogc_feature_types = load_feature_types(
+            ogc_feature_api, username=ogc_username, password=ogc_password
+        )
         ogc_feature_types = _filter_feature_types(
             ogc_feature_types, feature_type_filter
         )
@@ -512,6 +520,8 @@ def generate_product_specification(
         feature_type_filter=feature_type_filter,
         xmi_username=xmi_username,
         xmi_password=xmi_password,
+        ogc_username=ogc_username,
+        ogc_password=ogc_password,
     )
     if scope_links:
         scope_links_path = spec_dir / "scope_catalogues.md"
@@ -592,6 +602,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Optional password used when downloading the XMI file (default: sosi).",
     )
     parser.add_argument(
+        "--ogc-username",
+        help="Optional username used with HTTP Basic auth when fetching from the OGC API.",
+    )
+    parser.add_argument(
+        "--ogc-password",
+        help="Optional password used with HTTP Basic auth when fetching from the OGC API.",
+    )
+    parser.add_argument(
         "--skip-spec-markdown",
         action="store_true",
         help="Skip rendering the final product specification Markdown document.",
@@ -648,6 +666,8 @@ def main(argv: list[str] | None = None) -> int:
             xmi_model=args.xmi_model,
             xmi_username=args.xmi_username,
             xmi_password=args.xmi_password,
+            ogc_username=args.ogc_username,
+            ogc_password=args.ogc_password,
             feature_type_filter=feature_type_filter,
             scopes=scopes,
             render_spec_markdown=not args.skip_spec_markdown,

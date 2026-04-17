@@ -37,7 +37,24 @@ def _default_http_get(url: str) -> Any:
     return requests.get(url, timeout=30)
 
 
-def load_feature_types(collections_url: str, http_get: HTTPGet | None = None) -> list[dict[str, Any]]:
+def _build_http_get_with_auth(username: str, password: str) -> HTTPGet:
+    """Return an HTTPGet callable that uses HTTP Basic authentication."""
+    if requests is None:  # pragma: no cover
+        raise RuntimeError("The 'requests' library is required to fetch data.")
+
+    def _get(url: str) -> Any:
+        return requests.get(url, timeout=30, auth=(username, password))
+
+    return _get
+
+
+def load_feature_types(
+    collections_url: str,
+    http_get: HTTPGet | None = None,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+) -> list[dict[str, Any]]:
     """Load feature type metadata from an OGC API collections endpoint.
 
     Parameters
@@ -65,7 +82,12 @@ def load_feature_types(collections_url: str, http_get: HTTPGet | None = None) ->
         If the payload is missing required keys or contains invalid data.
     """
 
-    getter = http_get or _default_http_get
+    if http_get is not None:
+        getter = http_get
+    elif username and password:
+        getter = _build_http_get_with_auth(username, password)
+    else:
+        getter = _default_http_get
 
     try:
         response = getter(collections_url)
