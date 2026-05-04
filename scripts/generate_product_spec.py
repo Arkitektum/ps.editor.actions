@@ -28,7 +28,12 @@ from md.product_specification import (  # noqa: E402
     render_template,
 )
 from ogc_api.feature_types import load_feature_types  # noqa: E402
-from puml.feature_types import render_feature_types_to_puml  # noqa: E402
+from puml.feature_types import (  # noqa: E402
+    group_feature_types_by_package,
+    render_feature_types_per_package,
+    render_feature_types_to_puml,
+    render_overview_diagram,
+)
 from xmi.feature_catalog import load_feature_types_from_xmi  # noqa: E402
 
 
@@ -275,42 +280,19 @@ def _build_scope_catalogues(
         )
 
         scope_includes: list[IncludeResource] = []
-        png_path = assets.get("png_path")
-        png_name = ""
-        if isinstance(png_path, Path):
-            png_name = png_path.name
-        if generator == "xmi":
-            if assets["markdown_content"].strip():
-                scope_includes.append(
-                    IncludeResource("incl_featuretypes_xmi_table", assets["markdown_content"].strip()),
-                )
-            if png_name:
-                scope_includes.append(
-                    IncludeResource("incl_featuretypes_xmi_uml", _format_png_embed(scope_name, png_name)),
-                )
-            elif assets["uml_content"].strip():
-                scope_includes.append(
-                    IncludeResource(
-                        "incl_featuretypes_xmi_uml",
-                        f"```plantuml\n{assets['uml_content'].strip()}\n```",
-                    ),
-                )
-        else:
-            if assets["markdown_content"].strip():
-                scope_includes.append(
-                    IncludeResource("incl_featuretypes_table", assets["markdown_content"].strip()),
-                )
-            if png_name:
-                scope_includes.append(
-                    IncludeResource("incl_featuretypes_uml", _format_png_embed(scope_name, png_name)),
-                )
-            elif assets["uml_content"].strip():
-                scope_includes.append(
-                    IncludeResource(
-                        "incl_featuretypes_uml",
-                        f"```plantuml\n{assets['uml_content'].strip()}\n```",
-                    ),
-                )
+        diagrams_markdown = _build_diagrams_markdown(assets, scope_name)
+        uml_placeholder = (
+            "incl_featuretypes_xmi_uml" if generator == "xmi" else "incl_featuretypes_uml"
+        )
+        table_placeholder = (
+            "incl_featuretypes_xmi_table" if generator == "xmi" else "incl_featuretypes_table"
+        )
+        if assets["markdown_content"].strip():
+            scope_includes.append(
+                IncludeResource(table_placeholder, assets["markdown_content"].strip()),
+            )
+        if diagrams_markdown:
+            scope_includes.append(IncludeResource(uml_placeholder, diagrams_markdown))
 
         scope_context = dict(context)
         if isinstance(description, str) and description.strip():
@@ -325,14 +307,22 @@ def _build_scope_catalogues(
             scope_path = scope_dir / "objektkatalog.md"
             _write_text_file(scope_path, scope_markdown)
             relative = Path(scope_slug) / "objektkatalog.html"
-            png_relative = Path(scope_slug) / f"{scope_slug}_feature_catalogue.png"
+            # Prefer the overview diagram on the main spec page when the
+            # model has multiple packages — it's the compact, navigable view.
+            # Fall back to the combined main diagram otherwise.
+            overview_uml_path = assets.get("overview_uml_path")
+            if isinstance(overview_uml_path, Path):
+                front_png = overview_uml_path.with_suffix(".png").name
+            else:
+                front_png = f"{scope_slug}_feature_catalogue.png"
+            png_relative = Path(scope_slug) / front_png
             sections.append(f"### Datamodell - {scope_name}")
             sections.append("")
             sections.append(_format_scope_png_link(scope_name, png_relative))
             sections.append("")
             sections.append(
                 f"➡️ [Se full datamodell for omfang \"{scope_name}\" "
-                f"(diagram og objektkatalog)]({relative.as_posix()})"
+                f"(diagram per pakke og objektkatalog)]({relative.as_posix()})"
             )
 
     if not sections:
@@ -368,6 +358,8 @@ def _build_feature_catalogue_assets(
         markdown_path.touch(exist_ok=True)
 
     uml_path = spec_dir / f"{base_name}.puml"
+    package_uml_paths: dict[str, Path] = {}
+    overview_uml_path: Path | None = None
     if feature_types:
         title = f"{product_title} - Objekttyper" if product_title else None
         uml_content = render_feature_types_to_puml(
@@ -378,6 +370,39 @@ def _build_feature_catalogue_assets(
             include_descriptions=False,
         )
         _write_text_file(uml_path, uml_content)
+
+        # Auto-split: when the model contains 2+ packages, also emit one
+        # diagram per package and a high-level overview diagram. This keeps
+        # large models (e.g. FKB Bygning) readable without sacrificing the
+        # combined diagram.
+        packages = [pkg for pkg in group_feature_types_by_package(feature_types) if pkg]
+        if len(packages) >= 2:
+            per_package = render_feature_types_per_package(
+                feature_types,
+                title_prefix=product_title or "",
+                include_notes=False,
+                include_descriptions=False,
+            )
+            for pkg_name, pkg_uml in per_package.items():
+                if not pkg_name:
+                    continue
+                pkg_slug = _slugify_package_name(pkg_name)
+                pkg_path = spec_dir / f"{base_name}_{pkg_slug}.puml"
+                _write_text_file(pkg_path, pkg_uml)
+                package_uml_paths[pkg_name] = pkg_path
+                if create_png:
+                    _write_placeholder_png(pkg_path.with_suffix(".png"))
+
+            overview_title = (
+                f"{product_title} - Oversikt" if product_title else "Oversikt"
+            )
+            overview_content = render_overview_diagram(
+                feature_types, title=overview_title
+            )
+            overview_uml_path = spec_dir / f"{base_name}_overview.puml"
+            _write_text_file(overview_uml_path, overview_content)
+            if create_png:
+                _write_placeholder_png(overview_uml_path.with_suffix(".png"))
     else:
         uml_content = ""
         uml_path.parent.mkdir(parents=True, exist_ok=True)
@@ -394,7 +419,74 @@ def _build_feature_catalogue_assets(
         "uml_path": uml_path,
         "uml_content": uml_content,
         "png_path": png_path if create_png else None,
+        "package_uml_paths": package_uml_paths,
+        "overview_uml_path": overview_uml_path,
     }
+
+
+def _slugify_package_name(name: str) -> str:
+    """Convert a package name to a filesystem-safe slug for filenames."""
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_")
+    return slug or "pakke"
+
+
+def _select_front_page_uml(assets: Mapping[str, Any]) -> str:
+    """Choose which PlantUML source to embed on the main spec front page.
+
+    For multi-package models the overview diagram is preferred (compact, good
+    for navigation). For single-package models the combined diagram is used.
+    Returns the stripped PUML source or empty string when nothing is available.
+    """
+    overview_uml_path = assets.get("overview_uml_path")
+    if isinstance(overview_uml_path, Path) and overview_uml_path.exists():
+        return overview_uml_path.read_text(encoding="utf-8").strip()
+    uml_content = str(assets.get("uml_content") or "").strip()
+    return uml_content
+
+
+def _build_diagrams_markdown(assets: Mapping[str, Any], scope_name: str) -> str:
+    """Build a markdown blob with diagram embeds.
+
+    For multi-package models the overview goes first followed by one section
+    per package (each pointing at its own PNG), and the combined diagram is
+    appended at the end as a fallback.  For single-package models we just
+    embed the combined diagram (matching the original behaviour).
+    """
+    package_uml_paths = assets.get("package_uml_paths") or {}
+    overview_uml_path = assets.get("overview_uml_path")
+    main_png = assets.get("png_path")
+
+    sections: list[str] = []
+
+    if package_uml_paths and overview_uml_path is not None:
+        if isinstance(overview_uml_path, Path):
+            overview_png = overview_uml_path.with_suffix(".png").name
+            sections.append("#### Oversikt")
+            sections.append("")
+            sections.append(_format_png_embed(f"{scope_name} - oversikt", overview_png))
+            sections.append("")
+
+        for pkg_name, pkg_uml_path in sorted(package_uml_paths.items()):
+            if not isinstance(pkg_uml_path, Path):
+                continue
+            pkg_png = pkg_uml_path.with_suffix(".png").name
+            sections.append(f"#### Pakke: {pkg_name}")
+            sections.append("")
+            sections.append(_format_png_embed(f"{scope_name} - {pkg_name}", pkg_png))
+            sections.append("")
+
+    if isinstance(main_png, Path):
+        if package_uml_paths:
+            sections.append("#### Komplett diagram")
+            sections.append("")
+        sections.append(_format_png_embed(scope_name, main_png.name))
+    else:
+        # No PNG path available — fall back to embedding the puml source.
+        uml_content = str(assets.get("uml_content") or "").strip()
+        if uml_content:
+            sections.append(f"```plantuml\n{uml_content}\n```")
+
+    return "\n".join(sections).strip()
 
 
 def generate_product_specification(
@@ -487,12 +579,12 @@ def generate_product_specification(
             includes.append(
                 IncludeResource("incl_featuretypes_table", ogc_markdown.strip()),
             )
-        ogc_uml_content = ogc_assets["uml_content"]
-        if ogc_uml_content.strip():
+        ogc_uml_for_front = _select_front_page_uml(ogc_assets)
+        if ogc_uml_for_front:
             includes.append(
                 IncludeResource(
                     "incl_featuretypes_uml",
-                    f"```plantuml\n{ogc_uml_content.strip()}\n```",
+                    f"```plantuml\n{ogc_uml_for_front}\n```",
                 ),
             )
 
@@ -502,12 +594,12 @@ def generate_product_specification(
             includes.append(
                 IncludeResource("incl_featuretypes_xmi_table", xmi_markdown.strip()),
             )
-        xmi_uml_content = xmi_assets["uml_content"]
-        if xmi_uml_content.strip():
+        xmi_uml_for_front = _select_front_page_uml(xmi_assets)
+        if xmi_uml_for_front:
             includes.append(
                 IncludeResource(
                     "incl_featuretypes_xmi_uml",
-                    f"```plantuml\n{xmi_uml_content.strip()}\n```",
+                    f"```plantuml\n{xmi_uml_for_front}\n```",
                 ),
             )
 

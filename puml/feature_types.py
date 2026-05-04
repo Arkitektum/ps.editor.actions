@@ -10,7 +10,13 @@ from html import unescape
 from pathlib import Path
 from typing import Any
 
-__all__ = ["render_feature_types_to_puml", "main"]
+__all__ = [
+    "render_feature_types_to_puml",
+    "render_feature_types_per_package",
+    "render_overview_diagram",
+    "group_feature_types_by_package",
+    "main",
+]
 
 
 _TYPE_MAPPING: dict[str, str] = {
@@ -56,48 +62,7 @@ def render_feature_types_to_puml(
         raise TypeError("feature_types must be a sequence of mappings")
 
     lines: list[str] = []
-    lines.append("@startuml")
-    lines.append(
-        "' For wide diagrams, render with: plantuml -DPLANTUML_LIMIT_SIZE=16384 ..."
-    )
-    lines.append(
-        "' The 'scale max' directive below caps the rendered output to prevent the"
-    )
-    lines.append(
-        "' default PlantUML 4096px size limit from cropping the diagram."
-    )
-    lines.append("scale max 4000*4000")
-    lines.append("")
-    if title:
-        lines.append(f"title {title}")
-        lines.append("")
-
-    lines.extend(
-        [
-            "skinparam backgroundColor #F5F5F5",
-            "skinparam shadowing false",
-            "skinparam RoundCorner 6",
-            "skinparam ArrowColor #6C8198",
-            "skinparam wrapWidth 200",
-            "skinparam class {",
-            "  BackgroundColor #FBF2E8",
-            "  BorderColor #9C8578",
-            "  FontColor #2D201A",
-            "  HeaderBackgroundColor #EFE1D6",
-            "  HeaderFontColor #2D201A",
-            "  AttributeIconSize 0",
-            "}",
-            "skinparam note {",
-            "  BackgroundColor #FFFFFF",
-            "  BorderColor #6C8198",
-            "  FontColor #2D201A",
-            "}",
-            "skinparam stereotypeCBackgroundColor #EAD9CE",
-            "skinparam stereotypeCBorderColor #9C8578",
-            "skinparam stereotypeCFontColor #2D201A",
-            "",
-        ]
-    )
+    _append_diagram_preamble(lines, title=title)
 
     indent = ""
     alias_map: dict[str, str] = {}
@@ -153,6 +118,289 @@ def render_feature_types_to_puml(
     lines.append("")
     lines.append("@enduml")
 
+    return "\n".join(lines)
+
+
+def _append_diagram_preamble(lines: list[str], *, title: str | None) -> None:
+    """Append the standard PlantUML header (start, scale hint, skinparams, title)."""
+    lines.append("@startuml")
+    lines.append(
+        "' For wide diagrams, render with: plantuml -DPLANTUML_LIMIT_SIZE=16384 ..."
+    )
+    lines.append(
+        "' The 'scale max' directive below caps the rendered output to prevent the"
+    )
+    lines.append(
+        "' default PlantUML 4096px size limit from cropping the diagram."
+    )
+    lines.append("scale max 4000*4000")
+    lines.append("")
+    if title:
+        lines.append(f"title {title}")
+        lines.append("")
+
+    lines.extend(
+        [
+            "skinparam backgroundColor #F5F5F5",
+            "skinparam shadowing false",
+            "skinparam RoundCorner 6",
+            "skinparam ArrowColor #6C8198",
+            "skinparam wrapWidth 200",
+            "skinparam class {",
+            "  BackgroundColor #FBF2E8",
+            "  BorderColor #9C8578",
+            "  FontColor #2D201A",
+            "  HeaderBackgroundColor #EFE1D6",
+            "  HeaderFontColor #2D201A",
+            "  AttributeIconSize 0",
+            "}",
+            "skinparam note {",
+            "  BackgroundColor #FFFFFF",
+            "  BorderColor #6C8198",
+            "  FontColor #2D201A",
+            "}",
+            "skinparam stereotypeCBackgroundColor #EAD9CE",
+            "skinparam stereotypeCBorderColor #9C8578",
+            "skinparam stereotypeCFontColor #2D201A",
+            "",
+        ]
+    )
+
+
+def group_feature_types_by_package(
+    feature_types: Sequence[Mapping[str, Any]],
+) -> dict[str, list[Mapping[str, Any]]]:
+    """Group feature types by their ``package`` attribute.
+
+    Feature types without a package are grouped under the empty-string key.
+    """
+    groups: dict[str, list[Mapping[str, Any]]] = {}
+    for ft in feature_types:
+        if not isinstance(ft, Mapping):
+            continue
+        pkg = str(ft.get("package", "") or "").strip()
+        groups.setdefault(pkg, []).append(ft)
+    return groups
+
+
+def render_feature_types_per_package(
+    feature_types: Sequence[Mapping[str, Any]],
+    *,
+    title_prefix: str = "",
+    include_notes: bool = True,
+    include_descriptions: bool = True,
+    include_generalization: bool = True,
+) -> dict[str, str]:
+    """Render one PlantUML diagram per package found in ``feature_types``.
+
+    Each package's diagram includes:
+      * The package's own classes with full attributes/notes.
+      * Ghost class boxes (no attributes) for any classes in *other* packages
+        that are referenced via inheritance or association, wrapped in a
+        separate ``"Eksterne referanser"`` package block so cross-package links
+        remain visible.
+      * Cross-package and intra-package relationship arrows.
+
+    Returns a dict mapping package name to PlantUML source.  The empty-string
+    key is used for feature types that have no package set; in that case the
+    classes are rendered without any package wrapper.
+    """
+    groups = group_feature_types_by_package(feature_types)
+    name_to_package = {
+        str(ft.get("name") or ""): str(ft.get("package", "") or "").strip()
+        for ft in feature_types
+        if isinstance(ft, Mapping)
+    }
+
+    diagrams: dict[str, str] = {}
+    for pkg_name, members in groups.items():
+        external_names = _collect_external_references(members, pkg_name, name_to_package)
+        title_parts = [part for part in (title_prefix, pkg_name) if part]
+        title = " - ".join(title_parts) if title_parts else None
+        diagrams[pkg_name] = _render_package_diagram(
+            members,
+            pkg_name,
+            external_names,
+            title=title,
+            include_notes=include_notes,
+            include_descriptions=include_descriptions,
+            include_generalization=include_generalization,
+        )
+
+    return diagrams
+
+
+def render_overview_diagram(
+    feature_types: Sequence[Mapping[str, Any]],
+    *,
+    title: str | None = None,
+    include_generalization: bool = True,
+) -> str:
+    """Render a navigation/overview diagram with class headers only (no attributes).
+
+    Classes are grouped by ``package`` and all relationships are preserved so
+    the diagram serves as a high-level map of the model.
+    """
+    lines: list[str] = []
+    _append_diagram_preamble(lines, title=title)
+
+    groups = group_feature_types_by_package(feature_types)
+    alias_map: dict[str, str] = {}
+
+    for pkg_name in sorted(groups.keys(), key=lambda s: (s == "", s.lower())):
+        members = groups[pkg_name]
+        if not members:
+            continue
+        if pkg_name:
+            lines.append(f'package "{pkg_name}" {{')
+            indent = "  "
+        else:
+            indent = ""
+
+        for ft in members:
+            name = str(ft.get("name") or "")
+            if not name:
+                continue
+            header, alias = _class_header_and_alias(name)
+            keyword = "abstract " if ft.get("abstract") is True else ""
+            stereotype = "<<featureType>>"
+            lines.append(f"{indent}{keyword}class {header} {stereotype} {{")
+            lines.append(f"{indent}}}")
+            alias_map[name] = alias
+
+        if pkg_name:
+            lines.append("}")
+            lines.append("")
+
+    relation_lines = _build_relationship_lines(
+        feature_types, alias_map, "", include_generalization=include_generalization
+    )
+    if relation_lines:
+        lines.append("")
+        lines.extend(relation_lines)
+
+    lines.append("")
+    lines.append("@enduml")
+    return "\n".join(lines)
+
+
+def _collect_external_references(
+    members: Sequence[Mapping[str, Any]],
+    own_package: str,
+    name_to_package: Mapping[str, str],
+) -> dict[str, str]:
+    """Find names referenced by members that live in a *different* package.
+
+    Returns a dict mapping external class name to the package it lives in
+    (or empty string when the target's package is unknown).
+    """
+    externals: dict[str, str] = {}
+    for ft in members:
+        relationships = ft.get("relationships") if isinstance(ft, Mapping) else None
+        if not isinstance(relationships, Mapping):
+            continue
+        for assoc in relationships.get("associations") or []:
+            if not isinstance(assoc, Mapping):
+                continue
+            target = str(assoc.get("target") or "").strip()
+            if not target:
+                continue
+            target_pkg = name_to_package.get(target, "")
+            if target_pkg != own_package and target not in {
+                str(m.get("name") or "") for m in members if isinstance(m, Mapping)
+            }:
+                externals.setdefault(target, target_pkg)
+        for parent in relationships.get("inheritance") or []:
+            if not isinstance(parent, str) or not parent.strip():
+                continue
+            parent = parent.strip()
+            target_pkg = name_to_package.get(parent, "")
+            if target_pkg != own_package and parent not in {
+                str(m.get("name") or "") for m in members if isinstance(m, Mapping)
+            }:
+                externals.setdefault(parent, target_pkg)
+    return externals
+
+
+def _render_package_diagram(
+    members: Sequence[Mapping[str, Any]],
+    package_name: str,
+    external_names: Mapping[str, str],
+    *,
+    title: str | None,
+    include_notes: bool,
+    include_descriptions: bool,
+    include_generalization: bool,
+) -> str:
+    """Render a single package's PlantUML diagram with an external-refs block."""
+    lines: list[str] = []
+    _append_diagram_preamble(lines, title=title)
+
+    alias_map: dict[str, str] = {}
+    datatypes = _collect_datatypes(members)
+
+    indent = ""
+    if package_name:
+        lines.append(f'package "{package_name}" {{')
+        lines.append("")
+        indent = "  "
+
+    feature_type_entries = list(members)
+    if include_generalization:
+        feature_type_entries = _apply_inheritance_attributes(feature_type_entries)
+
+    for index, feature_type in enumerate(feature_type_entries):
+        if not isinstance(feature_type, Mapping):
+            continue
+        if index:
+            lines.append("")
+        alias = _append_feature_type(
+            lines,
+            feature_type,
+            indent,
+            include_notes=include_notes,
+            include_descriptions=include_descriptions,
+        )
+        alias_map[str(feature_type.get("name", ""))] = alias
+
+    for dtype_name, dtype_attrs in datatypes.items():
+        lines.append("")
+        dtype_alias = _append_data_type(
+            lines,
+            dtype_name,
+            dtype_attrs,
+            indent,
+            include_descriptions=include_descriptions,
+        )
+        alias_map[dtype_name] = dtype_alias
+
+    if package_name:
+        lines.append("}")
+
+    if external_names:
+        lines.append("")
+        lines.append('package "Eksterne referanser" <<Frame>> {')
+        for ext_name in sorted(external_names.keys()):
+            header, alias = _class_header_and_alias(ext_name)
+            ext_pkg = external_names.get(ext_name, "")
+            stereotype_label = f"<<{ext_pkg}>>" if ext_pkg else "<<external>>"
+            lines.append(f"  class {header} {stereotype_label} {{")
+            lines.append("  }")
+            alias_map[ext_name] = alias
+        lines.append("}")
+
+    relation_lines = _build_relationship_lines(
+        feature_type_entries,
+        alias_map,
+        "",
+        include_generalization=include_generalization,
+    )
+    if relation_lines:
+        lines.append("")
+        lines.extend(relation_lines)
+
+    lines.append("")
+    lines.append("@enduml")
     return "\n".join(lines)
 
 
