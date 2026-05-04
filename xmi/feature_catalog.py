@@ -36,6 +36,7 @@ class _UmlClass:
     tagged_values: dict[str, str]
     abstract: bool = False
     attributes: list[_UmlAttribute] = field(default_factory=list)
+    package: str = ""
 
 
 def load_feature_types_from_xmi(
@@ -139,7 +140,8 @@ def _read_file(path: Path) -> str:
 def _parse_feature_types(text: str) -> list[dict[str, Any]]:
     root = ET.fromstring(text)
     extra_tagged = _collect_global_tagged_values(root)
-    classes, order = _collect_classes(root, extra_tagged)
+    package_by_class_id = _collect_class_packages(root)
+    classes, order = _collect_classes(root, extra_tagged, package_by_class_id)
     parents = _collect_generalizations(root)
     associations = _collect_associations(root, classes)
 
@@ -191,10 +193,12 @@ def _filter_feature_types(
 def _collect_classes(
     root: ET.Element,
     extra_tagged: Mapping[str, Mapping[str, str]] | None = None,
+    package_by_class_id: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, _UmlClass], list[str]]:
     classes: dict[str, _UmlClass] = {}
     order: list[str] = []
     extra_tagged = extra_tagged or {}
+    package_by_class_id = package_by_class_id or {}
 
     for class_elem in root.findall(".//UML:Class", _NS):
         class_id = _get_identifier(class_elem)
@@ -213,11 +217,37 @@ def _collect_classes(
             tagged_values=tagged_values,
             abstract=abstract,
             attributes=attributes,
+            package=package_by_class_id.get(class_id, ""),
         )
         classes[class_id] = info
         order.append(class_id)
 
     return classes, order
+
+
+def _collect_class_packages(root: ET.Element) -> dict[str, str]:
+    """Walk the XMI tree and map each class id to its enclosing UML:Package name.
+
+    Walks from each ``UML:Package`` down through any nested
+    ``UML:Namespace.ownedElement`` containers to all descendant ``UML:Class``
+    elements. Nested packages are not flattened; the *innermost* package name
+    wins (so a class inside a sub-package gets the sub-package name).
+    """
+    mapping: dict[str, str] = {}
+    for package in root.findall(".//UML:Package", _NS):
+        pkg_name = (package.get("name") or "").strip()
+        if not pkg_name:
+            continue
+        for class_elem in package.findall(".//UML:Class", _NS):
+            class_id = _get_identifier(class_elem)
+            if not class_id:
+                continue
+            # Only overwrite when we are deeper than the previous mapping.
+            # Since findall returns descendants in document order and we
+            # iterate packages outer->inner, the inner package will overwrite
+            # the outer one, which is what we want.
+            mapping[class_id] = pkg_name
+    return mapping
 
 
 def _collect_attributes(
@@ -390,6 +420,9 @@ def _build_feature_type(
         "abstract": class_info.abstract,
         "relationships": relationships,
     }
+
+    if class_info.package:
+        feature_dict["package"] = class_info.package
 
     return feature_dict
 
