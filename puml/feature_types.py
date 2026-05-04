@@ -57,6 +57,17 @@ def render_feature_types_to_puml(
 
     lines: list[str] = []
     lines.append("@startuml")
+    lines.append(
+        "' For wide diagrams, render with: plantuml -DPLANTUML_LIMIT_SIZE=16384 ..."
+    )
+    lines.append(
+        "' The 'scale max' directive below caps the rendered output to prevent the"
+    )
+    lines.append(
+        "' default PlantUML 4096px size limit from cropping the diagram."
+    )
+    lines.append("scale max 4000*4000")
+    lines.append("")
     if title:
         lines.append(f"title {title}")
         lines.append("")
@@ -67,6 +78,7 @@ def render_feature_types_to_puml(
             "skinparam shadowing false",
             "skinparam RoundCorner 6",
             "skinparam ArrowColor #6C8198",
+            "skinparam wrapWidth 200",
             "skinparam class {",
             "  BackgroundColor #FBF2E8",
             "  BorderColor #9C8578",
