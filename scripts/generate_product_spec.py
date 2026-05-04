@@ -83,6 +83,8 @@ def _format_json_block(data: Any) -> str:
 
 _SCOPE_CATALOG_TEMPLATE = """### Datamodell
 {{incl_datamodell}}
+{{incl_kilde}}
+
 {{incl_featuretypes_xmi_uml}}
 
 {{incl_featuretypes_xmi_table}}
@@ -294,6 +296,10 @@ def _build_scope_catalogues(
         if diagrams_markdown:
             scope_includes.append(IncludeResource(uml_placeholder, diagrams_markdown))
 
+        kilde_markdown = _format_source_reference(url, generator)
+        if kilde_markdown:
+            scope_includes.append(IncludeResource("incl_kilde", kilde_markdown))
+
         scope_context = dict(context)
         if isinstance(description, str) and description.strip():
             scope_context["scope"] = description.strip()
@@ -428,6 +434,34 @@ def _slugify_package_name(name: str) -> str:
     """Convert a package name to a filesystem-safe slug for filenames."""
     slug = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_")
     return slug or "pakke"
+
+
+_SOURCE_KIND_LABELS: dict[str, str] = {
+    "xmi": "SOSI UML XMI-fil",
+    "ogc": "OGC API - Features",
+}
+
+
+def _format_source_reference(url: str, generator: str) -> str:
+    """Build a markdown line describing the data model source.
+
+    The label is derived from the ``generator`` (xmi/ogc) and refined when the
+    URL points at a known schema format such as XSD or JSON Schema.
+    """
+    if not isinstance(url, str) or not url.strip():
+        return ""
+    url = url.strip()
+    label = _SOURCE_KIND_LABELS.get(generator, "Datamodell")
+
+    lower = url.lower().split("?", 1)[0]
+    if lower.endswith(".xsd"):
+        label = "GML-skjema (XSD)"
+    elif lower.endswith(".json") or lower.endswith(".schema.json"):
+        label = "JSON Schema"
+    elif lower.endswith(".xml"):
+        label = "SOSI UML XMI-fil"
+
+    return f"**Kilde:** [{label}]({url})"
 
 
 def _select_front_page_uml(assets: Mapping[str, Any]) -> str:
