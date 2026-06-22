@@ -89,34 +89,14 @@ def load_feature_types(
     else:
         getter = _default_http_get
 
-    try:
-        response = getter(collections_url)
-    except Exception as exc:  # pragma: no cover - simple network error conversion
-        raise RuntimeError(f"Failed to fetch collections from '{collections_url}'.") from exc
-
-    status_code = getattr(response, "status_code", None)
-    if status_code is not None and int(status_code) >= 400:
-        raise RuntimeError(
-            f"Request to '{collections_url}' failed with status code {status_code}."
-        )
-
-    if hasattr(response, "raise_for_status"):
-        try:
-            response.raise_for_status()
-        except Exception as exc:  # pragma: no cover - handled above in most cases
-            raise RuntimeError(
-                f"Request to '{collections_url}' failed: {exc}."
-            ) from exc
-
-    payload = _response_json(response)
-    if payload is None:
-        raise ValueError("Collections response did not contain valid JSON.")
+    payload, resolved_collections_url = _fetch_collections_payload(
+        collections_url, getter
+    )
     if isinstance(payload, Mapping):
         collections = payload.get("collections")
     else:
         collections = None
 
-    resolved_collections_url = collections_url
     if collections is None:
         collections_link = _find_collections_link(payload)
         if collections_link:
@@ -225,6 +205,101 @@ def load_feature_types(
         ft.pop("_collection_id", None)
 
     return feature_types
+
+
+def _fetch_collections_payload(
+    collections_url: str, getter: HTTPGet
+) -> tuple[Any, str]:
+    """Fetch the OGC API collections document, tolerating common URL shapes.
+
+    Users sometimes supply the base service URL (e.g. an ArcGIS
+    ``.../OGCFeatureServer`` endpoint) rather than the ``/collections``
+    document.  Such base URLs typically respond with HTML, which is not valid
+    JSON.  To be forgiving we try a small set of known OGC API - Features URL
+    structures and return the first one that yields a JSON payload.
+
+    Returns the decoded payload together with the URL that produced it.
+
+    Raises
+    ------
+    RuntimeError
+        If every candidate fails to fetch or responds with an HTTP error.
+    ValueError
+        If a candidate was fetched but none contained valid JSON.
+    """
+
+    candidates = _collections_url_candidates(collections_url)
+
+    fetch_error: Exception | None = None
+    saw_non_json = False
+
+    for candidate in candidates:
+        try:
+            response = getter(candidate)
+        except Exception as exc:  # pragma: no cover - simple network error conversion
+            fetch_error = exc
+            continue
+
+        status_code = getattr(response, "status_code", None)
+        if status_code is not None and int(status_code) >= 400:
+            fetch_error = RuntimeError(
+                f"Request to '{candidate}' failed with status code {status_code}."
+            )
+            continue
+
+        if hasattr(response, "raise_for_status"):
+            try:
+                response.raise_for_status()
+            except Exception as exc:  # pragma: no cover - handled above in most cases
+                fetch_error = RuntimeError(
+                    f"Request to '{candidate}' failed: {exc}."
+                )
+                continue
+
+        payload = _response_json(response)
+        if payload is None:
+            saw_non_json = True
+            continue
+
+        return payload, candidate
+
+    if saw_non_json:
+        raise ValueError(
+            "Collections response did not contain valid JSON. Tried: "
+            + ", ".join(f"'{candidate}'" for candidate in candidates)
+            + ". Make sure the URL points at the OGC API '/collections' endpoint."
+        )
+
+    if fetch_error is not None:
+        raise RuntimeError(
+            f"Failed to fetch collections from '{collections_url}'."
+        ) from fetch_error
+
+    raise RuntimeError(f"Failed to fetch collections from '{collections_url}'.")
+
+
+def _collections_url_candidates(collections_url: str) -> list[str]:
+    """Return candidate URLs to try when locating the collections document.
+
+    The original URL is always tried first.  When it does not already point at
+    a ``/collections`` document we additionally try appending ``/collections``
+    so that base service URLs (e.g. ``.../OGCFeatureServer``) resolve.
+    """
+
+    candidates: list[str] = [collections_url]
+
+    base, sep, query = collections_url.partition("?")
+    trimmed = base.rstrip("/")
+    last_segment = trimmed.rsplit("/", 1)[-1].lower() if trimmed else ""
+
+    if last_segment != "collections":
+        appended = f"{trimmed}/collections"
+        if sep:
+            appended = f"{appended}?{query}"
+        if appended not in candidates:
+            candidates.append(appended)
+
+    return candidates
 
 
 def _detect_link_associations(feature_types: list[dict[str, Any]]) -> None:
