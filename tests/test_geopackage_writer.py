@@ -181,5 +181,47 @@ class GeoPackageWriterTests(unittest.TestCase):
         self.assertIn("informasjon", attrs)
 
 
+class GeoPackageInheritanceTests(unittest.TestCase):
+    def test_inherited_attributes_are_materialised(self) -> None:
+        feature_types = [
+            {
+                "name": "Fellesegenskaper",
+                "abstract": True,
+                "attributes": [
+                    {"name": "lokalId", "type": "integer", "cardinality": "1", "ogcRole": "id"},
+                    {"name": "oppdateringsdato", "type": "dateTime", "cardinality": "0..1"},
+                ],
+            },
+            {
+                "name": "Vei",
+                "attributes": [{"name": "navn", "type": "string", "cardinality": "0..1"}],
+                "geometry": {
+                    "type": "geometry-line",
+                    "storageCrs": "http://www.opengis.net/def/crs/EPSG/0/25833",
+                },
+                "relationships": {"inheritance": ["Fellesegenskaper"], "associations": []},
+            },
+        ]
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "m.gpkg"
+        write_geopackage(feature_types, path)
+
+        conn = sqlite3.connect(str(path))
+        try:
+            cols = {r[1] for r in conn.execute('PRAGMA table_info("Vei")')}
+            tables = {r[0] for r in conn.execute("SELECT table_name FROM gpkg_contents")}
+        finally:
+            conn.close()
+
+        # Egne OG arvede felt skal være med.
+        self.assertIn("navn", cols)
+        self.assertIn("lokalId", cols)
+        self.assertIn("oppdateringsdato", cols)
+        # Abstrakt supertype får ingen egen tabell.
+        self.assertNotIn("Fellesegenskaper", tables)
+        self.assertIn("Vei", tables)
+
+
 if __name__ == "__main__":
     unittest.main()

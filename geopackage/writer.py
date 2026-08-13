@@ -225,6 +225,46 @@ def _ensure_srs(connection: sqlite3.Connection, srs_id: int, seen: set[int]) -> 
 # --------------------------------------------------------------------------- #
 
 
+def _effective_attributes(
+    ft: dict[str, Any],
+    by_name: dict[str, dict[str, Any]],
+    _seen: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Attributter for en objekttype INKLUDERT arvede fra supertyper.
+
+    XMI-modeller legger felles felt i abstrakte supertyper som subtypene arver via
+    `relationships.inheritance`. Vi materialiserer disse inn i den konkrete tabellen
+    (supertypens felt først, deretter egne), ellers mangler feltene i GeoPackagen.
+    """
+    if _seen is None:
+        _seen = set()
+    attrs: list[dict[str, Any]] = []
+    relationships = ft.get("relationships")
+    parents = (
+        relationships.get("inheritance", []) if isinstance(relationships, dict) else []
+    )
+    for parent_name in parents:
+        if not isinstance(parent_name, str) or parent_name in _seen:
+            continue
+        _seen.add(parent_name)
+        parent = by_name.get(parent_name)
+        if parent:
+            attrs.extend(_effective_attributes(parent, by_name, _seen))
+    attrs.extend(ft.get("attributes") or [])
+
+    # Dedupliser på navn (behold første forekomst = supertypens rekkefølge først).
+    seen_names: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for attribute in attrs:
+        name = attribute.get("name") if isinstance(attribute, dict) else None
+        if isinstance(name, str) and name:
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+        result.append(attribute)
+    return result
+
+
 def _collect_columns(
     attributes: list[dict[str, Any]],
     *,
@@ -279,6 +319,7 @@ def _write_feature_type(
     default_crs: int,
     srs_seen: set[int],
     schema_used: dict[str, bool],
+    by_name: dict[str, dict[str, Any]],
 ) -> str | None:
     """Create one table for a feature type. Returns the table name (or None)."""
     name = ft.get("name")
@@ -288,7 +329,8 @@ def _write_feature_type(
         return None  # abstract types are not materialised as tables
     table = name.strip()
 
-    columns = _collect_columns(ft.get("attributes") or [])
+    # Inkluder arvede attributter fra (evt. abstrakte) supertyper.
+    columns = _collect_columns(_effective_attributes(ft, by_name))
 
     # Determine the geometry column: explicit geometry dict, else a GM_* attribute.
     geom_type = _geometry_type_name(ft)
@@ -486,6 +528,12 @@ def write_geopackage(
         _init_base(connection)
         srs_seen: set[int] = {-1, 0, 4326}
         schema_used = {"used": False}
+        # Navneoppslag for arv (inkluderer abstrakte supertyper).
+        by_name = {
+            ft["name"]: ft
+            for ft in feature_types
+            if isinstance(ft, dict) and isinstance(ft.get("name"), str)
+        }
         tables: set[str] = set()
         for ft in feature_types:
             if isinstance(ft, dict):
@@ -495,6 +543,7 @@ def write_geopackage(
                     default_crs=default_crs,
                     srs_seen=srs_seen,
                     schema_used=schema_used,
+                    by_name=by_name,
                 )
                 if table:
                     tables.add(table)
