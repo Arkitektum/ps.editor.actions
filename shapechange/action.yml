@@ -1,0 +1,260 @@
+name: "Generate schemas with ShapeChange"
+description: >-
+  Prepare a ShapeChange SCXML model and configuration from a feature catalogue
+  (mode "generate"), or evaluate the log of a ShapeChange run and publish the
+  generated schemas (mode "check"). ShapeChange itself is run by the calling
+  workflow, the same way PlantUML is.
+inputs:
+  mode:
+    description: "'generate' writes the model and configuration; 'check' evaluates the ShapeChange log."
+    required: false
+    default: generate
+  output-directory:
+    description: "Directory holding the model, configuration, log and generated schemas."
+    required: false
+    default: shapechange
+  feature-catalogue-json:
+    description: "Path to a feature catalogue JSON file, e.g. the prepare action's feature-catalogue-json output."
+    required: false
+  xmi-model:
+    description: >-
+      Path or URL to a SOSI UML XMI feature catalogue. It is read by this repository's
+      XMI loader, because ShapeChange only accepts XMI 1.0 and the SOSI exports are XMI 1.1.
+    required: false
+  xmi-username:
+    description: "Username used when downloading the XMI file."
+    required: false
+    default: sosi
+  xmi-password:
+    description: "Password used when downloading the XMI file."
+    required: false
+    default: sosi
+  target-namespace:
+    description: >-
+      Target namespace of the application schema. Required in 'generate' mode: no feature
+      catalogue source carries one, and ShapeChange selects application schemas by exactly
+      this tagged value.
+    required: false
+  xmlns-prefix:
+    description: "Namespace prefix ('xmlns' tagged value) of the application schema."
+    required: false
+    default: app
+  schema-version:
+    description: "Version of the application schema."
+    required: false
+    default: "1.0"
+  schema-name:
+    description: "Name of the application schema package. Defaults to the input file stem."
+    required: false
+  xsd-document:
+    description: "File name of the generated XML Schema document. Defaults to <SchemaName>.xsd."
+    required: false
+  targets:
+    description: "Comma-separated list of ShapeChange targets to enable: xsd, json."
+    required: false
+    default: xsd,json
+  xsd-encoding-rule:
+    description: "ShapeChange XML Schema encoding rule, e.g. iso19136_2007, gml33, iso19139_2007."
+    required: false
+    default: iso19136_2007
+  json-schema-version:
+    description: >-
+      JSON Schema version: 2020-12, 2019-09, draft-07 or OpenApi30. Use draft-07 for models
+      with non-ASCII class names; see the README for why.
+    required: false
+    default: "2019-09"
+  json-base-uri:
+    description: "Base URI used when constructing '$id' values in the JSON Schema output."
+    required: false
+  json-encoding-rule:
+    description: "ShapeChange JSON Schema encoding rule: defaultGeoJson or defaultPlainJson."
+    required: false
+    default: defaultGeoJson
+  entity-type-name:
+    description: "Name of the entity type member in the JSON Schema output."
+    required: false
+    default: "@type"
+  xml-schema-target-class:
+    description: "Java class of the XML Schema target. Override when targeting ShapeChange 2.x/3.x."
+    required: false
+  json-schema-target-class:
+    description: "Java class of the JSON Schema target. Override when targeting ShapeChange 2.x/3.x."
+    required: false
+  bundled-includes:
+    description: >-
+      Reference the standard rules and map entries bundled with the ShapeChange distribution
+      instead of the copies on shapechange.net. Requires running the jar from the distribution
+      root.
+    required: false
+    default: "false"
+  upload-artifact:
+    description: "Upload the output directory as a workflow artifact (mode 'check' only)."
+    required: false
+    default: "true"
+  artifact-name:
+    description: "Name of the uploaded workflow artifact."
+    required: false
+    default: shapechange-schemas
+  python-version:
+    description: "Python version used to run the generator."
+    required: false
+    default: "3.11"
+outputs:
+  output-directory:
+    description: Directory holding the ShapeChange model, configuration, log and schemas.
+    value: ${{ steps.shapechange.outputs.output-directory }}
+  scxml-model:
+    description: Path to the generated ShapeChange SCXML model.
+    value: ${{ steps.shapechange.outputs.scxml-model }}
+  shapechange-config:
+    description: Path to the generated ShapeChange configuration document.
+    value: ${{ steps.shapechange.outputs.shapechange-config }}
+  shapechange-log:
+    description: Path to the XML log that ShapeChange writes.
+    value: ${{ steps.shapechange.outputs.shapechange-log }}
+  xsd-directory:
+    description: Directory that receives the generated XML Schema documents.
+    value: ${{ steps.shapechange.outputs.xsd-directory }}
+  json-schema-directory:
+    description: Directory that receives the generated JSON Schema documents.
+    value: ${{ steps.shapechange.outputs.json-schema-directory }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install dependencies
+      shell: bash
+      run: |
+        set -eo pipefail
+        python -m pip install --upgrade pip
+        pip install requests PyYAML
+    - name: Run ShapeChange helper
+      id: shapechange
+      shell: bash
+      env:
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_OUTPUT_DIRECTORY: ${{ inputs.output-directory }}
+        INPUT_FEATURE_CATALOGUE_JSON: ${{ inputs.feature-catalogue-json }}
+        INPUT_XMI_MODEL: ${{ inputs.xmi-model }}
+        INPUT_XMI_USERNAME: ${{ inputs.xmi-username }}
+        INPUT_XMI_PASSWORD: ${{ inputs.xmi-password }}
+        INPUT_TARGET_NAMESPACE: ${{ inputs.target-namespace }}
+        INPUT_XMLNS_PREFIX: ${{ inputs.xmlns-prefix }}
+        INPUT_SCHEMA_VERSION: ${{ inputs.schema-version }}
+        INPUT_SCHEMA_NAME: ${{ inputs.schema-name }}
+        INPUT_XSD_DOCUMENT: ${{ inputs.xsd-document }}
+        INPUT_TARGETS: ${{ inputs.targets }}
+        INPUT_XSD_ENCODING_RULE: ${{ inputs.xsd-encoding-rule }}
+        INPUT_JSON_SCHEMA_VERSION: ${{ inputs.json-schema-version }}
+        INPUT_JSON_BASE_URI: ${{ inputs.json-base-uri }}
+        INPUT_JSON_ENCODING_RULE: ${{ inputs.json-encoding-rule }}
+        INPUT_ENTITY_TYPE_NAME: ${{ inputs.entity-type-name }}
+        INPUT_XML_SCHEMA_TARGET_CLASS: ${{ inputs.xml-schema-target-class }}
+        INPUT_JSON_SCHEMA_TARGET_CLASS: ${{ inputs.json-schema-target-class }}
+        INPUT_BUNDLED_INCLUDES: ${{ inputs.bundled-includes }}
+      run: |
+        set -eo pipefail
+        SUMMARY="$RUNNER_TEMP/shapechange_summary.txt"
+        ARGS=("--mode" "$INPUT_MODE" "--output-dir" "$INPUT_OUTPUT_DIRECTORY")
+        if [ "$INPUT_MODE" = "generate" ]; then
+          if [ -n "$INPUT_FEATURE_CATALOGUE_JSON" ]; then
+            ARGS+=("--feature-catalogue" "$INPUT_FEATURE_CATALOGUE_JSON")
+          fi
+          if [ -n "$INPUT_XMI_MODEL" ]; then
+            ARGS+=("--xmi-model" "$INPUT_XMI_MODEL")
+            if [ -n "$INPUT_XMI_USERNAME" ]; then
+              ARGS+=("--xmi-username" "$INPUT_XMI_USERNAME")
+            fi
+            if [ -n "$INPUT_XMI_PASSWORD" ]; then
+              ARGS+=("--xmi-password" "$INPUT_XMI_PASSWORD")
+            fi
+          fi
+          if [ -n "$INPUT_TARGET_NAMESPACE" ]; then
+            ARGS+=("--target-namespace" "$INPUT_TARGET_NAMESPACE")
+          fi
+          if [ -n "$INPUT_XMLNS_PREFIX" ]; then
+            ARGS+=("--xmlns-prefix" "$INPUT_XMLNS_PREFIX")
+          fi
+          if [ -n "$INPUT_SCHEMA_VERSION" ]; then
+            ARGS+=("--schema-version" "$INPUT_SCHEMA_VERSION")
+          fi
+          if [ -n "$INPUT_SCHEMA_NAME" ]; then
+            ARGS+=("--schema-name" "$INPUT_SCHEMA_NAME")
+          fi
+          if [ -n "$INPUT_XSD_DOCUMENT" ]; then
+            ARGS+=("--xsd-document" "$INPUT_XSD_DOCUMENT")
+          fi
+          if [ -n "$INPUT_TARGETS" ]; then
+            ARGS+=("--targets" "$INPUT_TARGETS")
+          fi
+          if [ -n "$INPUT_XSD_ENCODING_RULE" ]; then
+            ARGS+=("--xsd-encoding-rule" "$INPUT_XSD_ENCODING_RULE")
+          fi
+          if [ -n "$INPUT_JSON_SCHEMA_VERSION" ]; then
+            ARGS+=("--json-schema-version" "$INPUT_JSON_SCHEMA_VERSION")
+          fi
+          if [ -n "$INPUT_JSON_BASE_URI" ]; then
+            ARGS+=("--json-base-uri" "$INPUT_JSON_BASE_URI")
+          fi
+          if [ -n "$INPUT_JSON_ENCODING_RULE" ]; then
+            ARGS+=("--json-encoding-rule" "$INPUT_JSON_ENCODING_RULE")
+          fi
+          if [ -n "$INPUT_ENTITY_TYPE_NAME" ]; then
+            ARGS+=("--entity-type-name" "$INPUT_ENTITY_TYPE_NAME")
+          fi
+          if [ -n "$INPUT_XML_SCHEMA_TARGET_CLASS" ]; then
+            ARGS+=("--xml-schema-target-class" "$INPUT_XML_SCHEMA_TARGET_CLASS")
+          fi
+          if [ -n "$INPUT_JSON_SCHEMA_TARGET_CLASS" ]; then
+            ARGS+=("--json-schema-target-class" "$INPUT_JSON_SCHEMA_TARGET_CLASS")
+          fi
+          if [ "$INPUT_BUNDLED_INCLUDES" = "true" ]; then
+            ARGS+=("--bundled-includes")
+          fi
+        fi
+        python "$GITHUB_ACTION_PATH/../scripts/run_shapechange.py" "${ARGS[@]}" | tee "$SUMMARY"
+        OUTPUT_DIRECTORY=""
+        SCXML_MODEL=""
+        SHAPECHANGE_CONFIG=""
+        SHAPECHANGE_LOG=""
+        XSD_DIRECTORY=""
+        JSON_SCHEMA_DIRECTORY=""
+        while IFS= read -r line || [ -n "$line" ]; do
+          case "$line" in
+            "[paths] output_directory="*)
+              OUTPUT_DIRECTORY="${line#\[paths\] output_directory=}"
+              ;;
+            "[paths] scxml_model="*)
+              SCXML_MODEL="${line#\[paths\] scxml_model=}"
+              ;;
+            "[paths] shapechange_config="*)
+              SHAPECHANGE_CONFIG="${line#\[paths\] shapechange_config=}"
+              ;;
+            "[paths] shapechange_log="*)
+              SHAPECHANGE_LOG="${line#\[paths\] shapechange_log=}"
+              ;;
+            "[paths] xsd_directory="*)
+              XSD_DIRECTORY="${line#\[paths\] xsd_directory=}"
+              ;;
+            "[paths] json_schema_directory="*)
+              JSON_SCHEMA_DIRECTORY="${line#\[paths\] json_schema_directory=}"
+              ;;
+          esac
+        done < "$SUMMARY"
+        {
+          echo "output-directory=$OUTPUT_DIRECTORY"
+          echo "scxml-model=$SCXML_MODEL"
+          echo "shapechange-config=$SHAPECHANGE_CONFIG"
+          echo "shapechange-log=$SHAPECHANGE_LOG"
+          echo "xsd-directory=$XSD_DIRECTORY"
+          echo "json-schema-directory=$JSON_SCHEMA_DIRECTORY"
+        } >> "$GITHUB_OUTPUT"
+    - name: Upload schemas
+      if: inputs.mode == 'check' && inputs.upload-artifact == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.shapechange.outputs.output-directory }}

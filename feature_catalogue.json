@@ -108,7 +108,8 @@
           "cardinality": "0..*"
         }
       ]
-    }
+    },
+    "package": "AdministrativeEnheter_FylkerOgKommuner-20240101"
   },
   {
     "name": "SOSI_Objekt_flate",
@@ -139,7 +140,8 @@
         "SOSI_Fellesegenskaper"
       ],
       "associations": []
-    }
+    },
+    "package": "AdministrativeEnheter_FylkerOgKommuner-20240101"
   },
   {
     "name": "Grense",
@@ -202,7 +204,8 @@
         "SOSI_Objekt_grense"
       ],
       "associations": []
-    }
+    },
+    "package": "AdministrativeEnheter_FylkerOgKommuner-20240101"
   },
   {
     "name": "SOSI_Fellesegenskaper",
@@ -257,7 +260,8 @@
     "relationships": {
       "inheritance": [],
       "associations": []
-    }
+    },
+    "package": "AdministrativeEnheter_FylkerOgKommuner-20240101"
   },
   {
     "name": "SOSI_Objekt_grense",
@@ -313,7 +317,8 @@
         "SOSI_Fellesegenskaper"
       ],
       "associations": []
-    }
+    },
+    "package": "AdministrativeEnheter_FylkerOgKommuner-20240101"
   },
   {
     "name": "Fylke",
@@ -424,6 +429,7 @@
           "cardinality": "0..*"
         }
       ]
-    }
+    },
+    "package": "AdministrativeEnheter_FylkerOgKommuner-20240101"
   }
 ]

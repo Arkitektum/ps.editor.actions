@@ -11,6 +11,7 @@ from typing import Any
 
 __all__ = [
     "render_feature_types_to_markdown",
+    "collect_codelists",
     "_gather_feature_types_from_file",
     "_render_markdown_section",
     "main",
@@ -871,6 +872,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(output)
 
     return 0
+
+
+# The value-domain collector is shared with the ShapeChange SCXML writer: both
+# need one deduplicated code list per attribute type, merged across feature
+# types. Exposed publicly so it is reused rather than reimplemented.
+collect_codelists = _collect_codelists
 
 
 if __name__ == "__main__":

@@ -27,6 +27,8 @@ from md.product_specification import (  # noqa: E402
     render_product_specification,
     render_template,
 )
+from geopackage.feature_types import load_feature_types_from_geopackage  # noqa: E402
+from geopackage.writer import write_geopackage  # noqa: E402
 from ogc_api.feature_types import load_feature_types  # noqa: E402
 from puml.feature_types import (  # noqa: E402
     group_feature_types_by_package,
@@ -226,6 +228,8 @@ def _normalize_scope_generator(value: str | None) -> str:
         return "xmi"
     if normalized in {"ogc", "ogc_api", "ogc_feature_api"}:
         return "ogc"
+    if normalized in {"geopackage", "gpkg"}:
+        return "geopackage"
     return ""
 
 
@@ -240,6 +244,9 @@ def _build_scope_catalogues(
     xmi_password: str | None,
     ogc_username: str | None = None,
     ogc_password: str | None = None,
+    geopackage_username: str | None = None,
+    geopackage_password: str | None = None,
+    write_gpkg: bool = False,
 ) -> str:
     if not scopes:
         return ""
@@ -264,6 +271,10 @@ def _build_scope_catalogues(
                 username=xmi_username or "sosi",
                 password=xmi_password or "sosi",
             )
+        elif generator == "geopackage":
+            feature_types = load_feature_types_from_geopackage(
+                url, username=geopackage_username, password=geopackage_password
+            )
         else:
             feature_types = load_feature_types(
                 url, username=ogc_username, password=ogc_password
@@ -279,7 +290,10 @@ def _build_scope_catalogues(
             spec_dir=scope_dir,
             product_title=scope_title,
             create_png=True,
+            write_gpkg=write_gpkg,
         )
+        if assets.get("geopackage_path"):
+            print(f"[paths] scope_geopackage={assets['geopackage_path']}")
 
         scope_includes: list[IncludeResource] = []
         diagrams_markdown = _build_diagrams_markdown(assets, scope_name)
@@ -344,12 +358,22 @@ def _build_feature_catalogue_assets(
     prefix: str = "",
     product_title: str = "",
     create_png: bool = False,
+    write_gpkg: bool = False,
 ) -> dict[str, Any]:
     suffix = f"{prefix}_" if prefix else ""
     base_name = f"{slug}_{suffix}feature_catalogue"
 
     json_path = spec_dir / f"{base_name}.json"
     _write_text_file(json_path, json.dumps(feature_types, indent=2, ensure_ascii=False))
+
+    # Optional GeoPackage output: an empty .gpkg materialising the data model
+    # (structure only) with the Schema and Related Tables extensions.
+    geopackage_path: Path | None = None
+    if write_gpkg and feature_types:
+        geopackage_path = spec_dir / f"{base_name}.gpkg"
+        write_geopackage(
+            feature_types, geopackage_path, identifier=product_title or slug
+        )
 
     markdown_path = spec_dir / f"{base_name}.md"
     if feature_types:
@@ -427,6 +451,7 @@ def _build_feature_catalogue_assets(
         "png_path": png_path if create_png else None,
         "package_uml_paths": package_uml_paths,
         "overview_uml_path": overview_uml_path,
+        "geopackage_path": geopackage_path,
     }
 
 
@@ -439,6 +464,7 @@ def _slugify_package_name(name: str) -> str:
 _SOURCE_KIND_LABELS: dict[str, str] = {
     "xmi": "SOSI UML XMI-fil",
     "ogc": "OGC API - Features",
+    "geopackage": "GeoPackage",
 }
 
 
@@ -453,13 +479,16 @@ def _format_source_reference(url: str, generator: str) -> str:
     url = url.strip()
     label = _SOURCE_KIND_LABELS.get(generator, "Datamodell")
 
-    lower = url.lower().split("?", 1)[0]
-    if lower.endswith(".xsd"):
-        label = "GML-skjema (XSD)"
-    elif lower.endswith(".json") or lower.endswith(".schema.json"):
-        label = "JSON Schema"
-    elif lower.endswith(".xml"):
-        label = "SOSI UML XMI-fil"
+    # URL-suffiks-forfining gjelder ikke GeoPackage: kilde-URL-en er ofte en
+    # Atom-feed som ender på «.xml», og skal ikke feilmerkes som XMI.
+    if generator != "geopackage":
+        lower = url.lower().split("?", 1)[0]
+        if lower.endswith(".xsd"):
+            label = "GML-skjema (XSD)"
+        elif lower.endswith(".json") or lower.endswith(".schema.json"):
+            label = "JSON Schema"
+        elif lower.endswith(".xml"):
+            label = "SOSI UML XMI-fil"
 
     return f"**Kilde:** [{label}]({url})"
 
@@ -536,6 +565,9 @@ def generate_product_specification(
     xmi_password: str | None = None,
     ogc_username: str | None = None,
     ogc_password: str | None = None,
+    geopackage_username: str | None = None,
+    geopackage_password: str | None = None,
+    geopackage_output: bool = False,
     feature_type_filter: Sequence[str] | None = None,
     scopes: Sequence[Mapping[str, Any]] | None = None,
     render_spec_markdown: bool = True,
@@ -592,6 +624,7 @@ def generate_product_specification(
             spec_dir=spec_dir,
             prefix="",
             product_title=product_title,
+            write_gpkg=geopackage_output,
         )
 
     xmi_assets = None
@@ -602,6 +635,7 @@ def generate_product_specification(
             spec_dir=spec_dir,
             prefix="xmi",
             product_title=product_title,
+            write_gpkg=geopackage_output,
         )
 
     includes: list[IncludeResource] = [
@@ -648,6 +682,9 @@ def generate_product_specification(
         xmi_password=xmi_password,
         ogc_username=ogc_username,
         ogc_password=ogc_password,
+        geopackage_username=geopackage_username,
+        geopackage_password=geopackage_password,
+        write_gpkg=geopackage_output,
     )
     if scope_links:
         scope_links_path = spec_dir / "scope_catalogues.md"
@@ -670,10 +707,12 @@ def generate_product_specification(
         "feature_catalogue_json": ogc_assets["json_path"] if ogc_assets else None,
         "feature_catalogue_markdown": ogc_assets["markdown_path"] if ogc_assets else None,
         "feature_catalogue_uml": ogc_assets["uml_path"] if ogc_assets else None,
+        "feature_catalogue_geopackage": ogc_assets["geopackage_path"] if ogc_assets else None,
         "spec_markdown": spec_markdown_path,
         "xmi_feature_catalogue_json": xmi_assets["json_path"] if xmi_assets else None,
         "xmi_feature_catalogue_markdown": xmi_assets["markdown_path"] if xmi_assets else None,
         "xmi_feature_catalogue_uml": xmi_assets["uml_path"] if xmi_assets else None,
+        "xmi_feature_catalogue_geopackage": xmi_assets["geopackage_path"] if xmi_assets else None,
     }
 
     return result
@@ -736,6 +775,29 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="Optional password used with HTTP Basic auth when fetching from the OGC API.",
     )
     parser.add_argument(
+        "--geopackage-username",
+        help=(
+            "Optional username used with HTTP Basic auth when downloading a "
+            "GeoPackage (e.g. an access-restricted Geonorge download)."
+        ),
+    )
+    parser.add_argument(
+        "--geopackage-password",
+        help=(
+            "Optional password used with HTTP Basic auth when downloading a "
+            "GeoPackage (e.g. an access-restricted Geonorge download)."
+        ),
+    )
+    parser.add_argument(
+        "--geopackage-output",
+        action="store_true",
+        help=(
+            "Also write an empty GeoPackage (.gpkg) materialising the data model "
+            "structure (with the Schema and Related Tables extensions) alongside the "
+            "feature catalogue."
+        ),
+    )
+    parser.add_argument(
         "--skip-spec-markdown",
         action="store_true",
         help="Skip rendering the final product specification Markdown document.",
@@ -794,6 +856,9 @@ def main(argv: list[str] | None = None) -> int:
             xmi_password=args.xmi_password,
             ogc_username=args.ogc_username,
             ogc_password=args.ogc_password,
+            geopackage_username=args.geopackage_username,
+            geopackage_password=args.geopackage_password,
+            geopackage_output=args.geopackage_output,
             feature_type_filter=feature_type_filter,
             scopes=scopes,
             render_spec_markdown=not args.skip_spec_markdown,
@@ -850,6 +915,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[paths] feature_catalogue_json={paths.get('feature_catalogue_json') or ''}")
     print(f"[paths] feature_catalogue_markdown={paths.get('feature_catalogue_markdown') or ''}")
     print(f"[paths] feature_catalogue_uml={paths.get('feature_catalogue_uml') or ''}")
+    print(f"[paths] feature_catalogue_geopackage={paths.get('feature_catalogue_geopackage') or ''}")
+    print(f"[paths] xmi_feature_catalogue_geopackage={paths.get('xmi_feature_catalogue_geopackage') or ''}")
     print(f"[paths] xmi_feature_catalogue_json={paths.get('xmi_feature_catalogue_json') or ''}")
     print(f"[paths] xmi_feature_catalogue_markdown={paths.get('xmi_feature_catalogue_markdown') or ''}")
     print(f"[paths] xmi_feature_catalogue_uml={paths.get('xmi_feature_catalogue_uml') or ''}")

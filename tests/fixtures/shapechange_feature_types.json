@@ -1,0 +1,112 @@
+[
+  {
+    "name": "BaseFeature",
+    "description": "Abstract supertype.",
+    "abstract": true,
+    "attributes": [
+      {
+        "name": "identifikasjon",
+        "type": "string",
+        "cardinality": "1"
+      }
+    ],
+    "relationships": {
+      "inheritance": [],
+      "associations": []
+    }
+  },
+  {
+    "name": "Bygning",
+    "description": "En bygning.",
+    "abstract": false,
+    "geometry": {
+      "itemType": "feature",
+      "type": "geometry-polygon",
+      "format": "geometry-polygon",
+      "crs": ["http://www.opengis.net/def/crs/EPSG/0/25833"],
+      "storageCrs": "http://www.opengis.net/def/crs/EPSG/0/25833",
+      "ogcRole": "primary-geometry"
+    },
+    "attributes": [
+      {
+        "name": "bygningsnavn",
+        "type": "string",
+        "description": "Navn på bygningen.",
+        "cardinality": "0..1"
+      },
+      {
+        "name": "bygningstype",
+        "type": "Bygningstype",
+        "cardinality": "1",
+        "valueDomain": {
+          "definition": "Kodeliste for bygningstyper.",
+          "asDictionary": "true",
+          "codeList": "https://register.geonorge.no/sosi-kodelister/bygningstype"
+        }
+      },
+      {
+        "name": "status",
+        "type": "Bygningsstatus",
+        "cardinality": "0..*",
+        "valueDomain": {
+          "listedValues": [
+            { "value": "planlagt", "label": "Planlagt" },
+            { "value": "oppfoert", "label": "Oppført" }
+          ]
+        }
+      },
+      {
+        "name": "adresse",
+        "type": "Adresse",
+        "cardinality": "1..*",
+        "attributes": [
+          {
+            "name": "gatenavn",
+            "type": "string",
+            "cardinality": "1"
+          },
+          {
+            "name": "husnummer",
+            "type": "integer",
+            "cardinality": "0..1"
+          }
+        ]
+      }
+    ],
+    "relationships": {
+      "inheritance": ["BaseFeature"],
+      "associations": [
+        {
+          "target": "Eiendom",
+          "role": "liggerPaa",
+          "cardinality": "1..*"
+        },
+        {
+          "target": "FinnesIkke",
+          "role": "ugyldig",
+          "cardinality": "1"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Eiendom",
+    "description": "En matrikkelenhet.",
+    "geometry": {
+      "itemType": "feature",
+      "type": "GM_Surface",
+      "format": "gml"
+    },
+    "attributes": [
+      {
+        "name": "matrikkelnummer",
+        "type": "string",
+        "cardinality": "1"
+      }
+    ],
+    "relationships": {
+      "inheritance": [],
+      "associations": []
+    }
+  }
+]

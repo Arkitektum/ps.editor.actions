@@ -15,6 +15,11 @@ __all__ = [
     "render_feature_types_per_package",
     "render_overview_diagram",
     "group_feature_types_by_package",
+    "map_type",
+    "build_geometry_attribute",
+    "collect_datatypes",
+    "TYPE_MAPPING",
+    "GEOMETRY_MAPPING",
     "main",
 ]
 
@@ -957,6 +962,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.stdout.write("\n")
 
     return 0
+
+
+# --------------------------------------------------------------------------- #
+# Offentlige aliaser
+#
+# Typenormaliseringen deles med skjemagenereringen i ``shapechange``. Diagram og
+# XSD/JSON Schema må mappe typer likt, så disse eksponeres i stedet for å bli
+# duplisert.
+# --------------------------------------------------------------------------- #
+
+TYPE_MAPPING = _TYPE_MAPPING
+GEOMETRY_MAPPING = _GEOMETRY_MAPPING
+map_type = _map_type
+build_geometry_attribute = _build_geometry_attribute
+collect_datatypes = _collect_datatypes
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint

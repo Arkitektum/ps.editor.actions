@@ -46,6 +46,16 @@ inputs:
   ogc-password:
     description: "Optional password for HTTP Basic authentication when fetching from the OGC API."
     required: false
+  geopackage-username:
+    description: "Optional username for HTTP Basic auth when downloading an access-restricted GeoPackage (e.g. Norge digitalt)."
+    required: false
+  geopackage-password:
+    description: "Optional password for HTTP Basic auth when downloading an access-restricted GeoPackage (e.g. Norge digitalt)."
+    required: false
+  geopackage-output:
+    description: "Set to 'true' to also write an empty GeoPackage (.gpkg) of the data model structure (with the Schema and Related Tables extensions)."
+    required: false
+    default: "false"
 outputs:
   spec-directory:
     description: Directory containing the generated product specification.
@@ -62,6 +72,9 @@ outputs:
   feature-catalogue-uml:
     description: Path to the feature catalogue PlantUML diagram.
     value: ${{ steps.generate.outputs.feature-catalogue-uml }}
+  feature-catalogue-geopackage:
+    description: Path to the generated GeoPackage (.gpkg) of the data model structure.
+    value: ${{ steps.generate.outputs.feature-catalogue-geopackage }}
   xmi-feature-catalogue-json:
     description: Path to the XMI feature catalogue JSON cache.
     value: ${{ steps.generate.outputs.xmi-feature-catalogue-json }}
@@ -133,6 +146,15 @@ runs:
         if [ -n "${{ inputs.ogc-password }}" ]; then
           ARGS+=("--ogc-password" "${{ inputs.ogc-password }}")
         fi
+        if [ -n "${{ inputs.geopackage-username }}" ]; then
+          ARGS+=("--geopackage-username" "${{ inputs.geopackage-username }}")
+        fi
+        if [ -n "${{ inputs.geopackage-password }}" ]; then
+          ARGS+=("--geopackage-password" "${{ inputs.geopackage-password }}")
+        fi
+        if [ "${{ inputs.geopackage-output }}" = "true" ]; then
+          ARGS+=("--geopackage-output")
+        fi
         ARGS+=("--skip-spec-markdown")
         python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"
         SPEC_DIR=""
@@ -140,6 +162,7 @@ runs:
         FEATURE_CATALOGUE_JSON=""
         FEATURE_CATALOGUE_MD=""
         FEATURE_CATALOGUE_UML=""
+        FEATURE_CATALOGUE_GPKG=""
         XMI_FEATURE_CATALOGUE_JSON=""
         XMI_FEATURE_CATALOGUE_MD=""
         XMI_FEATURE_CATALOGUE_UML=""
@@ -161,6 +184,9 @@ runs:
             "[paths] feature_catalogue_uml="*)
               FEATURE_CATALOGUE_UML="${line#\[paths\] feature_catalogue_uml=}"
               ;;
+            "[paths] feature_catalogue_geopackage="*)
+              FEATURE_CATALOGUE_GPKG="${line#\[paths\] feature_catalogue_geopackage=}"
+              ;;
             "[paths] xmi_feature_catalogue_json="*)
               XMI_FEATURE_CATALOGUE_JSON="${line#\[paths\] xmi_feature_catalogue_json=}"
               ;;
@@ -181,6 +207,7 @@ runs:
           echo "feature-catalogue-json=$FEATURE_CATALOGUE_JSON"
           echo "feature-catalogue-markdown=$FEATURE_CATALOGUE_MD"
           echo "feature-catalogue-uml=$FEATURE_CATALOGUE_UML"
+          echo "feature-catalogue-geopackage=$FEATURE_CATALOGUE_GPKG"
           echo "xmi-feature-catalogue-json=$XMI_FEATURE_CATALOGUE_JSON"
           echo "xmi-feature-catalogue-markdown=$XMI_FEATURE_CATALOGUE_MD"
           echo "xmi-feature-catalogue-uml=$XMI_FEATURE_CATALOGUE_UML"
