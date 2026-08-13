@@ -223,6 +223,55 @@ class ScxmlStructureTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_scxml([], schema_name="X", target_namespace="")
 
+    def test_fixture_without_packages_puts_everything_in_the_schema_package(self) -> None:
+        root = _build()
+        packages = list(root.iter(_q("Package")))
+        self.assertEqual([p.findtext(_q("name")) for p in packages], ["Test Schema"])
+
+    def test_package_names_become_sub_packages(self) -> None:
+        root = _build(
+            [
+                {
+                    "name": "A",
+                    "package": "Pakke1",
+                    "attributes": [
+                        {
+                            "name": "y",
+                            "type": "Dt",
+                            "cardinality": "1",
+                            "attributes": [
+                                {"name": "z", "type": "integer", "cardinality": "1"}
+                            ],
+                        }
+                    ],
+                },
+                {"name": "B", "package": "Pakke2", "attributes": []},
+            ]
+        )
+
+        contents = {
+            package.findtext(_q("name")): [
+                entry.findtext(_q("name"))
+                for entry in package.findall(f"{_q('classes')}/{_q('Class')}")
+            ]
+            for package in root.iter(_q("Package"))
+        }
+
+        # Sub-packages inherit targetNamespace from the schema package, so only
+        # the schema package is selected by ShapeChange. Datatypes stay in it
+        # because they may be referenced from any sub-package.
+        self.assertEqual(contents["Test Schema"], ["Dt"])
+        self.assertEqual(contents["Pakke1"], ["A"])
+        self.assertEqual(contents["Pakke2"], ["B"])
+
+        sub_packages = [
+            package
+            for package in root.iter(_q("Package"))
+            if package.findtext(_q("name")) != "Test Schema"
+        ]
+        for package in sub_packages:
+            self.assertEqual(_tagged_values(package), {})
+
 
 class ScxmlInvariantTests(unittest.TestCase):
     """The referential rules that ShapeChangeExportedModel.xsd enforces."""
