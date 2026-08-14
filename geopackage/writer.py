@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,15 @@ _WGS84_WKT = (
 def _q(identifier: str) -> str:
     """Quote a SQL identifier, escaping embedded double quotes."""
     return '"' + str(identifier).replace('"', '""') + '"'
+
+
+def _ascii_ident(text: str) -> str:
+    """ASCII-trygt identifikatornavn (for interne RTE-mapping-tabeller). Non-ASCII
+    som «ø/æ/å» droppes og alt ikke-alfanumerisk blir «_»."""
+    normalized = unicodedata.normalize("NFKD", text or "")
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", ascii_text).strip("_")
+    return slug or "rel"
 
 
 def _sql_column_type(cat_type: str | None) -> str:
@@ -467,7 +477,7 @@ def _write_relations(
             target = association.get("target")
             if not isinstance(target, str) or target not in tables:
                 continue
-            mapping_table = f"{base}_{target}_map"
+            mapping_table = f"{_ascii_ident(base)}_{_ascii_ident(target)}_map"
             if mapping_table in mapping_registered:
                 continue
             mapping_registered.add(mapping_table)

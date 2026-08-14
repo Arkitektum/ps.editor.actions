@@ -150,14 +150,14 @@ class GeoPackageWriterTests(unittest.TestCase):
         self.assertEqual(rel["base_table_name"], "Dyrkbar jord")
         self.assertEqual(rel["related_table_name"], "Grense")
         self.assertEqual(rel["relation_name"], "features")
-        # Mapping table exists with the required columns.
-        cols = {
-            c["name"]
-            for c in self.conn.execute(
-                f'PRAGMA table_info("{rel["mapping_table_name"]}")'
-            )
-        }
-        self.assertEqual(cols, {"base_id", "related_id"})
+        # Mapping table exists with base_id/related_id + en heltalls-PK (FID) så
+        # QGIS/GDAL laster den refererende laget som gyldig.
+        info = list(
+            self.conn.execute(f'PRAGMA table_info("{rel["mapping_table_name"]}")')
+        )
+        cols = {c["name"] for c in info}
+        self.assertTrue({"base_id", "related_id"}.issubset(cols))
+        self.assertEqual(len([c for c in info if c["pk"]]), 1)
         ext = {r[0] for r in self.conn.execute("SELECT extension_name FROM gpkg_extensions")}
         self.assertIn("related_tables", ext)
 
