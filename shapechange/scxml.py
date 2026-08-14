@@ -520,6 +520,7 @@ def build_scxml(
     xmlns_prefix: str = "app",
     schema_version: str = "1.0",
     xsd_document: str | None = None,
+    json_document: str | None = None,
 ) -> ET.ElementTree:
     """Build a ShapeChange SCXML model from feature catalogue entries.
 
@@ -566,7 +567,7 @@ def build_scxml(
             # Without jsonDocument the JSON Schema target invents a file name
             # from the package name and logs a warning. Naming it here keeps the
             # two outputs consistent and the log clean.
-            ("jsonDocument", f"{file_stem}.json"),
+            ("jsonDocument", _text(json_document) or f"{file_stem}.json"),
         ],
     )
 
@@ -625,6 +626,7 @@ def write_scxml(
     xmlns_prefix: str = "app",
     schema_version: str = "1.0",
     xsd_document: str | None = None,
+    json_document: str | None = None,
 ) -> Path:
     """Write the SCXML model to ``output_path`` and return the path."""
     tree = build_scxml(
@@ -634,6 +636,7 @@ def write_scxml(
         xmlns_prefix=xmlns_prefix,
         schema_version=schema_version,
         xsd_document=xsd_document,
+        json_document=json_document,
     )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

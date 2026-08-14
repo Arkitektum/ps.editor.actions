@@ -72,22 +72,29 @@ def _print_paths(paths: dict[str, Path]) -> None:
         print(f"[paths] {key}={paths[key]}")
 
 
+def _read_feature_catalogue(path: Path) -> Any:
+    if not path.exists():
+        raise FileNotFoundError(f"Feature catalogue '{path}' does not exist.")
+    # Feature catalogues written on Windows may not be UTF-8, so fall back the
+    # same way the XMI loader does rather than failing the whole run.
+    raw = path.read_bytes()
+    for encoding in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return json.loads(raw.decode(encoding))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    raise ValueError(f"Feature catalogue '{path}' is not readable JSON.")
+
+
+def _feature_types_from_data(data: Any) -> list[dict[str, Any]]:
+    if not isinstance(data, list):
+        raise ValueError("The feature catalogue must be a JSON list of feature types.")
+    return [entry for entry in data if isinstance(entry, dict)]
+
+
 def _load_feature_types(args: argparse.Namespace) -> list[dict[str, Any]]:
     if args.feature_catalogue:
-        path = Path(args.feature_catalogue)
-        if not path.exists():
-            raise FileNotFoundError(f"Feature catalogue '{path}' does not exist.")
-        # Feature catalogues written on Windows may not be UTF-8, so fall back
-        # the same way the XMI loader does rather than failing the whole run.
-        raw = path.read_bytes()
-        for encoding in ("utf-8", "cp1252", "latin-1"):
-            try:
-                data = json.loads(raw.decode(encoding))
-                break
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                continue
-        else:
-            raise ValueError(f"Feature catalogue '{path}' is not readable JSON.")
+        data = _read_feature_catalogue(Path(args.feature_catalogue))
     elif args.xmi_model:
         data = load_feature_types_from_xmi(
             args.xmi_model,
@@ -99,9 +106,7 @@ def _load_feature_types(args: argparse.Namespace) -> list[dict[str, Any]]:
             "Provide either --feature-catalogue or --xmi-model to build a model."
         )
 
-    if not isinstance(data, list):
-        raise ValueError("The feature catalogue must be a JSON list of feature types.")
-    return [entry for entry in data if isinstance(entry, dict)]
+    return _feature_types_from_data(data)
 
 
 def _derive_schema_name(args: argparse.Namespace) -> str:
@@ -141,6 +146,7 @@ def _generate(args: argparse.Namespace) -> int:
         xmlns_prefix=args.xmlns_prefix,
         schema_version=args.schema_version,
         xsd_document=args.xsd_document,
+        json_document=args.json_document,
     )
 
     write_config(
@@ -320,6 +326,10 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--xsd-document",
         help="File name of the generated XML Schema document. Defaults to <SchemaName>.xsd.",
+    )
+    parser.add_argument(
+        "--json-document",
+        help="File name of the generated JSON Schema document. Defaults to <SchemaName>.json.",
     )
     parser.add_argument(
         "--targets",

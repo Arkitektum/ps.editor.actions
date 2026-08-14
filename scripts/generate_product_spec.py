@@ -367,10 +367,13 @@ def _build_feature_catalogue_assets(
     _write_text_file(json_path, json.dumps(feature_types, indent=2, ensure_ascii=False))
 
     # Optional GeoPackage output: an empty .gpkg materialising the data model
-    # (structure only) with the Schema and Related Tables extensions.
+    # (structure only) with the Schema and Related Tables extensions. Named by the
+    # scope alone ({scope}.gpkg) so it matches the ShapeChange XSD/JSON deliverables
+    # for the same scope -- a single, consistent per-datakilde naming convention.
     geopackage_path: Path | None = None
     if write_gpkg and feature_types:
-        geopackage_path = spec_dir / f"{base_name}.gpkg"
+        gpkg_base = f"{slug}_{prefix}" if prefix else slug
+        geopackage_path = spec_dir / f"{gpkg_base}.gpkg"
         write_geopackage(
             feature_types, geopackage_path, identifier=product_title or slug
         )

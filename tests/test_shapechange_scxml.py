@@ -103,6 +103,22 @@ class ScxmlStructureTests(unittest.TestCase):
         self.assertEqual(tags["xsdDocument"], "TestSchema.xsd")
         self.assertEqual(tags["jsonDocument"], "TestSchema.json")
 
+    def test_explicit_document_names_are_used_verbatim(self) -> None:
+        # The per-scope workflow passes {scope}.xsd / {scope}.json (hyphens kept)
+        # so the deliverables line up with {scope}.gpkg.
+        tree = build_scxml(
+            _load_fixture(),
+            schema_name="Test Schema",
+            target_namespace="http://example.com/test/1.0",
+            xsd_document="bydeler-bodo-kommune.xsd",
+            json_document="bydeler-bodo-kommune.json",
+        )
+        package = tree.getroot().find(f"{_q('packages')}/{_q('Package')}")
+        assert package is not None
+        tags = _tagged_values(package)
+        self.assertEqual(tags["xsdDocument"], "bydeler-bodo-kommune.xsd")
+        self.assertEqual(tags["jsonDocument"], "bydeler-bodo-kommune.json")
+
     def test_classes_get_expected_stereotypes(self) -> None:
         classes = _classes(_build())
 
