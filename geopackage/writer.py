@@ -472,9 +472,13 @@ def _write_relations(
                 continue
             mapping_registered.add(mapping_table)
 
+            # id-PK: GDAL/QGIS trenger en heltalls-primærnøkkel (FID) for å laste
+            # mapping-tabellen som et gyldig lag — ellers blir RTE-relasjonen
+            # «ugyldig». RTE-standarden tillater kolonner utover base_id/related_id.
             connection.execute(
                 f"CREATE TABLE {_q(mapping_table)} "
-                "(base_id INTEGER NOT NULL, related_id INTEGER NOT NULL)"
+                "(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "base_id INTEGER NOT NULL, related_id INTEGER NOT NULL)"
             )
             connection.execute(
                 "INSERT INTO gpkgext_relations "
