@@ -87,6 +87,13 @@ inputs:
       root.
     required: false
     default: "false"
+  fail-on-error:
+    description: >-
+      In 'check' mode, fail the job when ShapeChange reported errors (default).
+      Set 'false' to surface errors and warnings as annotations and a job
+      summary but let the workflow keep the schemas ShapeChange produced.
+    required: false
+    default: "true"
   upload-artifact:
     description: "Upload the output directory as a workflow artifact (mode 'check' only)."
     required: false
@@ -118,6 +125,15 @@ outputs:
   json-schema-directory:
     description: Directory that receives the generated JSON Schema documents.
     value: ${{ steps.shapechange.outputs.json-schema-directory }}
+  error-count:
+    description: Number of errors ShapeChange reported (mode 'check').
+    value: ${{ steps.shapechange.outputs.error-count }}
+  warning-count:
+    description: Number of warnings ShapeChange reported (mode 'check').
+    value: ${{ steps.shapechange.outputs.warning-count }}
+  has-errors:
+    description: "'true' when ShapeChange reported at least one error (mode 'check')."
+    value: ${{ steps.shapechange.outputs.has-errors }}
 runs:
   using: composite
   steps:
@@ -155,10 +171,14 @@ runs:
         INPUT_XML_SCHEMA_TARGET_CLASS: ${{ inputs.xml-schema-target-class }}
         INPUT_JSON_SCHEMA_TARGET_CLASS: ${{ inputs.json-schema-target-class }}
         INPUT_BUNDLED_INCLUDES: ${{ inputs.bundled-includes }}
+        INPUT_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
       run: |
         set -eo pipefail
         SUMMARY="$RUNNER_TEMP/shapechange_summary.txt"
         ARGS=("--mode" "$INPUT_MODE" "--output-dir" "$INPUT_OUTPUT_DIRECTORY")
+        if [ -n "$INPUT_FAIL_ON_ERROR" ]; then
+          ARGS+=("--fail-on-error" "$INPUT_FAIL_ON_ERROR")
+        fi
         if [ "$INPUT_MODE" = "generate" ]; then
           if [ -n "$INPUT_FEATURE_CATALOGUE_JSON" ]; then
             ARGS+=("--feature-catalogue" "$INPUT_FEATURE_CATALOGUE_JSON")

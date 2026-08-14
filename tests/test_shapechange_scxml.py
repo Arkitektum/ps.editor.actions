@@ -219,6 +219,34 @@ class ScxmlStructureTests(unittest.TestCase):
         self.assertNotIn("ugyldig", _properties(_classes(root)["Bygning"]))
         self.assertNotIn("FinnesIkke", _classes(root))
 
+    def test_class_name_starting_with_a_digit_is_skipped(self) -> None:
+        # A code value or numeric type can leak in as a data type / code list
+        # name ("0"). ShapeChange aborts the whole run on such a name, so the
+        # class is dropped instead; the feature type still survives.
+        root = _build(
+            [
+                {
+                    "name": "DyrkbarJord",
+                    "attributes": [
+                        {
+                            "name": "verdi",
+                            "type": "0",
+                            "cardinality": "1",
+                            "valueDomain": {
+                                "listedValues": [
+                                    {"value": "0", "label": "Nei"},
+                                    {"value": "1", "label": "Ja"},
+                                ]
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+        classes = _classes(root)
+        self.assertIn("DyrkbarJord", classes)
+        self.assertNotIn("0", classes)
+
     def test_target_namespace_is_required(self) -> None:
         with self.assertRaises(ValueError):
             build_scxml([], schema_name="X", target_namespace="")

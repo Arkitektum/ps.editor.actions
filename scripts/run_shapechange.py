@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -170,6 +171,56 @@ def _generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _write_github_output(values: dict[str, str]) -> None:
+    """Append step outputs so the calling workflow can gate on the verdict."""
+    target = os.environ.get("GITHUB_OUTPUT")
+    if not target:
+        return
+    with open(target, "a", encoding="utf-8") as handle:
+        for key, value in values.items():
+            handle.write(f"{key}={value}\n")
+
+
+def _write_job_summary(report: LogReport) -> None:
+    """Render errors and warnings into the run's Summary page.
+
+    Inline ``::error::``/``::warning::`` annotations scroll away with the log;
+    the job summary keeps the full ShapeChange verdict -- both errors and
+    warnings -- on one persistent page.
+    """
+    target = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not target:
+        return
+
+    lines: list[str] = ["## ShapeChange", ""]
+    lines.append(
+        f"**{len(report.errors)} feil, {len(report.warnings)} advarsler.**"
+    )
+    lines.append("")
+
+    if report.results:
+        lines.append("### Produserte skjemaer")
+        for result in report.results:
+            label = result.label or result.href
+            lines.append(f"- `{result.target}` {label}")
+        lines.append("")
+
+    if report.errors:
+        lines.append("### Feil")
+        for error in report.errors:
+            lines.append(f"- {error.format()}")
+        lines.append("")
+
+    if report.warnings:
+        lines.append("### Advarsler")
+        for warning in report.warnings:
+            lines.append(f"- {warning.format()}")
+        lines.append("")
+
+    with open(target, "a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+
+
 def _check(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir).resolve()
     paths = _paths_for(output_dir)
@@ -188,9 +239,25 @@ def _check(args: argparse.Namespace) -> int:
     )
     _print_paths(paths)
 
+    _write_job_summary(report)
+    _write_github_output(
+        {
+            "error-count": str(len(report.errors)),
+            "warning-count": str(len(report.warnings)),
+            "has-errors": "true" if report.errors else "false",
+        }
+    )
+
     if not report.ok:
         print("ShapeChange reported errors; see the log for details.", file=sys.stderr)
-        return 1
+        if str(args.fail_on_error).lower() != "false":
+            return 1
+        # fail-on-error disabled: surface the errors but let the workflow keep
+        # going so the schemas ShapeChange did produce are still committed.
+        print(
+            "Continuing despite ShapeChange errors (fail-on-error is disabled).",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -211,6 +278,16 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--output-dir",
         default="shapechange",
         help="Directory holding the model, configuration, log and generated schemas.",
+    )
+    parser.add_argument(
+        "--fail-on-error",
+        default="true",
+        choices=("true", "false"),
+        help=(
+            "In 'check' mode, exit non-zero when ShapeChange reported errors "
+            "(default). Set 'false' to surface errors/warnings but let the "
+            "workflow keep the schemas ShapeChange produced."
+        ),
     )
     parser.add_argument(
         "--feature-catalogue",

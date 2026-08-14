@@ -17,6 +17,7 @@ from that schema drive the implementation:
 """
 from __future__ import annotations
 
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -167,6 +168,22 @@ class _ClassSpec:
         self.id = ""
 
 
+def _is_valid_class_name(name: str) -> bool:
+    """ShapeChange aborts the whole run on a class name that is not an identifier.
+
+    The first character must be a (Unicode) letter or underscore. Norwegian names
+    like ``Målemetode`` are fine, but a degenerate name such as ``0`` -- a code
+    value or numeric type leaking in as a data type / code list -- triggers
+    ``Name of 'class' '0' includes invalid characters`` and fails the run. Such a
+    class is skipped; a property that referenced it keeps its ``typeName`` and is
+    reported by ShapeChange as an unmapped type (a warning, not a fatal error).
+    """
+    if not name:
+        return False
+    first = name[0]
+    return first.isalpha() or first == "_"
+
+
 def _collect_class_specs(
     feature_types: Sequence[Mapping[str, Any]],
 ) -> list[_ClassSpec]:
@@ -177,12 +194,16 @@ def _collect_class_specs(
     """
     specs: list[_ClassSpec] = []
     taken: set[str] = set()
+    skipped: list[str] = []
 
     for feature_type in feature_types:
         if not isinstance(feature_type, Mapping):
             continue
         name = _text(feature_type.get("name"))
         if not name or name in taken:
+            continue
+        if not _is_valid_class_name(name):
+            skipped.append(name)
             continue
         taken.add(name)
 
@@ -229,12 +250,18 @@ def _collect_class_specs(
         name = _text(type_name)
         if not name or name in taken:
             continue
+        if not _is_valid_class_name(name):
+            skipped.append(name)
+            continue
         taken.add(name)
         specs.append(_ClassSpec(name, _ST_DATA_TYPE, attributes=nested))
 
     for entry in collect_codelists(feature_types):
         name = _text(entry.get("name"))
         if not name or name in taken:
+            continue
+        if not _is_valid_class_name(name):
+            skipped.append(name)
             continue
         taken.add(name)
 
@@ -257,6 +284,14 @@ def _collect_class_specs(
                 tags=tags,
                 codes=codes,
             )
+        )
+
+    if skipped:
+        unique = ", ".join(sorted(set(skipped)))
+        print(
+            "Skipped classes with names ShapeChange would reject "
+            f"(must start with a letter or underscore): {unique}.",
+            file=sys.stderr,
         )
 
     return specs
