@@ -28,7 +28,7 @@ from md.product_specification import (  # noqa: E402
     render_template,
 )
 from geopackage.feature_types import load_feature_types_from_geopackage  # noqa: E402
-from geopackage.writer import write_geopackage  # noqa: E402
+from geopackage.writer import _fetch_geonorge_codelist, write_geopackage  # noqa: E402
 from ogc_api.feature_types import load_feature_types  # noqa: E402
 from puml.feature_types import (  # noqa: E402
     group_feature_types_by_package,
@@ -374,8 +374,13 @@ def _build_feature_catalogue_assets(
     if write_gpkg and feature_types:
         gpkg_base = f"{slug}_{prefix}" if prefix else slug
         geopackage_path = spec_dir / f"{gpkg_base}.gpkg"
+        # Materialiser eksterne SOSI-kodelister som enum-constraints ved å slå dem
+        # opp i Geonorge-registeret (best effort: nettverksfeil → URL i beskrivelsen).
         write_geopackage(
-            feature_types, geopackage_path, identifier=product_title or slug
+            feature_types,
+            geopackage_path,
+            identifier=product_title or slug,
+            codelist_resolver=_fetch_geonorge_codelist,
         )
 
     markdown_path = spec_dir / f"{base_name}.md"

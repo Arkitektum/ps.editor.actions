@@ -13,7 +13,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from geopackage.feature_types import load_feature_types_from_geopackage  # noqa: E402
-from geopackage.writer import write_geopackage  # noqa: E402
+from geopackage.writer import (  # noqa: E402
+    _geonorge_api_url,
+    _parse_geonorge_codelist,
+    write_geopackage,
+)
 
 
 def _sample_feature_types() -> list[dict]:
@@ -221,6 +225,101 @@ class GeoPackageInheritanceTests(unittest.TestCase):
         # Abstrakt supertype får ingen egen tabell.
         self.assertNotIn("Fellesegenskaper", tables)
         self.assertIn("Vei", tables)
+
+
+class ExternalCodeListTests(unittest.TestCase):
+    """External code lists (valueDomain.codeList URL) resolved to enum constraints."""
+
+    _URL = "https://register.geonorge.no/sosi-kodelister/kommunenummer"
+
+    def _write(self, resolver):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        path = Path(self._tmp.name) / "model.gpkg"
+        write_geopackage(_sample_feature_types(), path, codelist_resolver=resolver)
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        self.addCleanup(conn.close)
+        return conn
+
+    def test_resolver_materialises_enum(self) -> None:
+        calls = []
+
+        def resolver(url):
+            calls.append(url)
+            return [{"value": "3401", "label": "Kongsvinger"}, {"value": "3403", "label": "Hamar"}]
+
+        conn = self._write(resolver)
+        # The kommunenummer column now links to a constraint...
+        cname = conn.execute(
+            "SELECT constraint_name FROM gpkg_data_columns "
+            "WHERE table_name='Dyrkbar jord' AND column_name='kommunenummer'"
+        ).fetchone()[0]
+        self.assertTrue(cname)
+        # ...whose enum rows are the resolved codes.
+        rows = {
+            r["value"]: r["description"]
+            for r in conn.execute(
+                "SELECT value, description FROM gpkg_data_column_constraints "
+                "WHERE constraint_name=? AND constraint_type='enum'",
+                (cname,),
+            )
+        }
+        self.assertEqual(rows, {"3401": "Kongsvinger", "3403": "Hamar"})
+        # The source URL is still kept in the description for provenance.
+        desc = conn.execute(
+            "SELECT description FROM gpkg_data_columns "
+            "WHERE table_name='Dyrkbar jord' AND column_name='kommunenummer'"
+        ).fetchone()[0]
+        self.assertIn("register.geonorge.no", desc)
+        self.assertIn(self._URL, calls)
+
+    def test_resolver_failure_falls_back_to_description(self) -> None:
+        # Resolver returns None (e.g. network failure) -> no enum, URL in description.
+        conn = self._write(lambda url: None)
+        cname = conn.execute(
+            "SELECT constraint_name FROM gpkg_data_columns "
+            "WHERE table_name='Dyrkbar jord' AND column_name='kommunenummer'"
+        ).fetchone()[0]
+        self.assertIsNone(cname)
+        desc = conn.execute(
+            "SELECT description FROM gpkg_data_columns "
+            "WHERE table_name='Dyrkbar jord' AND column_name='kommunenummer'"
+        ).fetchone()[0]
+        self.assertIn("register.geonorge.no", desc)
+
+
+class GeonorgeResolverUnitTests(unittest.TestCase):
+    def test_api_url_inserts_api_segment(self) -> None:
+        self.assertEqual(
+            _geonorge_api_url("https://register.geonorge.no/sosi-kodelister/bygningstype"),
+            "https://register.geonorge.no/api/sosi-kodelister/bygningstype",
+        )
+        # Already an API url -> unchanged; non-Geonorge -> None.
+        self.assertEqual(
+            _geonorge_api_url("https://register.geonorge.no/api/sosi-kodelister/x"),
+            "https://register.geonorge.no/api/sosi-kodelister/x",
+        )
+        self.assertIsNone(_geonorge_api_url("https://example.com/codes"))
+
+    def test_parse_codelist_extracts_valid_codes(self) -> None:
+        data = {
+            "containeditems": [
+                {"codevalue": "60", "label": "Genererte data", "status": "Gyldig"},
+                {"codevalue": "69", "label": "Beregnet", "status": "Gyldig"},
+                {"codevalue": "99", "label": "Gammel", "status": "Utgått"},  # retired
+                {"codevalue": "60", "label": "Duplikat", "status": "Gyldig"},  # dup
+                {"label": "Uten kode", "status": "Gyldig"},  # no codevalue
+            ]
+        }
+        self.assertEqual(
+            _parse_geonorge_codelist(data),
+            [{"value": "60", "label": "Genererte data"}, {"value": "69", "label": "Beregnet"}],
+        )
+
+    def test_parse_codelist_handles_bad_payload(self) -> None:
+        self.assertEqual(_parse_geonorge_codelist({}), [])
+        self.assertEqual(_parse_geonorge_codelist("nope"), [])
 
 
 if __name__ == "__main__":

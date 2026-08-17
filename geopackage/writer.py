@@ -17,11 +17,19 @@ GeoPackage read back with ``load_feature_types_from_geopackage`` reproduces the 
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import unicodedata
+import urllib.error
+import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+# Resolves an external code-list URL to ``[{"value","label"}]`` rows, or None when
+# it cannot be resolved (unknown host, network/parse failure). Injected so the
+# writer stays offline-safe and testable; production passes _fetch_geonorge_codelist.
+CodeListResolver = Callable[[str], "list[dict[str, Any]] | None"]
 
 # GeoPackage header pragmas.
 _APPLICATION_ID = 1196444487  # 0x47504B47 == b"GPKG"
@@ -330,6 +338,7 @@ def _write_feature_type(
     srs_seen: set[int],
     schema_used: dict[str, bool],
     by_name: dict[str, dict[str, Any]],
+    codelist_resolver: CodeListResolver | None = None,
 ) -> str | None:
     """Create one table for a feature type. Returns the table name (or None)."""
     name = ft.get("name")
@@ -409,8 +418,15 @@ def _write_feature_type(
                 constraint_name = f"{table}_{column['name']}"
                 _write_enum_constraint(connection, constraint_name, listed)
             elif value_domain.get("codeList"):
-                # External code list: reference the URL in the description.
                 code_list = value_domain.get("codeList")
+                # Resolve the external code list to enum constraint rows when a
+                # resolver is available (e.g. Geonorge SOSI-registeret); otherwise,
+                # or on failure, fall back to referencing the URL only.
+                resolved = codelist_resolver(code_list) if codelist_resolver else None
+                if resolved:
+                    constraint_name = f"{table}_{column['name']}"
+                    _write_enum_constraint(connection, constraint_name, resolved)
+                # Keep the source URL in the description for provenance either way.
                 description = (
                     f"{description}\n\nKodeliste: {code_list}"
                     if description
@@ -449,6 +465,91 @@ def _write_enum_constraint(
             "max_is_inclusive, description) VALUES (?,?,?,NULL,NULL,NULL,NULL,?)",
             rows,
         )
+
+
+# --------------------------------------------------------------------------- #
+# External code-list resolution (Geonorge SOSI register)
+# --------------------------------------------------------------------------- #
+
+# Statuses (Geonorge `status`) that mean a code is no longer a valid choice; such
+# codes are left out of the enum so it lists only currently valid values.
+_RETIRED_STATUSES = {"utgått", "utgatt", "erstattet", "tilbaketrukket", "ugyldig"}
+
+
+def _geonorge_api_url(url: str) -> str | None:
+    """Turn a public Geonorge register URL into its JSON API URL.
+
+    ``https://register.geonorge.no/sosi-kodelister/bygningstype`` ->
+    ``https://register.geonorge.no/api/sosi-kodelister/bygningstype``. Returns None
+    for URLs that are not Geonorge register URLs (nothing to resolve).
+    """
+    text = str(url or "").strip()
+    if "register.geonorge.no" not in text:
+        return None
+    if "/api/" in text:
+        return text
+    return text.replace("register.geonorge.no/", "register.geonorge.no/api/", 1)
+
+
+def _parse_geonorge_codelist(data: Any) -> list[dict[str, str]]:
+    """Extract ``[{value,label}]`` from a Geonorge register JSON payload.
+
+    Codes live in ``containeditems`` with ``codevalue`` + ``label``; retired codes
+    are skipped and duplicates de-duplicated.
+    """
+    items = data.get("containeditems") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return []
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("codevalue")
+        if value is None or str(value) == "":
+            continue
+        value = str(value)
+        if value in seen:
+            continue
+        if str(item.get("status") or "").strip().lower() in _RETIRED_STATUSES:
+            continue
+        seen.add(value)
+        result.append({"value": value, "label": item.get("label") or ""})
+    return result
+
+
+def _fetch_geonorge_codelist(
+    url: str, *, timeout: float = 15.0
+) -> list[dict[str, str]] | None:
+    """Fetch a Geonorge SOSI code list and return its valid codes as ``[{value,label}]``.
+
+    Best effort: any network/parse failure (or a non-Geonorge URL) returns None so
+    an unresolvable code list never fails GeoPackage generation -- the URL still
+    lands in the column description, as before.
+    """
+    api = _geonorge_api_url(url)
+    if not api:
+        return None
+    request = urllib.request.Request(api, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    return _parse_geonorge_codelist(data) or None
+
+
+def _memoize_resolver(resolver: CodeListResolver) -> CodeListResolver:
+    """Cache resolver results per URL so a code list shared by many attributes is
+    fetched only once per GeoPackage."""
+    cache: dict[str, "list[dict[str, Any]] | None"] = {}
+
+    def wrapped(url: str) -> "list[dict[str, Any]] | None":
+        if url not in cache:
+            cache[url] = resolver(url)
+        return cache[url]
+
+    return wrapped
 
 
 # --------------------------------------------------------------------------- #
@@ -524,18 +625,25 @@ def write_geopackage(
     *,
     default_crs: int = 25833,
     identifier: str | None = None,
+    codelist_resolver: CodeListResolver | None = None,
 ) -> Path:
     """Write an empty GeoPackage materialising ``feature_types`` to ``path``.
 
     Returns the written path. Feature tables get a geometry column when the type
-    carries geometry; otherwise an aspatial attributes table is written. Code lists
-    become Schema-extension enum constraints; associations become Related-Tables
-    relations with empty mapping tables.
+    carries geometry; otherwise an aspatial attributes table is written. Inline code
+    lists (``valueDomain.listedValues``) always become Schema-extension enum
+    constraints; **external** code lists (``valueDomain.codeList`` URL) are resolved
+    to enum constraints too when ``codelist_resolver`` is given (pass
+    :func:`_fetch_geonorge_codelist` to resolve SOSI code lists from the Geonorge
+    register), otherwise the URL is kept in the column description only. Associations
+    become Related-Tables relations with empty mapping tables.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         path.unlink()
+
+    resolver = _memoize_resolver(codelist_resolver) if codelist_resolver else None
 
     connection = sqlite3.connect(str(path))
     try:
@@ -558,6 +666,7 @@ def write_geopackage(
                     srs_seen=srs_seen,
                     schema_used=schema_used,
                     by_name=by_name,
+                    codelist_resolver=resolver,
                 )
                 if table:
                     tables.add(table)
