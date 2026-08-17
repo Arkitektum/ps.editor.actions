@@ -27,6 +27,7 @@ from md.product_specification import (  # noqa: E402
     render_product_specification,
     render_template,
 )
+from catalogue_overrides import apply_overrides, load_overrides  # noqa: E402
 from geopackage.feature_types import load_feature_types_from_geopackage  # noqa: E402
 from geopackage.writer import _fetch_geonorge_codelist, write_geopackage  # noqa: E402
 from ogc_api.feature_types import load_feature_types  # noqa: E402
@@ -283,6 +284,14 @@ def _build_scope_catalogues(
         feature_types = _filter_feature_types(feature_types, feature_type_filter)
         scope_slug = _normalize_slug(scope_name) or f"scope_{index}"
         scope_dir = spec_dir / scope_slug
+        # Brukerredigeringer (f.eks. manglende beskrivelser) ligger i en egen,
+        # committet overlay-fil og flettes oppå den friskt hentede katalogen — før
+        # ALLE leveranser (json/gpkg/md/uml) bygges — så de overlever regenerering.
+        overrides = load_overrides(
+            scope_dir / f"{scope_slug}_feature_catalogue.overrides.json"
+        )
+        if overrides:
+            feature_types = apply_overrides(feature_types, overrides)
         scope_title = f"{product_title} - {scope_name}".strip(" -")
         assets = _build_feature_catalogue_assets(
             feature_types,
