@@ -120,6 +120,24 @@ def _add_stereotype(parent: ET.Element, stereotype: str) -> None:
     _sub(stereotypes, "Stereotype", stereotype)
 
 
+def _source_tagged_values(source: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Read the ``taggedValues`` mapping a source model carried into the JSON.
+
+    Only the XMI loader populates this. With ``rule-xsd-all-tagged-values`` and the
+    ``representTaggedValues`` input parameter, these end up as ``sc:taggedValue``
+    appinfo in the XSD -- which is how ``SOSI_navn`` reaches the published Geonorge
+    application schemas.
+    """
+    raw = source.get("taggedValues")
+    if not isinstance(raw, Mapping):
+        return []
+    return [
+        (str(name), _text(value))
+        for name, value in raw.items()
+        if _text(name) and _text(value)
+    ]
+
+
 def _add_tagged_values(parent: ET.Element, tags: Sequence[tuple[str, str]]) -> None:
     entries = [(name, _text(value)) for name, value in tags if _text(value)]
     if not entries:
@@ -184,8 +202,35 @@ def _is_valid_class_name(name: str) -> bool:
     return first.isalpha() or first == "_"
 
 
+def _codelist_stereotype(entry: Mapping[str, Any], code_list_uri: str) -> str:
+    """Decide between <<codeList>> and <<enumeration>>.
+
+    The source model knows which one it is, and the XMI loader records it as
+    ``kind``. Only when that is missing -- OGC API and GeoPackage carry no
+    stereotypes at all -- do we fall back on the presence of an external code list
+    URI. The distinction matters: ShapeChange encodes an enumeration as a closed
+    ``restriction``, while a code list gets either ``gml:CodeType`` or a union with
+    an "other:" escape hatch.
+    """
+    kind = _text(entry.get("kind")).lower()
+    if kind == "codelist":
+        return _ST_CODE_LIST
+    if kind == "enumeration":
+        return _ST_ENUMERATION
+    return _ST_CODE_LIST if code_list_uri else _ST_ENUMERATION
+
+
+def _resolve_as_dictionary(entry: Mapping[str, Any], override: str) -> str:
+    """Resolve the asDictionary tagged value against the caller's override."""
+    if override in {"true", "false"}:
+        return override
+    return _text(entry.get("asDictionary"))
+
+
 def _collect_class_specs(
     feature_types: Sequence[Mapping[str, Any]],
+    *,
+    as_dictionary: str = "model",
 ) -> list[_ClassSpec]:
     """Derive every class that ShapeChange needs from the feature catalogue.
 
@@ -243,6 +288,7 @@ def _collect_class_specs(
                 package=_text(feature_type.get("package")),
                 abstract=bool(feature_type.get("abstract")),
                 supertypes=inheritance,
+                tags=_source_tagged_values(feature_type),
             )
         )
 
@@ -269,17 +315,25 @@ def _collect_class_specs(
         listed_values = entry.get("listedValues")
         codes = [value for value in listed_values or [] if isinstance(value, Mapping)]
 
+        stereotype = _codelist_stereotype(entry, code_list_uri)
+
         tags: list[tuple[str, str]] = []
         if code_list_uri:
             tags.append(("codeList", code_list_uri))
-            as_dictionary = _text(entry.get("asDictionary"))
-            if as_dictionary:
-                tags.append(("asDictionary", as_dictionary))
+        if stereotype == _ST_CODE_LIST:
+            # asDictionary decides how ShapeChange encodes the code list:
+            # "true" gives gml:CodeType, "false" gives a union of an enumeration
+            # and an "other:" pattern -- the form the published Geonorge schemas
+            # use. The registry URI survives either way through
+            # rule-xsd-prop-targetCodeListURI.
+            resolved = _resolve_as_dictionary(entry, as_dictionary)
+            if resolved:
+                tags.append(("asDictionary", resolved))
 
         specs.append(
             _ClassSpec(
                 name,
-                _ST_CODE_LIST if code_list_uri else _ST_ENUMERATION,
+                stereotype,
                 documentation=_text(entry.get("definition")),
                 tags=tags,
                 codes=codes,
@@ -325,6 +379,7 @@ def _write_property(
         _sub(element, "name", name)
     _sub(element, "id", property_id)
     _add_documentation(element, _text(attribute.get("description")))
+    _add_tagged_values(element, _source_tagged_values(attribute))
 
     cardinality = _normalize_cardinality(attribute.get("cardinality"))
     if cardinality:
@@ -521,6 +576,7 @@ def build_scxml(
     schema_version: str = "1.0",
     xsd_document: str | None = None,
     json_document: str | None = None,
+    as_dictionary: str = "model",
 ) -> ET.ElementTree:
     """Build a ShapeChange SCXML model from feature catalogue entries.
 
@@ -538,7 +594,7 @@ def build_scxml(
         raise ValueError("target_namespace is required to build a ShapeChange model.")
 
     entries = [entry for entry in feature_types if isinstance(entry, Mapping)]
-    specs = _collect_class_specs(entries)
+    specs = _collect_class_specs(entries, as_dictionary=as_dictionary)
     class_ids = _assign_ids(specs)
     roles_by_class, associations = _collect_associations(entries, class_ids)
 
@@ -627,6 +683,7 @@ def write_scxml(
     schema_version: str = "1.0",
     xsd_document: str | None = None,
     json_document: str | None = None,
+    as_dictionary: str = "model",
 ) -> Path:
     """Write the SCXML model to ``output_path`` and return the path."""
     tree = build_scxml(
@@ -637,6 +694,7 @@ def write_scxml(
         schema_version=schema_version,
         xsd_document=xsd_document,
         json_document=json_document,
+        as_dictionary=as_dictionary,
     )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

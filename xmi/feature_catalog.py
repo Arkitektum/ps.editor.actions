@@ -365,6 +365,11 @@ def _build_code_lists(classes: Mapping[str, _UmlClass]) -> dict[str, dict[str, A
             )
         definition = _clean_text(class_info.tagged_values.get("documentation"))
         entry: dict[str, Any] = {}
+        # Keep the stereotype: ShapeChange encodes <<codeList>> and <<enumeration>>
+        # differently, and it cannot be recovered from the values alone.
+        kind = (class_info.stereotype or "").strip().lower()
+        if kind in {"codelist", "enumeration"}:
+            entry["kind"] = kind
         if values:
             entry["listedValues"] = values
         if definition:
@@ -378,6 +383,23 @@ def _build_code_lists(classes: Mapping[str, _UmlClass]) -> dict[str, dict[str, A
         if entry:
             listings[class_info.name] = entry
     return listings
+
+
+# SOSI tagged values worth carrying into the feature catalogue JSON. The XMI files
+# hold dozens of tags; an allow-list keeps the JSON readable and stable. These are
+# the ones Kartverket's ShapeChange add-in passes as addTaggedValues, and SOSI_navn
+# is the one that shows up as sc:taggedValue appinfo in the published Geonorge
+# application schemas.
+RETAINED_TAGGED_VALUES: tuple[str, ...] = ("SOSI_navn", "SOSI_verdi", "NVDB_ID")
+
+
+def _retained_tagged_values(tags: Mapping[str, str]) -> dict[str, str]:
+    retained: dict[str, str] = {}
+    for name in RETAINED_TAGGED_VALUES:
+        value = _clean_text(tags.get(name))
+        if value:
+            retained[name] = value
+    return retained
 
 
 def _build_feature_type(
@@ -423,6 +445,10 @@ def _build_feature_type(
 
     if class_info.package:
         feature_dict["package"] = class_info.package
+
+    retained = _retained_tagged_values(class_info.tagged_values)
+    if retained:
+        feature_dict["taggedValues"] = retained
 
     return feature_dict
 
@@ -515,6 +541,10 @@ def _convert_attribute(
     if value_domain:
         entry["valueDomain"] = value_domain
 
+    retained = _retained_tagged_values(attribute.tags)
+    if retained:
+        entry["taggedValues"] = retained
+
     data_type = classes_by_name.get(attr_type)
     if data_type and data_type.stereotype and data_type.stereotype.lower() == "datatype" and data_type.id not in visited_types:
         nested_types = set(visited_types)
@@ -551,6 +581,9 @@ def _build_value_domain(
         return None
 
     domain: dict[str, Any] = {}
+    kind = codelist.get("kind")
+    if isinstance(kind, str) and kind.strip():
+        domain["kind"] = kind.strip()
     listed_values = codelist.get("listedValues")
     if isinstance(listed_values, Sequence) and not isinstance(listed_values, (str, bytes)):
         domain["listedValues"] = list(listed_values)

@@ -162,10 +162,12 @@ Inputs:
 - `schema-name`: Name of the application schema package. Defaults to the input file stem.
 - `xsd-document`: File name of the generated XML Schema document. Defaults to `<SchemaName>.xsd`.
 - `targets` (default `xsd,json`): Which ShapeChange targets to enable.
-- `xsd-encoding-rule` (default `iso19136_2007`): ShapeChange XML Schema encoding rule. Other built-ins are `gml33`, `iso19139_2007` and `ogcSweCommon2`.
+- `xsd-encoding-rule` (default `sosi`): ShapeChange XML Schema encoding rule. `sosi` is Kartverket's SOSI profile, written into the generated configuration — see [The SOSI profile](#the-sosi-profile). Built-in alternatives are `iso19136_2007`, `gml33`, `iso19139_2007` and `ogcSweCommon2`.
 - `json-schema-version` (default `2019-09`): One of `2020-12`, `2019-09`, `draft-07`, `OpenApi30`.
 - `json-base-uri`: Base URI used when constructing `$id` values in the JSON Schema output.
-- `json-encoding-rule` (default `defaultGeoJson`): `defaultGeoJson` or `defaultPlainJson`.
+- `json-encoding-rule` (default `sosiJson`): `sosiJson` is written into the generated configuration; the built-in alternatives are `defaultGeoJson` and `defaultPlainJson`.
+- `represent-tagged-values` (default `SOSI_navn,SOSI_verdi,NVDB_ID`): Tagged values emitted as `sc:taggedValue` appinfo in the XSD. Needs an encoding rule with `rule-xsd-all-tagged-values`, which `sosi` has.
+- `codelist-as-dictionary` (default `model`): `model`, `true` or `false`. Decides how code lists are encoded — see [Code lists](#code-lists).
 - `entity-type-name` (default `@type`): Name of the entity type member in the JSON Schema output.
 - `xml-schema-target-class` / `json-schema-target-class`: Override the ShapeChange target classes. The Java package names changed in ShapeChange 4.0.0; the defaults target 4.x.
 - `bundled-includes` (default `false`): Reference the standard rules and map entries bundled with the ShapeChange distribution instead of the copies on `shapechange.net`. Requires running the jar from the distribution root.
@@ -247,17 +249,73 @@ ShapeChange cannot read the SOSI XMI files directly: its `XMI10` reader requires
 Because the JSON structure is flat, the model ShapeChange sees is reconstructed:
 
 - top-level entries become `<<featureType>>` classes, nested attribute groups become `<<dataType>>` classes;
-- value domains become `<<codeList>>` when they carry an external `codeList` URI, and `<<enumeration>>` when they only list values;
+- value domains become `<<codeList>>` or `<<enumeration>>` according to the source model's stereotype, falling back on the presence of an external `codeList` URI for sources that carry no stereotypes;
 - geometry is normalised to the ISO 19107 `GM_*` types, and other types to ISO 19103 names such as `CharacterString` and `Integer`;
+- `SOSI_navn`, `SOSI_verdi` and `NVDB_ID` tagged values are carried through from XMI sources;
 - `targetNamespace`, `xmlns`, `version`, `xsdDocument` and `jsonDocument` are synthesised from the action inputs, since no source carries them.
 
 Constraints (OCL) and classes that are not feature types do not survive the trip through the JSON structure. GeoPackage sources are the thinnest input of all — no relationships, no packages, no code lists — so their schema is a flat rendering of the tables.
 
-### Non-ASCII class names and JSON Schema
+### The SOSI profile
 
-ShapeChange encodes every class name as a JSON Schema `$anchor`. JSON Schema requires anchors to match `^[A-Za-z][-A-Za-z0-9.:_]*$`, so a Norwegian class name such as `Målemetode` produces a document that fails strict metaschema validation. This affects `2019-09` and `2020-12` under both built-in encoding rules. The XSD output is unaffected.
+Stock ShapeChange produces a generic ISO 19136 schema. The application schemas published on `skjema.geonorge.no` look different, and [kartverket/ShapeChange-Add-In](https://github.com/kartverket/ShapeChange-Add-In) shows why: Kartverket runs ShapeChange with a SOSI-specific encoding rule and an extra map-entry file. That add-in is a Windows-only Enterprise Architect wrapper, so none of it runs in CI — but the two configuration fragments are plain ShapeChange and are reused here.
 
-If strict conformance matters, set `json-schema-version: draft-07` — `$anchor` did not exist before 2019-09, so ShapeChange omits it and the result validates cleanly.
+`xsd-encoding-rule: sosi` (the default) writes Kartverket's rule into the generated configuration:
+
+```xml
+<EncodingRule name="sosi" extends="iso19136_2007">
+  <rule name="rule-xsd-prop-length-size-pattern"/>
+  <rule name="rule-xsd-all-tagged-values"/>
+  <rule name="rule-xsd-all-notEncoded"/>
+  <rule name="rule-xsd-pkg-schematron"/>
+  <rule name="rule-xsd-prop-nillable"/>
+  <rule name="rule-xsd-prop-targetCodeListURI"/>
+</EncodingRule>
+```
+
+Every individual rule is stock ShapeChange — only the grouping is Kartverket's — so no patched ShapeChange is needed. Two of them do the visible work:
+
+- `rule-xsd-all-tagged-values`, together with `represent-tagged-values`, emits `<sc:taggedValue tag="SOSI_navn">FLATE</sc:taggedValue>` appinfo, exactly as in the published Geonorge schemas;
+- `rule-xsd-prop-targetCodeListURI` emits `<sc:targetCodeListURI>` carrying each code list's registry URI, so the link to `register.geonorge.no` survives whichever encoding the code list gets.
+
+The profile is purely additive: running the same model through `iso19136_2007` and `sosi` yields structurally identical schemas, and the `sosi` output only gains the `sc:` import and the appinfo blocks.
+
+Alongside it, `shapechange/data/StandardMapEntries_sosi.xml` maps the Norwegian SOSI type names — `Navn`, `Høyde`, `Dybde`, `Organisasjonsnummer`, `URI`, and the geometry types `Punkt`/`Kurve`/`Flate`/`Sverm`. It is vendored rather than fetched from `sosi.geonorge.no`, because the upstream copy is served over plain HTTP from a version-pinned path. One deliberate fix: upstream maps `Høyde` twice, to `double` and to `string`; only the `double` mapping is kept.
+
+Set `xsd-encoding-rule: iso19136_2007` to opt out and get plain ShapeChange behaviour.
+
+### Code lists
+
+ShapeChange encodes a `<<codeList>>` in one of two shapes, chosen by its `asDictionary` tagged value:
+
+| `asDictionary` | XSD |
+|---|---|
+| `true` | `<element name="kommunenummer" type="gml:CodeType"/>` |
+| `false` | `<union memberTypes="app:KommunenummerEnumerationType app:KommunenummerOtherType"/>` with `pattern "other: \w{2,}"` |
+
+The published Geonorge schemas use the union form throughout. `codelist-as-dictionary` decides which you get: `model` (default) keeps whatever the source model says, while `true`/`false` overrides it. The registry URI is preserved either way through `rule-xsd-prop-targetCodeListURI`, so the choice is about instance-document form, not about losing information.
+
+An `<<enumeration>>` is different again — a closed `restriction` with no escape hatch. That is why the source stereotype is carried through rather than guessed.
+
+### JSON Schema and non-ASCII class names
+
+Both built-in JSON encoding rules include `rule-json-cls-name-as-anchor`, which encodes every class name as a JSON Schema `$anchor`. JSON Schema requires anchors to match `^[A-Za-z][-A-Za-z0-9.:_]*$`, so a Norwegian name such as `Målemetode` produces a document that fails strict metaschema validation.
+
+ShapeChange encoding rules can only *add* rules, never remove one, so the fix is a rule that does not extend a built-in. That is what `json-encoding-rule: sosiJson` (the default) is: Kartverket's three-rule `defaultJson` plus what is needed for geometry, identity and documentation, and without the anchor rule. The result validates cleanly as Draft 2019-09 while keeping GeoJSON geometry (`"geometry": {"$ref": "https://geojson.org/schema/MultiPolygon.json"}`).
+
+Set `json-encoding-rule: defaultGeoJson` for stock behaviour, at the cost of the `$anchor` problem returning.
+
+### Namespace and version conventions
+
+Geonorge date-stamps its application schemas, using the same stamp as both the last path segment of the namespace and the schema version:
+
+```yaml
+target-namespace: https://skjema.geonorge.no/SOSI/produktspesifikasjon/Dyrkbarjord/20250530
+schema-version: "20250530"
+xmlns-prefix: app
+```
+
+`app` is the prefix Geonorge uses, and is already the default.
 
 ## Template
 

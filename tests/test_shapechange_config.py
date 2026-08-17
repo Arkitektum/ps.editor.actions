@@ -96,7 +96,7 @@ class ConfigStructureTests(unittest.TestCase):
 
         parameters = _parameters(xsd_target, "targetParameter")
         self.assertEqual(parameters["outputDirectory"], str(Path("/out/xsd")))
-        self.assertEqual(parameters["defaultEncodingRule"], "iso19136_2007")
+        self.assertEqual(parameters["defaultEncodingRule"], "sosi")
 
     def test_json_schema_target_uses_the_generic_element_name(self) -> None:
         root = _build(json_base_uri="https://example.com/base")
@@ -150,6 +150,84 @@ class ConfigStructureTests(unittest.TestCase):
         )
 
 
+class SosiProfileTests(unittest.TestCase):
+    """The SOSI profile lifted from Kartverket's Enterprise Architect add-in."""
+
+    def _encoding_rule(self, target: ET.Element) -> ET.Element | None:
+        return target.find(f"{_q('rules')}/{_q('EncodingRule')}")
+
+    def _rule_names(self, encoding_rule: ET.Element) -> list[str]:
+        return [rule.get("name", "") for rule in encoding_rule.findall(_q("rule"))]
+
+    def test_sosi_xsd_rule_is_defined_and_extends_iso19136(self) -> None:
+        xsd_target = _build().find(f"{_q('targets')}/{_q('TargetXmlSchema')}")
+        assert xsd_target is not None
+        encoding_rule = self._encoding_rule(xsd_target)
+        self.assertIsNotNone(encoding_rule)
+        assert encoding_rule is not None
+
+        self.assertEqual(encoding_rule.get("name"), "sosi")
+        self.assertEqual(encoding_rule.get("extends"), "iso19136_2007")
+
+        rules = self._rule_names(encoding_rule)
+        # These two are what close the gap against the published Geonorge schemas.
+        self.assertIn("rule-xsd-all-tagged-values", rules)
+        self.assertIn("rule-xsd-prop-targetCodeListURI", rules)
+        self.assertEqual(len(rules), 6)
+
+    def test_built_in_xsd_rule_is_not_redefined(self) -> None:
+        # Redefining a rule ShapeChange already knows is an error.
+        xsd_target = _build(xsd_encoding_rule="iso19136_2007").find(
+            f"{_q('targets')}/{_q('TargetXmlSchema')}"
+        )
+        assert xsd_target is not None
+        self.assertIsNone(self._encoding_rule(xsd_target))
+
+    def test_sosi_json_rule_does_not_extend_a_built_in(self) -> None:
+        json_target = _build().find(f"{_q('targets')}/{_q('Target')}")
+        assert json_target is not None
+        encoding_rule = self._encoding_rule(json_target)
+        self.assertIsNotNone(encoding_rule)
+        assert encoding_rule is not None
+
+        self.assertEqual(encoding_rule.get("name"), "sosiJson")
+        # Both built-in JSON rules pull in rule-json-cls-name-as-anchor, which
+        # emits $anchor values that are invalid for non-ASCII class names. Rules
+        # can only be added, never removed, so the rule must not extend one.
+        self.assertIsNone(encoding_rule.get("extends"))
+        self.assertNotIn("rule-json-cls-name-as-anchor", self._rule_names(encoding_rule))
+
+    def test_built_in_json_rule_is_not_redefined(self) -> None:
+        json_target = _build(json_encoding_rule="defaultGeoJson").find(
+            f"{_q('targets')}/{_q('Target')}"
+        )
+        assert json_target is not None
+        self.assertIsNone(self._encoding_rule(json_target))
+
+    def test_sosi_json_maps_norwegian_geometry_to_geojson(self) -> None:
+        json_target = _build().find(f"{_q('targets')}/{_q('Target')}")
+        assert json_target is not None
+        entries = {
+            entry.get("type"): entry.get("targetType")
+            for entry in json_target.findall(f"{_q('mapEntries')}/{_q('MapEntry')}")
+        }
+        self.assertEqual(entries["Flate"], "https://geojson.org/schema/Polygon.json")
+        self.assertEqual(entries["Kurve"], "https://geojson.org/schema/LineString.json")
+
+    def test_represent_tagged_values_defaults_to_the_sosi_tags(self) -> None:
+        input_element = _build().find(_q("input"))
+        assert input_element is not None
+        self.assertEqual(
+            _parameters(input_element)["representTaggedValues"],
+            "SOSI_navn,SOSI_verdi,NVDB_ID",
+        )
+
+    def test_represent_tagged_values_is_omitted_when_empty(self) -> None:
+        input_element = _build(represent_tagged_values=[]).find(_q("input"))
+        assert input_element is not None
+        self.assertNotIn("representTaggedValues", _parameters(input_element))
+
+
 class ConfigIncludeTests(unittest.TestCase):
     def _hrefs(self, root: ET.Element) -> list[str]:
         return [
@@ -159,7 +237,8 @@ class ConfigIncludeTests(unittest.TestCase):
 
     def test_remote_includes_are_used_by_default(self) -> None:
         hrefs = self._hrefs(_build())
-        self.assertTrue(all(href.startswith("https://shapechange.net/") for href in hrefs))
+        remote = [href for href in hrefs if not href.startswith("file:")]
+        self.assertTrue(all(href.startswith("https://shapechange.net/") for href in remote))
         self.assertIn(
             "https://shapechange.net/resources/config/StandardAliases.xml", hrefs
         )
@@ -169,8 +248,21 @@ class ConfigIncludeTests(unittest.TestCase):
 
     def test_bundled_includes_use_distribution_relative_paths(self) -> None:
         hrefs = self._hrefs(_build(bundled_includes=True))
-        self.assertTrue(all(href.startswith("config/") for href in hrefs))
+        bundled = [href for href in hrefs if not href.startswith("file:")]
+        self.assertTrue(all(href.startswith("config/") for href in bundled))
         self.assertIn("config/StandardRules.xml", hrefs)
+
+    def test_sosi_map_entries_are_included_as_a_vendored_file(self) -> None:
+        # Vendored rather than fetched: the upstream copy is served over plain
+        # HTTP from a version-pinned path.
+        hrefs = self._hrefs(_build())
+        vendored = [href for href in hrefs if href.startswith("file:")]
+        self.assertEqual(len(vendored), 1)
+        self.assertTrue(vendored[0].endswith("StandardMapEntries_sosi.xml"))
+
+    def test_sosi_map_entries_are_omitted_for_built_in_encoding_rules(self) -> None:
+        hrefs = self._hrefs(_build(xsd_encoding_rule="iso19136_2007"))
+        self.assertEqual([href for href in hrefs if href.startswith("file:")], [])
 
 
 class ConfigWriteTests(unittest.TestCase):

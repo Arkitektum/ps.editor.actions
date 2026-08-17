@@ -54,22 +54,41 @@ inputs:
     required: false
     default: xsd,json
   xsd-encoding-rule:
-    description: "ShapeChange XML Schema encoding rule, e.g. iso19136_2007, gml33, iso19139_2007."
-    required: false
-    default: iso19136_2007
-  json-schema-version:
     description: >-
-      JSON Schema version: 2020-12, 2019-09, draft-07 or OpenApi30. Use draft-07 for models
-      with non-ASCII class names; see the README for why.
+      ShapeChange XML Schema encoding rule. 'sosi' (default) is Kartverket's SOSI profile,
+      written into the generated configuration. Built-in alternatives: iso19136_2007,
+      gml33, iso19139_2007, ogcSweCommon2.
+    required: false
+    default: sosi
+  json-schema-version:
+    description: "JSON Schema version: 2020-12, 2019-09, draft-07 or OpenApi30."
     required: false
     default: "2019-09"
   json-base-uri:
     description: "Base URI used when constructing '$id' values in the JSON Schema output."
     required: false
   json-encoding-rule:
-    description: "ShapeChange JSON Schema encoding rule: defaultGeoJson or defaultPlainJson."
+    description: >-
+      ShapeChange JSON Schema encoding rule. 'sosiJson' (default) is written into the
+      generated configuration and omits rule-json-cls-name-as-anchor, which produces
+      $anchor values that are invalid for non-ASCII class names. Built-in alternatives:
+      defaultGeoJson, defaultPlainJson.
     required: false
-    default: defaultGeoJson
+    default: sosiJson
+  represent-tagged-values:
+    description: >-
+      Comma-separated tagged values to emit as sc:taggedValue appinfo in the XSD.
+      Requires an encoding rule with rule-xsd-all-tagged-values, which 'sosi' has.
+    required: false
+    default: SOSI_navn,SOSI_verdi,NVDB_ID
+  codelist-as-dictionary:
+    description: >-
+      Controls the 'asDictionary' tagged value on code lists: 'true' makes ShapeChange
+      encode them as gml:CodeType, 'false' as a union of an enumeration and an 'other:'
+      pattern (the form used by the published Geonorge schemas). 'model' (default) keeps
+      whatever the source model says.
+    required: false
+    default: model
   entity-type-name:
     description: "Name of the entity type member in the JSON Schema output."
     required: false
@@ -167,6 +186,8 @@ runs:
         INPUT_JSON_SCHEMA_VERSION: ${{ inputs.json-schema-version }}
         INPUT_JSON_BASE_URI: ${{ inputs.json-base-uri }}
         INPUT_JSON_ENCODING_RULE: ${{ inputs.json-encoding-rule }}
+        INPUT_REPRESENT_TAGGED_VALUES: ${{ inputs.represent-tagged-values }}
+        INPUT_CODELIST_AS_DICTIONARY: ${{ inputs.codelist-as-dictionary }}
         INPUT_ENTITY_TYPE_NAME: ${{ inputs.entity-type-name }}
         INPUT_XML_SCHEMA_TARGET_CLASS: ${{ inputs.xml-schema-target-class }}
         INPUT_JSON_SCHEMA_TARGET_CLASS: ${{ inputs.json-schema-target-class }}
@@ -221,6 +242,12 @@ runs:
           fi
           if [ -n "$INPUT_JSON_ENCODING_RULE" ]; then
             ARGS+=("--json-encoding-rule" "$INPUT_JSON_ENCODING_RULE")
+          fi
+          if [ -n "$INPUT_REPRESENT_TAGGED_VALUES" ]; then
+            ARGS+=("--represent-tagged-values" "$INPUT_REPRESENT_TAGGED_VALUES")
+          fi
+          if [ -n "$INPUT_CODELIST_AS_DICTIONARY" ]; then
+            ARGS+=("--codelist-as-dictionary" "$INPUT_CODELIST_AS_DICTIONARY")
           fi
           if [ -n "$INPUT_ENTITY_TYPE_NAME" ]; then
             ARGS+=("--entity-type-name" "$INPUT_ENTITY_TYPE_NAME")

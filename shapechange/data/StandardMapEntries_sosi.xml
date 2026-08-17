@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SOSI map entries for the ShapeChange XML Schema target.
+
+  Vendored from Kartverket's ShapeChange Enterprise Architect add-in:
+    source:  http://sosi.geonorge.no/ShapeChangeAddIn/3.0/StandardMapEntries_sosi.xml
+    repo:    https://github.com/kartverket/ShapeChange-Add-In
+             (Arkitektum.Statkart.ShapeChange.EA.Addin/config/StandardMapEntries.xml
+              references the URL above as its last xi:include)
+    fetched: 2026-08-17
+
+  Vendored rather than xi:include'd from the live URL because that URL is served
+  over plain HTTP, is pinned to a /3.0/ path with no /4.0/ counterpart, and would
+  make every CI run depend on a Kartverket web server being reachable.
+
+  DELIBERATE DIVERGENCE FROM THE SOURCE: the upstream file maps "Høyde" twice.
+  Once to double (under "SOSI eldre generelle typer") and once to string (under
+  "SOSI profilen heleid geometri", where it is plainly a copy-paste slip, since
+  Høyde is not a geometry type). ShapeChange would resolve that to whichever entry
+  it reads last, making a height a string. Only the double mapping is kept here.
+-->
+<xsdMapEntries xmlns="http://www.interactive-instruments.de/ShapeChange/Configuration/1.1">
+  <!-- SOSI eldre generelle typer -->
+  <XsdMapEntry type="Navn" xsdEncodingRules="*" xmlPropertyType="string" xmlType="string" xmlTypeType="simple" xmlTypeContent="simple"/>
+  <XsdMapEntry type="Geodataprodusent" xsdEncodingRules="*" xmlPropertyType="string" xmlType="string" xmlTypeType="simple" xmlTypeContent="simple"/>
+  <XsdMapEntry type="Link" xsdEncodingRules="*" xmlPropertyType="string" xmlType="string" xmlTypeType="simple" xmlTypeContent="simple"/>
+  <XsdMapEntry type="Geodataeier" xsdEncodingRules="*" xmlPropertyType="string" xmlType="string" xmlTypeType="simple" xmlTypeContent="simple"/>
+  <XsdMapEntry type="Kontaktperson" xsdEncodingRules="*" xmlPropertyType="string" xmlType="string" xmlTypeType="simple" xmlTypeContent="simple"/>
+
+  <XsdMapEntry type="Høyde" xsdEncodingRules="*" xmlPropertyType="double" xmlType="double" xmlTypeType="simple" xmlTypeContent="simple"/>
+  <XsdMapEntry type="Dybde" xsdEncodingRules="*" xmlPropertyType="double" xmlType="double" xmlTypeType="simple" xmlTypeContent="simple"/>
+  <XsdMapEntry type="Temperatur" xsdEncodingRules="*" xmlPropertyType="double" xmlType="double" xmlTypeType="simple" xmlTypeContent="simple"/>
+  <XsdMapEntry type="Misvisning" xsdEncodingRules="*" xmlPropertyType="double" xmlType="double" xmlTypeType="simple" xmlTypeContent="simple"/>
+  <XsdMapEntry type="HøydeOverBakken" xsdEncodingRules="*" xmlPropertyType="double" xmlType="double" xmlTypeType="simple" xmlTypeContent="simple"/>
+
+  <XsdMapEntry type="Organisasjonsnummer" xsdEncodingRules="*" xmlPropertyType="integer" xmlType="integer" xmlTypeType="simple" xmlTypeContent="simple"/>
+
+  <!-- SOSI 5.0 generelle typer -->
+  <XsdMapEntry type="URI" xsdEncodingRules="*" xmlPropertyType="anyURI" xmlType="anyURI" xmlTypeType="simple" xmlTypeContent="simple"/>
+
+  <!-- SOSI-profilens heleide geometri -->
+  <XsdMapEntry type="Punkt" xsdEncodingRules="*" xmlType="gml:PointType" xmlElement="gml:Point" xmlPropertyType="gml:PointPropertyType"/>
+  <XsdMapEntry type="Kurve" xsdEncodingRules="*" xmlType="gml:CurveType" xmlElement="gml:Curve" xmlPropertyType="gml:CurvePropertyType"/>
+  <XsdMapEntry type="Flate" xsdEncodingRules="*" xmlType="gml:SurfaceType" xmlElement="gml:Surface" xmlPropertyType="gml:SurfacePropertyType"/>
+  <XsdMapEntry type="Sverm" xsdEncodingRules="*" xmlType="gml:MultiPointType" xmlElement="gml:MultiPoint" xmlPropertyType="gml:MultiPointPropertyType"/>
+</xsdMapEntries>

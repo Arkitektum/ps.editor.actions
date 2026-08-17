@@ -263,6 +263,108 @@ class ScxmlStructureTests(unittest.TestCase):
         self.assertIn("DyrkbarJord", classes)
         self.assertNotIn("0", classes)
 
+    def test_codelist_stereotype_follows_the_source_model(self) -> None:
+        # The XMI loader records the stereotype as 'kind'. Without it the writer
+        # would have to guess from the presence of a codeList URI, which makes a
+        # register-less SOSI code list look like an enumeration.
+        root = _build(
+            [
+                {
+                    "name": "X",
+                    "attributes": [
+                        {
+                            "name": "a",
+                            "type": "LukketKodeliste",
+                            "cardinality": "1",
+                            "valueDomain": {
+                                "kind": "codelist",
+                                "listedValues": [{"value": "1", "label": "En"}],
+                            },
+                        },
+                        {
+                            "name": "b",
+                            "type": "EkteEnum",
+                            "cardinality": "1",
+                            "valueDomain": {
+                                "kind": "enumeration",
+                                "listedValues": [{"value": "2", "label": "To"}],
+                            },
+                        },
+                    ],
+                }
+            ]
+        )
+        classes = _classes(root)
+        self.assertEqual(_stereotypes(classes["LukketKodeliste"]), ["codelist"])
+        self.assertEqual(_stereotypes(classes["EkteEnum"]), ["enumeration"])
+
+    def test_as_dictionary_can_be_forced_off(self) -> None:
+        # 'false' makes ShapeChange emit the union-with-'other:' form that the
+        # published Geonorge schemas use.
+        feature_types = [
+            {
+                "name": "X",
+                "attributes": [
+                    {
+                        "name": "a",
+                        "type": "Kodeliste",
+                        "cardinality": "1",
+                        "valueDomain": {
+                            "kind": "codelist",
+                            "asDictionary": "true",
+                            "codeList": "https://register.example.no/kodeliste",
+                        },
+                    }
+                ],
+            }
+        ]
+
+        def _tags(as_dictionary: str) -> dict[str, str]:
+            tree = build_scxml(
+                feature_types,
+                schema_name="S",
+                target_namespace="http://example.com/1.0",
+                as_dictionary=as_dictionary,
+            )
+            return _tagged_values(_classes(tree.getroot())["Kodeliste"])
+
+        self.assertEqual(_tags("model")["asDictionary"], "true")
+        self.assertEqual(_tags("false")["asDictionary"], "false")
+        self.assertEqual(_tags("true")["asDictionary"], "true")
+        # The registry URI is kept either way; rule-xsd-prop-targetCodeListURI
+        # carries it into the XSD regardless of the encoding.
+        self.assertEqual(
+            _tags("false")["codeList"], "https://register.example.no/kodeliste"
+        )
+
+    def test_source_tagged_values_are_written(self) -> None:
+        root = _build(
+            [
+                {
+                    "name": "X",
+                    "taggedValues": {"SOSI_navn": "XOBJ"},
+                    "attributes": [
+                        {
+                            "name": "a",
+                            "type": "string",
+                            "cardinality": "1",
+                            "taggedValues": {"SOSI_navn": "AAA"},
+                        }
+                    ],
+                }
+            ]
+        )
+        classes = _classes(root)
+        self.assertEqual(_tagged_values(classes["X"])["SOSI_navn"], "XOBJ")
+
+        prop = _properties(classes["X"])["a"]
+        container = prop.find(_q("taggedValues"))
+        self.assertIsNotNone(container)
+        assert container is not None
+        tagged_value = container.find(_q("TaggedValue"))
+        assert tagged_value is not None
+        self.assertEqual(tagged_value.findtext(_q("name")), "SOSI_navn")
+
     def test_target_namespace_is_required(self) -> None:
         with self.assertRaises(ValueError):
             build_scxml([], schema_name="X", target_namespace="")

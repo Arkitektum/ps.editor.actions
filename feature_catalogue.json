@@ -7,19 +7,28 @@
         "name": "område",
         "type": "GM_MultiSurface",
         "description": "den geografiske avgrensingen av stemmekretsen.",
-        "cardinality": "1"
+        "cardinality": "1",
+        "taggedValues": {
+          "SOSI_navn": "FLATE"
+        }
       },
       {
         "name": "administrativEnhetNavn",
         "type": "AdministrativEnhetNavn",
         "description": "offisielt navn på en kommune, et fylke eller en nasjon",
         "cardinality": "1..*",
+        "taggedValues": {
+          "SOSI_navn": "ADMENHETNAVN"
+        },
         "attributes": [
           {
             "name": "navn",
             "type": "CharacterString",
             "description": "navnet på den administrative enheten i angitt språk.",
-            "cardinality": "1"
+            "cardinality": "1",
+            "taggedValues": {
+              "SOSI_navn": "NAVN"
+            }
           },
           {
             "name": "språk",
@@ -27,6 +36,7 @@
             "description": "angir språk for det administrative navnet.",
             "cardinality": "1",
             "valueDomain": {
+              "kind": "codelist",
               "listedValues": [
                 {
                   "value": "English",
@@ -62,13 +72,19 @@
                 }
               ],
               "definition": "ISO 639 del 3 språkkodetabell\n\nMerknad: ufullstendig kodeliste pga. importfeil\n\nlanguage code tables of ISO 639 part 3\n\nISO 639-3 is a code that aims to define three-letter identifiers for all known human languages. At the core of ISO 639-3 are the individual languages already accounted for in ISO 639-2."
+            },
+            "taggedValues": {
+              "SOSI_navn": "SPRÅK"
             }
           },
           {
             "name": "rekkefølge",
             "type": "Integer",
             "description": "angir presentasjonsrekkefølge i sammenstaninger av nav på administretiv enhet ved presentasjon på alle sprøkformer.",
-            "cardinality": "0..1"
+            "cardinality": "0..1",
+            "taggedValues": {
+              "SOSI_navn": "REKKEFØLGE"
+            }
           }
         ]
       },
@@ -78,22 +94,32 @@
         "description": "nummerering av kommunen i henhold til Statistisk sentralbyrå sin offisielle liste\n\nMerknad: Det presiseres at kommune alltid skal ha 4 siffer, dvs. eventuelt med ledende null. Kommune benyttes for kopling mot en rekke andre registre som også benytter 4 siffer.",
         "cardinality": "1",
         "valueDomain": {
+          "kind": "codelist",
           "definition": "<font color=\"#333333\">nummerering av kommuner i henhold til SSB sin offisielle liste</font>\nMerknad: <font color=\"#333333\">Inneholder fremtidige, gyldige og utgåtte kommunenummer. </font>Det presiseres at kommune alltid skal ha 4 sifre, dvs. eventuelt med ledende null. Kommune benyttes for kopling mot en rekke andre registre som også benytter 4 sifre.\n\n<i>URI til ekstern kodeliste:</i> https://register.geonorge.no/sosi-kodelister/kommunenummer?page=2",
           "asDictionary": "true",
           "codeList": "https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/kommunenummer"
+        },
+        "taggedValues": {
+          "SOSI_navn": "KOMMUNENUMMER"
         }
       },
       {
         "name": "kommunenavn",
         "type": "CharacterString",
         "description": "Offisielt navn på en kommune. Merk: Hvis kommunen har flere vedtatte parallellnavn, framstår disse i en sammenhengende tekststreng.",
-        "cardinality": "1"
+        "cardinality": "1",
+        "taggedValues": {
+          "SOSI_navn": "KOMMUNENAVN"
+        }
       },
       {
         "name": "samiskForvaltningsområde",
         "type": "Boolean",
         "description": "angir om kommunen er en del ac samisk forvaltningaområde",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "SAMISKFORVALTNINGSOMRÅDE"
+        }
       }
     ],
     "abstract": false,
@@ -119,19 +145,28 @@
         "name": "datafangstdato",
         "type": "DateTime",
         "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "DATAFANGSTDATO"
+        }
       },
       {
         "name": "datauttaksdato",
         "type": "DateTime",
         "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "DATAUTTAKSDATO"
+        }
       },
       {
         "name": "opphav",
         "type": "CharacterString",
         "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "OPPHAV"
+        }
       }
     ],
     "abstract": true,
@@ -151,7 +186,10 @@
         "name": "grense",
         "type": "GM_Curve",
         "description": "Geometri for avgrensingslinjer",
-        "cardinality": "1"
+        "cardinality": "1",
+        "taggedValues": {
+          "SOSI_navn": "GRENSE"
+        }
       },
       {
         "name": "avgrensningstype",
@@ -159,6 +197,7 @@
         "description": "angir type avgreisningslinje. Ulike objekter avgrenses av ulike typer grenser.",
         "cardinality": "1",
         "valueDomain": {
+          "kind": "codelist",
           "listedValues": [
             {
               "value": "Riksgrense",
@@ -195,6 +234,9 @@
           ],
           "definition": "oversikt over ulike typer avgrensingslinjer.",
           "asDictionary": "false"
+        },
+        "taggedValues": {
+          "SOSI_navn": "AVGRENSNINGSTYPE"
         }
       }
     ],
@@ -216,24 +258,36 @@
         "type": "Identifikasjon",
         "description": "unik identifikasjon av et objekt",
         "cardinality": "1",
+        "taggedValues": {
+          "SOSI_navn": "IDENT"
+        },
         "attributes": [
           {
             "name": "lokalId",
             "type": "CharacterString",
             "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.",
-            "cardinality": "1"
+            "cardinality": "1",
+            "taggedValues": {
+              "SOSI_navn": "LOKALID"
+            }
           },
           {
             "name": "navnerom",
             "type": "CharacterString",
             "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no",
-            "cardinality": "1"
+            "cardinality": "1",
+            "taggedValues": {
+              "SOSI_navn": "NAVNEROM"
+            }
           },
           {
             "name": "versjonId",
             "type": "CharacterString",
             "description": "identifikasjon av en spesiell versjon av et geografisk objekt (instans)",
-            "cardinality": "0..1"
+            "cardinality": "0..1",
+            "taggedValues": {
+              "SOSI_navn": "VERSJONID"
+            }
           }
         ]
       },
@@ -241,19 +295,28 @@
         "name": "oppdateringsdato",
         "type": "DateTime",
         "description": "tidspunkt for siste endring på objektet\n\nMerknad:\nOppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).",
-        "cardinality": "1"
+        "cardinality": "1",
+        "taggedValues": {
+          "SOSI_navn": "OPPDATERINGSDATO"
+        }
       },
       {
         "name": "gyldigFra",
         "type": "Date",
         "description": "Tidspunktet når objektet oppstod i den virkelige verden",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "GYLDIGFRA"
+        }
       },
       {
         "name": "gyldigTil",
         "type": "Date",
         "description": "Tidspunktet når objektet opphørte å eksistere i den virkelige verden",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "GYLDIGTIL"
+        }
       }
     ],
     "abstract": true,
@@ -271,7 +334,10 @@
         "name": "datafangstdato",
         "type": "DateTime",
         "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "DATAFANGSTDATO"
+        }
       },
       {
         "name": "kvalitet",
@@ -285,16 +351,23 @@
             "description": "metode for måling i grunnriss (x,y), og høyde (z) når metoden er den samme som ved måling i grunnriss",
             "cardinality": "1",
             "valueDomain": {
+              "kind": "codelist",
               "definition": "metode som ligger til grunn for registrering av posisjon\n\n\n-- Definition - -\nmethod on which registration of position is based",
               "asDictionary": "true",
               "codeList": "https://register.geonorge.no/sosi-kodelister/generelle-konsepter/4.5/m%C3%A5lemetodekode"
+            },
+            "taggedValues": {
+              "SOSI_navn": "MÅLEMETODE"
             }
           },
           {
             "name": "nøyaktighet",
             "type": "Integer",
             "description": "punktstandardavviket i grunnriss for punkter samt tverravvik for linjer\n\nMerknad:\nOppgitt i cm",
-            "cardinality": "0..1"
+            "cardinality": "0..1",
+            "taggedValues": {
+              "SOSI_navn": "NØYAKTIGHET"
+            }
           }
         ]
       },
@@ -302,13 +375,19 @@
         "name": "datauttaksdato",
         "type": "DateTime",
         "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "DATAUTTAKSDATO"
+        }
       },
       {
         "name": "opphav",
         "type": "CharacterString",
         "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "OPPHAV"
+        }
       }
     ],
     "abstract": true,
@@ -328,19 +407,28 @@
         "name": "område",
         "type": "GM_MultiSurface",
         "description": "den geografiske avgrensingen av stemmekretsen.",
-        "cardinality": "1"
+        "cardinality": "1",
+        "taggedValues": {
+          "SOSI_navn": "FLATE"
+        }
       },
       {
         "name": "administrativEnhetNavn",
         "type": "AdministrativEnhetNavn",
         "description": "offisielt navn på en kommune, et fylke eller en nasjon",
         "cardinality": "1..*",
+        "taggedValues": {
+          "SOSI_navn": "ADMENHETNAVN"
+        },
         "attributes": [
           {
             "name": "navn",
             "type": "CharacterString",
             "description": "navnet på den administrative enheten i angitt språk.",
-            "cardinality": "1"
+            "cardinality": "1",
+            "taggedValues": {
+              "SOSI_navn": "NAVN"
+            }
           },
           {
             "name": "språk",
@@ -348,6 +436,7 @@
             "description": "angir språk for det administrative navnet.",
             "cardinality": "1",
             "valueDomain": {
+              "kind": "codelist",
               "listedValues": [
                 {
                   "value": "English",
@@ -383,13 +472,19 @@
                 }
               ],
               "definition": "ISO 639 del 3 språkkodetabell\n\nMerknad: ufullstendig kodeliste pga. importfeil\n\nlanguage code tables of ISO 639 part 3\n\nISO 639-3 is a code that aims to define three-letter identifiers for all known human languages. At the core of ISO 639-3 are the individual languages already accounted for in ISO 639-2."
+            },
+            "taggedValues": {
+              "SOSI_navn": "SPRÅK"
             }
           },
           {
             "name": "rekkefølge",
             "type": "Integer",
             "description": "angir presentasjonsrekkefølge i sammenstaninger av nav på administretiv enhet ved presentasjon på alle sprøkformer.",
-            "cardinality": "0..1"
+            "cardinality": "0..1",
+            "taggedValues": {
+              "SOSI_navn": "REKKEFØLGE"
+            }
           }
         ]
       },
@@ -399,22 +494,32 @@
         "description": "nummerering av fylker i henhold til Statistisk sentralbyrå sin offisielle liste\n\nMerknad:\nDet presiseres at fylkesnummer alltid skal ha 2 sifre, dvs. eventuelt med ledende null. Fylkesnummer benyttes for kopling mot en rekke andre registre som også benytter 2 sifre.",
         "cardinality": "1",
         "valueDomain": {
+          "kind": "codelist",
           "definition": "nummerering av fylker <font color=\"#333333\"> </font>\n<font color=\"#333333\">\n</font><font color=\"#333333\">Merknad: Inneholder fremtidige, gyldige og utgåtte nummer. Fylket skal alltid ha 2 sifre, dvs. eventuelt med ledende null.</font>\n<i>URI til ekstern kodeliste:</i> https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/fylkesnummer",
           "asDictionary": "true",
           "codeList": "https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/fylkesnummer?"
+        },
+        "taggedValues": {
+          "SOSI_navn": "FYLKESNUMMER"
         }
       },
       {
         "name": "fylkesnavn",
         "type": "CharacterString",
         "description": "Offisielt navn på et fylke. Merk: Hvis fylket har flere vedtatte parallellnavn, framstår disse i en sammenhengende tekststreng.",
-        "cardinality": "1"
+        "cardinality": "1",
+        "taggedValues": {
+          "SOSI_navn": "FYLKESNAVN"
+        }
       },
       {
         "name": "samiskForvaltningsområde",
         "type": "Boolean",
         "description": "angir om fylket er en del ac samisk forvaltningaområde",
-        "cardinality": "0..1"
+        "cardinality": "0..1",
+        "taggedValues": {
+          "SOSI_navn": "SAMISKFORVALTNINGSOMRÅDE"
+        }
       }
     ],
     "abstract": false,

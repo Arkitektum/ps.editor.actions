@@ -15,6 +15,16 @@ from collections.abc import Sequence
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from shapechange.sosi import (
+    SOSI_JSON_ENCODING_RULE,
+    SOSI_JSON_MAP_ENTRIES,
+    SOSI_TAGGED_VALUES,
+    SOSI_XSD_ENCODING_RULE,
+    custom_json_rules,
+    custom_xsd_rules,
+    sosi_map_entries_path,
+)
+
 __all__ = [
     "build_config",
     "write_config",
@@ -79,6 +89,42 @@ def _include(parent: ET.Element, base: str, filename: str) -> None:
     element.set("href", f"{base}/{filename}")
 
 
+def _include_path(parent: ET.Element, path: Path) -> None:
+    element = ET.SubElement(parent, f"{{{XI_NS}}}include")
+    element.set("href", path.as_uri())
+
+
+def _json_map_entries(
+    parent: ET.Element, entries: Sequence[tuple[str, str]]
+) -> None:
+    """Map the SOSI geometry type names onto GeoJSON schemas."""
+    container = _sub(parent, "mapEntries")
+    for type_name, target_type in entries:
+        entry = _sub(container, "MapEntry")
+        entry.set("type", type_name)
+        entry.set("rule", "*")
+        entry.set("targetType", target_type)
+        entry.set("param", "geometry")
+
+
+def _encoding_rules(
+    parent: ET.Element, name: str, rules: Sequence[str], extends: str | None = None
+) -> None:
+    """Define an encoding rule inside a target element.
+
+    Only written for rule names ShapeChange does not already know -- redefining a
+    built-in such as ``iso19136_2007`` or ``defaultGeoJson`` is an error.
+    """
+    container = _sub(parent, "rules")
+    encoding_rule = _sub(container, "EncodingRule")
+    encoding_rule.set("name", name)
+    if extends:
+        encoding_rule.set("extends", extends)
+    for rule_name in rules:
+        rule = _sub(encoding_rule, "rule")
+        rule.set("name", rule_name)
+
+
 def build_config(
     *,
     model_path: Path,
@@ -87,14 +133,15 @@ def build_config(
     json_directory: Path,
     app_schema_name: str,
     targets: Sequence[str] = ("xsd", "json"),
-    xsd_encoding_rule: str = "iso19136_2007",
+    xsd_encoding_rule: str = SOSI_XSD_ENCODING_RULE,
     json_schema_version: str = "2019-09",
     json_base_uri: str = "",
-    json_encoding_rule: str = "defaultGeoJson",
+    json_encoding_rule: str = SOSI_JSON_ENCODING_RULE,
     entity_type_name: str = "@type",
     xml_schema_target_class: str = XML_SCHEMA_TARGET_CLASS,
     json_schema_target_class: str = JSON_SCHEMA_TARGET_CLASS,
     bundled_includes: bool = False,
+    represent_tagged_values: Sequence[str] = SOSI_TAGGED_VALUES,
     report_level: str = "INFO",
 ) -> ET.ElementTree:
     """Build the ShapeChange configuration for an SCXML input model.
@@ -132,6 +179,11 @@ def build_config(
     _parameter(input_element, "checkingConstraints", "disabled")
     _parameter(input_element, "sortedSchemaOutput", "true")
     _parameter(input_element, "addTaggedValues", "*")
+    # rule-xsd-all-tagged-values only emits the tags listed here as sc:taggedValue
+    # appinfo, which is how SOSI_navn reaches the XSD.
+    tags = [tag.strip() for tag in represent_tagged_values if tag and tag.strip()]
+    if tags:
+        _parameter(input_element, "representTaggedValues", ",".join(tags))
     _include(input_element, include_base, "StandardAliases.xml")
 
     log_element = _sub(root, "log")
@@ -150,9 +202,18 @@ def build_config(
         _target_parameter(xsd_target, "outputDirectory", str(xsd_directory))
         _target_parameter(xsd_target, "sortedOutput", "true")
         _target_parameter(xsd_target, "defaultEncodingRule", xsd_encoding_rule)
+        xsd_rules = custom_xsd_rules(xsd_encoding_rule)
+        if xsd_rules:
+            _encoding_rules(
+                xsd_target, xsd_encoding_rule, xsd_rules, extends="iso19136_2007"
+            )
         _include(xsd_target, include_base, "StandardRules.xml")
         _include(xsd_target, include_base, "StandardNamespaces.xml")
         _include(xsd_target, include_base, "StandardMapEntries.xml")
+        if xsd_rules:
+            # Last include wins, so the SOSI type names override the standard
+            # ISO map entries where they overlap.
+            _include_path(xsd_target, sosi_map_entries_path())
 
     if "json" in selected:
         json_target = _sub(targets_element, "Target")
@@ -166,6 +227,13 @@ def build_config(
             _target_parameter(json_target, "jsonBaseUri", json_base_uri)
         _target_parameter(json_target, "entityTypeName", entity_type_name)
         _target_parameter(json_target, "defaultEncodingRule", json_encoding_rule)
+        json_rules = custom_json_rules(json_encoding_rule)
+        if json_rules:
+            # Deliberately no "extends": both built-in JSON rules pull in
+            # rule-json-cls-name-as-anchor, which emits $anchor values that are
+            # invalid for non-ASCII class names.
+            _encoding_rules(json_target, json_encoding_rule, json_rules)
+            _json_map_entries(json_target, SOSI_JSON_MAP_ENTRIES)
         _include(json_target, include_base, "StandardMapEntries_JSON.xml")
 
     tree = ET.ElementTree(root)

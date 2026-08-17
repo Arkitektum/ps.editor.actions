@@ -40,6 +40,11 @@ from shapechange.log_report import (  # noqa: E402
     read_log_report,
 )
 from shapechange.scxml import write_scxml  # noqa: E402
+from shapechange.sosi import (  # noqa: E402
+    SOSI_JSON_ENCODING_RULE,
+    SOSI_TAGGED_VALUES,
+    SOSI_XSD_ENCODING_RULE,
+)
 from xmi.feature_catalog import load_feature_types_from_xmi  # noqa: E402
 
 MODEL_FILENAME = "model.scxml"
@@ -147,6 +152,7 @@ def _generate(args: argparse.Namespace) -> int:
         schema_version=args.schema_version,
         xsd_document=args.xsd_document,
         json_document=args.json_document,
+        as_dictionary=args.codelist_as_dictionary,
     )
 
     write_config(
@@ -165,9 +171,12 @@ def _generate(args: argparse.Namespace) -> int:
         xml_schema_target_class=args.xml_schema_target_class,
         json_schema_target_class=args.json_schema_target_class,
         bundled_includes=args.bundled_includes,
+        represent_tagged_values=_parse_targets(args.represent_tagged_values),
     )
 
     print(f"Application schema: {schema_name}")
+    print(f"XSD encoding rule: {args.xsd_encoding_rule}")
+    print(f"JSON encoding rule: {args.json_encoding_rule}")
     print(f"Target namespace: {args.target_namespace}")
     print(f"Feature types: {len(feature_types)}")
     print(f"Targets: {', '.join(targets)}")
@@ -338,8 +347,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--xsd-encoding-rule",
-        default="iso19136_2007",
-        help="ShapeChange XML Schema encoding rule (default: iso19136_2007).",
+        default=SOSI_XSD_ENCODING_RULE,
+        help=(
+            "ShapeChange XML Schema encoding rule. 'sosi' (default) is Kartverket's "
+            "SOSI profile, defined in the generated configuration. Built-in "
+            "alternatives include iso19136_2007, gml33 and iso19139_2007."
+        ),
     )
     parser.add_argument(
         "--json-schema-version",
@@ -353,8 +366,33 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--json-encoding-rule",
-        default="defaultGeoJson",
-        help="ShapeChange JSON Schema encoding rule (default: defaultGeoJson).",
+        default=SOSI_JSON_ENCODING_RULE,
+        help=(
+            "ShapeChange JSON Schema encoding rule. 'sosiJson' (default) is defined "
+            "in the generated configuration and omits rule-json-cls-name-as-anchor, "
+            "which produces $anchor values that are invalid for non-ASCII class "
+            "names. Built-in alternatives are defaultGeoJson and defaultPlainJson."
+        ),
+    )
+    parser.add_argument(
+        "--represent-tagged-values",
+        default=",".join(SOSI_TAGGED_VALUES),
+        help=(
+            "Comma-separated tagged values to emit as sc:taggedValue appinfo in the "
+            "XSD. Requires an encoding rule with rule-xsd-all-tagged-values."
+        ),
+    )
+    parser.add_argument(
+        "--codelist-as-dictionary",
+        default="model",
+        choices=("model", "true", "false"),
+        help=(
+            "Controls the 'asDictionary' tagged value on code lists, which decides "
+            "whether ShapeChange encodes them as gml:CodeType ('true') or as a union "
+            "of an enumeration and an 'other:' pattern ('false' -- the form used by "
+            "the published Geonorge schemas). 'model' (default) keeps whatever the "
+            "source model says."
+        ),
     )
     parser.add_argument(
         "--entity-type-name",

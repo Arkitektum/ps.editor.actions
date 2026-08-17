@@ -153,6 +153,12 @@ def _collect_codelists(
             else:
                 entry["hasValueDomain"] = True
 
+            kind = value_domain.get("kind")
+            if isinstance(kind, str) and kind.strip() and not entry.get("kind"):
+                # <<codeList>> vs <<enumeration>>; consumed by the ShapeChange
+                # SCXML writer, which cannot infer it from the values.
+                entry["kind"] = kind.strip()
+
             definition = value_domain.get("definition")
             if isinstance(definition, str) and definition.strip() and not entry.get("definition"):
                 entry["definition"] = definition.strip()
