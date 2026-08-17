@@ -29,6 +29,7 @@ from md.product_specification import (  # noqa: E402
 )
 from catalogue_overrides import apply_overrides, load_overrides  # noqa: E402
 from geopackage.feature_types import load_feature_types_from_geopackage  # noqa: E402
+from odcs.writer import write_odcs  # noqa: E402
 from geopackage.writer import _fetch_geonorge_codelist, write_geopackage  # noqa: E402
 from ogc_api.feature_types import load_feature_types  # noqa: E402
 from puml.feature_types import (  # noqa: E402
@@ -248,6 +249,7 @@ def _build_scope_catalogues(
     geopackage_username: str | None = None,
     geopackage_password: str | None = None,
     write_gpkg: bool = False,
+    write_odcs: bool = False,
 ) -> str:
     if not scopes:
         return ""
@@ -300,9 +302,12 @@ def _build_scope_catalogues(
             product_title=scope_title,
             create_png=True,
             write_gpkg=write_gpkg,
+            write_odcs_output=write_odcs,
         )
         if assets.get("geopackage_path"):
             print(f"[paths] scope_geopackage={assets['geopackage_path']}")
+        if assets.get("odcs_path"):
+            print(f"[paths] scope_odcs={assets['odcs_path']}")
 
         scope_includes: list[IncludeResource] = []
         diagrams_markdown = _build_diagrams_markdown(assets, scope_name)
@@ -368,6 +373,7 @@ def _build_feature_catalogue_assets(
     product_title: str = "",
     create_png: bool = False,
     write_gpkg: bool = False,
+    write_odcs_output: bool = False,
 ) -> dict[str, Any]:
     suffix = f"{prefix}_" if prefix else ""
     base_name = f"{slug}_{suffix}feature_catalogue"
@@ -391,6 +397,15 @@ def _build_feature_catalogue_assets(
             identifier=product_title or slug,
             codelist_resolver=_fetch_geonorge_codelist,
         )
+
+    # Optional ODCS (Open Data Contract Standard v3.1.0) output: a machine-readable
+    # data contract (schema + code lists) named {scope}.odcs.yaml, alongside the other
+    # per-datakilde deliverables.
+    odcs_path: Path | None = None
+    if write_odcs_output and feature_types:
+        odcs_base = f"{slug}_{prefix}" if prefix else slug
+        odcs_path = spec_dir / f"{odcs_base}.odcs.yaml"
+        write_odcs(feature_types, odcs_path, identifier=product_title or slug)
 
     markdown_path = spec_dir / f"{base_name}.md"
     if feature_types:
@@ -469,6 +484,7 @@ def _build_feature_catalogue_assets(
         "package_uml_paths": package_uml_paths,
         "overview_uml_path": overview_uml_path,
         "geopackage_path": geopackage_path,
+        "odcs_path": odcs_path,
     }
 
 
@@ -585,6 +601,7 @@ def generate_product_specification(
     geopackage_username: str | None = None,
     geopackage_password: str | None = None,
     geopackage_output: bool = False,
+    odcs_output: bool = False,
     feature_type_filter: Sequence[str] | None = None,
     scopes: Sequence[Mapping[str, Any]] | None = None,
     render_spec_markdown: bool = True,
@@ -642,6 +659,7 @@ def generate_product_specification(
             prefix="",
             product_title=product_title,
             write_gpkg=geopackage_output,
+            write_odcs_output=odcs_output,
         )
 
     xmi_assets = None
@@ -653,6 +671,7 @@ def generate_product_specification(
             prefix="xmi",
             product_title=product_title,
             write_gpkg=geopackage_output,
+            write_odcs_output=odcs_output,
         )
 
     includes: list[IncludeResource] = [
@@ -702,6 +721,7 @@ def generate_product_specification(
         geopackage_username=geopackage_username,
         geopackage_password=geopackage_password,
         write_gpkg=geopackage_output,
+        write_odcs=odcs_output,
     )
     if scope_links:
         scope_links_path = spec_dir / "scope_catalogues.md"
@@ -815,6 +835,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--odcs-output",
+        action="store_true",
+        help=(
+            "Also write an ODCS (Open Data Contract Standard v3.1.0) data contract "
+            "(.odcs.yaml) from the data model alongside the feature catalogue."
+        ),
+    )
+    parser.add_argument(
         "--skip-spec-markdown",
         action="store_true",
         help="Skip rendering the final product specification Markdown document.",
@@ -876,6 +904,7 @@ def main(argv: list[str] | None = None) -> int:
             geopackage_username=args.geopackage_username,
             geopackage_password=args.geopackage_password,
             geopackage_output=args.geopackage_output,
+            odcs_output=args.odcs_output,
             feature_type_filter=feature_type_filter,
             scopes=scopes,
             render_spec_markdown=not args.skip_spec_markdown,

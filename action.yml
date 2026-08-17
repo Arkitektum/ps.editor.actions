@@ -56,6 +56,10 @@ inputs:
     description: "Set to 'true' to also write an empty GeoPackage (.gpkg) of the data model structure (with the Schema and Related Tables extensions)."
     required: false
     default: "false"
+  odcs-output:
+    description: "Set to 'true' to also write an ODCS (Open Data Contract Standard v3.1.0) data contract (.odcs.yaml) from the data model."
+    required: false
+    default: "false"
 outputs:
   spec-directory:
     description: Directory containing the generated product specification.
@@ -154,6 +158,9 @@ runs:
         fi
         if [ "${{ inputs.geopackage-output }}" = "true" ]; then
           ARGS+=("--geopackage-output")
+        fi
+        if [ "${{ inputs.odcs-output }}" = "true" ]; then
+          ARGS+=("--odcs-output")
         fi
         ARGS+=("--skip-spec-markdown")
         python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"
