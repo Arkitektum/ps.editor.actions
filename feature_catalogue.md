@@ -2,8 +2,6 @@
 
 inndeling i administrative og politiske enheter innenfor fylket<br /><br />Merknad: Tilsvarer NUTS 5 og LAU 2 på internasjonalt statistisk nivå
 
-Geometri:<br />Type: GM_MultiSurface
-
 Egenskaper
 
 <table class="feature-attribute-table">
@@ -14,15 +12,19 @@ Egenskaper
   <tbody>
     <tr>
       <th scope="row">Navn:</th>
-      <td><strong>geometry</strong></td>
+      <td><strong>område</strong></td>
+    </tr>
+    <tr>
+      <th scope="row">Definisjon:</th>
+      <td>den geografiske avgrensingen av stemmekretsen.</td>
+    </tr>
+    <tr>
+      <th scope="row">Multiplisitet:</th>
+      <td>1</td>
     </tr>
     <tr>
       <th scope="row">Type:</th>
       <td>GM_MultiSurface</td>
-    </tr>
-    <tr>
-      <th scope="row">OGC-rolle:</th>
-      <td>primary-geometry</td>
     </tr>
   </tbody>
 </table>
@@ -308,8 +310,6 @@ SOSI_Fellesegenskaper
 
 Generell avgrensingslinje
 
-Geometri:<br />Type: GM_Curve
-
 Egenskaper
 
 <table class="feature-attribute-table">
@@ -320,15 +320,19 @@ Egenskaper
   <tbody>
     <tr>
       <th scope="row">Navn:</th>
-      <td><strong>geometry</strong></td>
+      <td><strong>grense</strong></td>
+    </tr>
+    <tr>
+      <th scope="row">Definisjon:</th>
+      <td>Geometri for avgrensingslinjer</td>
+    </tr>
+    <tr>
+      <th scope="row">Multiplisitet:</th>
+      <td>1</td>
     </tr>
     <tr>
       <th scope="row">Type:</th>
       <td>GM_Curve</td>
-    </tr>
-    <tr>
-      <th scope="row">OGC-rolle:</th>
-      <td>primary-geometry</td>
     </tr>
   </tbody>
 </table>
@@ -372,10 +376,6 @@ Relasjoner
 
 **Arv**
 SOSI_Objekt_grense
-
-**Assosiasjoner**
-Kommune
-Fylke
 
 #### SOSI_Fellesegenskaper (abstrakt)
 
@@ -727,8 +727,6 @@ SOSI_Fellesegenskaper
 
 administrativ inndeling av nasjonen på regionalt nivå<br /><br />Merknad: Tilsvarer NUTS 3 på internasjonalt statistisk nivå
 
-Geometri:<br />Type: GM_MultiSurface
-
 Egenskaper
 
 <table class="feature-attribute-table">
@@ -739,15 +737,19 @@ Egenskaper
   <tbody>
     <tr>
       <th scope="row">Navn:</th>
-      <td><strong>geometry</strong></td>
+      <td><strong>område</strong></td>
+    </tr>
+    <tr>
+      <th scope="row">Definisjon:</th>
+      <td>den geografiske avgrensingen av stemmekretsen.</td>
+    </tr>
+    <tr>
+      <th scope="row">Multiplisitet:</th>
+      <td>1</td>
     </tr>
     <tr>
       <th scope="row">Type:</th>
       <td>GM_MultiSurface</td>
-    </tr>
-    <tr>
-      <th scope="row">OGC-rolle:</th>
-      <td>primary-geometry</td>
     </tr>
   </tbody>
 </table>

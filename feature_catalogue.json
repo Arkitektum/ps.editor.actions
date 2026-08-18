@@ -1,10 +1,10 @@
 [
   {
     "name": "Kommune",
-    "description": "inndeling i administrative og politiske enheter innenfor fylket\n\nMerknad: Tilsvarer NUTS 5 og LAU 2 på internasjonalt statistisk nivå",
+    "description": "inndeling i administrative og politiske enheter innenfor fylket\n\nMerknad: Tilsvarer NUTS 5 og LAU 2 pÃ¥ internasjonalt statistisk nivÃ¥",
     "attributes": [
       {
-        "name": "område",
+        "name": "omrÃ¥de",
         "type": "GM_MultiSurface",
         "description": "den geografiske avgrensingen av stemmekretsen.",
         "cardinality": "1",
@@ -15,7 +15,7 @@
       {
         "name": "administrativEnhetNavn",
         "type": "AdministrativEnhetNavn",
-        "description": "offisielt navn på en kommune, et fylke eller en nasjon",
+        "description": "offisielt navn pÃ¥ en kommune, et fylke eller en nasjon",
         "cardinality": "1..*",
         "taggedValues": {
           "SOSI_navn": "ADMENHETNAVN"
@@ -24,16 +24,16 @@
           {
             "name": "navn",
             "type": "CharacterString",
-            "description": "navnet på den administrative enheten i angitt språk.",
+            "description": "navnet pÃ¥ den administrative enheten i angitt sprÃ¥k.",
             "cardinality": "1",
             "taggedValues": {
               "SOSI_navn": "NAVN"
             }
           },
           {
-            "name": "språk",
-            "type": "Språkkode",
-            "description": "angir språk for det administrative navnet.",
+            "name": "sprÃ¥k",
+            "type": "SprÃ¥kkode",
+            "description": "angir sprÃ¥k for det administrative navnet.",
             "cardinality": "1",
             "valueDomain": {
               "kind": "codelist",
@@ -71,19 +71,19 @@
                   "label": "Southern Sami"
                 }
               ],
-              "definition": "ISO 639 del 3 språkkodetabell\n\nMerknad: ufullstendig kodeliste pga. importfeil\n\nlanguage code tables of ISO 639 part 3\n\nISO 639-3 is a code that aims to define three-letter identifiers for all known human languages. At the core of ISO 639-3 are the individual languages already accounted for in ISO 639-2."
+              "definition": "ISO 639 del 3 sprÃ¥kkodetabell\n\nMerknad: ufullstendig kodeliste pga. importfeil\n\nlanguage code tables of ISO 639 part 3\n\nISO 639-3 is a code that aims to define three-letter identifiers for all known human languages. At the core of ISO 639-3 are the individual languages already accounted for in ISO 639-2."
             },
             "taggedValues": {
-              "SOSI_navn": "SPRÅK"
+              "SOSI_navn": "SPRÃ…K"
             }
           },
           {
-            "name": "rekkefølge",
+            "name": "rekkefÃ¸lge",
             "type": "Integer",
-            "description": "angir presentasjonsrekkefølge i sammenstaninger av nav på administretiv enhet ved presentasjon på alle sprøkformer.",
+            "description": "angir presentasjonsrekkefÃ¸lge i sammenstaninger av nav pÃ¥ administretiv enhet ved presentasjon pÃ¥ alle sprÃ¸kformer.",
             "cardinality": "0..1",
             "taggedValues": {
-              "SOSI_navn": "REKKEFØLGE"
+              "SOSI_navn": "REKKEFÃ˜LGE"
             }
           }
         ]
@@ -91,11 +91,11 @@
       {
         "name": "kommunenummer",
         "type": "Kommunenummer",
-        "description": "nummerering av kommunen i henhold til Statistisk sentralbyrå sin offisielle liste\n\nMerknad: Det presiseres at kommune alltid skal ha 4 siffer, dvs. eventuelt med ledende null. Kommune benyttes for kopling mot en rekke andre registre som også benytter 4 siffer.",
+        "description": "nummerering av kommunen i henhold til Statistisk sentralbyrÃ¥ sin offisielle liste\n\nMerknad: Det presiseres at kommune alltid skal ha 4 siffer, dvs. eventuelt med ledende null. Kommune benyttes for kopling mot en rekke andre registre som ogsÃ¥ benytter 4 siffer.",
         "cardinality": "1",
         "valueDomain": {
           "kind": "codelist",
-          "definition": "<font color=\"#333333\">nummerering av kommuner i henhold til SSB sin offisielle liste</font>\nMerknad: <font color=\"#333333\">Inneholder fremtidige, gyldige og utgåtte kommunenummer. </font>Det presiseres at kommune alltid skal ha 4 sifre, dvs. eventuelt med ledende null. Kommune benyttes for kopling mot en rekke andre registre som også benytter 4 sifre.\n\n<i>URI til ekstern kodeliste:</i> https://register.geonorge.no/sosi-kodelister/kommunenummer?page=2",
+          "definition": "<font color=\"#333333\">nummerering av kommuner i henhold til SSB sin offisielle liste</font>\nMerknad: <font color=\"#333333\">Inneholder fremtidige, gyldige og utgÃ¥tte kommunenummer. </font>Det presiseres at kommune alltid skal ha 4 sifre, dvs. eventuelt med ledende null. Kommune benyttes for kopling mot en rekke andre registre som ogsÃ¥ benytter 4 sifre.\n\n<i>URI til ekstern kodeliste:</i> https://register.geonorge.no/sosi-kodelister/kommunenummer?page=2",
           "asDictionary": "true",
           "codeList": "https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/kommunenummer"
         },
@@ -106,19 +106,19 @@
       {
         "name": "kommunenavn",
         "type": "CharacterString",
-        "description": "Offisielt navn på en kommune. Merk: Hvis kommunen har flere vedtatte parallellnavn, framstår disse i en sammenhengende tekststreng.",
+        "description": "Offisielt navn pÃ¥ en kommune. Merk: Hvis kommunen har flere vedtatte parallellnavn, framstÃ¥r disse i en sammenhengende tekststreng.",
         "cardinality": "1",
         "taggedValues": {
           "SOSI_navn": "KOMMUNENAVN"
         }
       },
       {
-        "name": "samiskForvaltningsområde",
+        "name": "samiskForvaltningsomrÃ¥de",
         "type": "Boolean",
-        "description": "angir om kommunen er en del ac samisk forvaltningaområde",
+        "description": "angir om kommunen er en del ac samisk forvaltningaomrÃ¥de",
         "cardinality": "0..1",
         "taggedValues": {
-          "SOSI_navn": "SAMISKFORVALTNINGSOMRÅDE"
+          "SOSI_navn": "SAMISKFORVALTNINGSOMRÃ…DE"
         }
       }
     ],
@@ -139,12 +139,12 @@
   },
   {
     "name": "SOSI_Objekt_flate",
-    "description": "abstrakt objekttype som bærer en rekke egenskaper som er fagområde-uavhengige og kan benyttes for alle objekttyper\n\nMerknad:\nSpesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.",
+    "description": "abstrakt objekttype som bÃ¦rer en rekke egenskaper som er fagomrÃ¥de-uavhengige og kan benyttes for alle objekttyper\n\nMerknad:\nSpesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.",
     "attributes": [
       {
         "name": "datafangstdato",
         "type": "DateTime",
-        "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
+        "description": "dato nÃ¥r objektet siste gang ble registrert/observert/mÃ¥lt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode fÃ¸r disse legges inn i databasen.\nVed fÃ¸rstegangsregistrering settes Datafangstdato lik fÃ¸rsteDatafangstdato.",
         "cardinality": "0..1",
         "taggedValues": {
           "SOSI_navn": "DATAFANGSTDATO"
@@ -153,7 +153,7 @@
       {
         "name": "datauttaksdato",
         "type": "DateTime",
-        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
+        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller pÃ¥ om det er uttak fra en originaldatabase eller en kopidatabase.",
         "cardinality": "0..1",
         "taggedValues": {
           "SOSI_navn": "DATAUTTAKSDATO"
@@ -162,7 +162,7 @@
       {
         "name": "opphav",
         "type": "CharacterString",
-        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
+        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan ogsÃ¥ beskrive navn pÃ¥ person og Ã¥rsak til oppdatering",
         "cardinality": "0..1",
         "taggedValues": {
           "SOSI_navn": "OPPHAV"
@@ -201,15 +201,15 @@
           "listedValues": [
             {
               "value": "Riksgrense",
-              "label": "avgrensningen av nasjonen Norge på land mot andre nasjoner"
+              "label": "avgrensningen av nasjonen Norge pÃ¥ land mot andre nasjoner"
             },
             {
               "value": "Territorialgrense",
-              "label": "avgrensning i havet av statens suverenitetsområde, beregnet 12 nm (22 224 m) utenfor og parallelt med grunnlinjen"
+              "label": "avgrensning i havet av statens suverenitetsomrÃ¥de, beregnet 12 nm (22 224 m) utenfor og parallelt med grunnlinjen"
             },
             {
               "value": "AvtaltAvgrensningslinje",
-              "label": "avtalt avgrensningslinje til havs basert på folkerettslig bindende avtaler\n\nMerknad:\nAvtalt avgrensningslinje vil normalt gjelde alle aktuelle former for kyststatsjurisdiksjon. Detaljene vil framgå av den aktuelle avgrensningsavtale.\n\nMerknad 2:\nBenyttes også som avgrensning av kontinentalsokkel i internasjonalt farvann, der flere stater kan framlegge dokumentasjon om rettigheter til sokkelen, men der statene har kommet til enighet om en avgrensningslinje."
+              "label": "avtalt avgrensningslinje til havs basert pÃ¥ folkerettslig bindende avtaler\n\nMerknad:\nAvtalt avgrensningslinje vil normalt gjelde alle aktuelle former for kyststatsjurisdiksjon. Detaljene vil framgÃ¥ av den aktuelle avgrensningsavtale.\n\nMerknad 2:\nBenyttes ogsÃ¥ som avgrensning av kontinentalsokkel i internasjonalt farvann, der flere stater kan framlegge dokumentasjon om rettigheter til sokkelen, men der statene har kommet til enighet om en avgrensningslinje."
             },
             {
               "value": "Kommunegrense",
@@ -224,8 +224,8 @@
               "label": "avgrensning av grunnkrets"
             },
             {
-              "value": "Delområdegrense",
-              "label": "avgrensning av delområde"
+              "value": "DelomrÃ¥degrense",
+              "label": "avgrensning av delomrÃ¥de"
             },
             {
               "value": "Stemmekretsgrense",
@@ -251,7 +251,7 @@
   },
   {
     "name": "SOSI_Fellesegenskaper",
-    "description": "abstrakt objekttype som bærer sentrale egenskaper som er anbefalt for bruk i produktspesifikasjoner.\n\nMerknad: Disse egenskapene skal derfor ikke modelleres inn i fagområdemodeller.",
+    "description": "abstrakt objekttype som bÃ¦rer sentrale egenskaper som er anbefalt for bruk i produktspesifikasjoner.\n\nMerknad: Disse egenskapene skal derfor ikke modelleres inn i fagomrÃ¥demodeller.",
     "attributes": [
       {
         "name": "identifikasjon",
@@ -265,7 +265,7 @@
           {
             "name": "lokalId",
             "type": "CharacterString",
-            "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandørens ansvar å sørge for at den lokale identifikatoren er unik innenfor navnerommet.",
+            "description": "lokal identifikator av et objekt\n\nMerknad: Det er dataleverandÃ¸rens ansvar Ã¥ sÃ¸rge for at den lokale identifikatoren er unik innenfor navnerommet.",
             "cardinality": "1",
             "taggedValues": {
               "SOSI_navn": "LOKALID"
@@ -274,7 +274,7 @@
           {
             "name": "navnerom",
             "type": "CharacterString",
-            "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales å være en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og må være registrert i data.geonorge.no eller data.norge.no",
+            "description": "navnerom som unikt identifiserer datakilden til et objekt, anbefales Ã¥ vÃ¦re en http-URI\n\nEksempel: http://data.geonorge.no/SentraltStedsnavnsregister/1.0\n\nMerknad : Verdien for navnerom vil eies av den dataprodusent som har ansvar for de unike identifikatorene og mÃ¥ vÃ¦re registrert i data.geonorge.no eller data.norge.no",
             "cardinality": "1",
             "taggedValues": {
               "SOSI_navn": "NAVNEROM"
@@ -294,7 +294,7 @@
       {
         "name": "oppdateringsdato",
         "type": "DateTime",
-        "description": "tidspunkt for siste endring på objektet\n\nMerknad:\nOppdateringsdato kan være forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode før disse legges inn i datasystemet (databasen).",
+        "description": "tidspunkt for siste endring pÃ¥ objektet\n\nMerknad:\nOppdateringsdato kan vÃ¦re forskjellig fra datafangsdato ved at data som er registrert kan bufres en kortere eller lengre periode fÃ¸r disse legges inn i datasystemet (databasen).",
         "cardinality": "1",
         "taggedValues": {
           "SOSI_navn": "OPPDATERINGSDATO"
@@ -303,7 +303,7 @@
       {
         "name": "gyldigFra",
         "type": "Date",
-        "description": "Tidspunktet når objektet oppstod i den virkelige verden",
+        "description": "Tidspunktet nÃ¥r objektet oppstod i den virkelige verden",
         "cardinality": "0..1",
         "taggedValues": {
           "SOSI_navn": "GYLDIGFRA"
@@ -312,7 +312,7 @@
       {
         "name": "gyldigTil",
         "type": "Date",
-        "description": "Tidspunktet når objektet opphørte å eksistere i den virkelige verden",
+        "description": "Tidspunktet nÃ¥r objektet opphÃ¸rte Ã¥ eksistere i den virkelige verden",
         "cardinality": "0..1",
         "taggedValues": {
           "SOSI_navn": "GYLDIGTIL"
@@ -328,12 +328,12 @@
   },
   {
     "name": "SOSI_Objekt_grense",
-    "description": "abstrakt objekttype som bærer en rekke egenskaper som er fagområde-uavhengige og kan benyttes for alle objekttyper\n\nMerknad:\nSpesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.",
+    "description": "abstrakt objekttype som bÃ¦rer en rekke egenskaper som er fagomrÃ¥de-uavhengige og kan benyttes for alle objekttyper\n\nMerknad:\nSpesielt i produktspesifikasjonsarbeid vil en velge egenskaper og avgrensningslinjer fra denne klassen.",
     "attributes": [
       {
         "name": "datafangstdato",
         "type": "DateTime",
-        "description": "dato når objektet siste gang ble registrert/observert/målt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode før disse legges inn i databasen.\nVed førstegangsregistrering settes Datafangstdato lik førsteDatafangstdato.",
+        "description": "dato nÃ¥r objektet siste gang ble registrert/observert/mÃ¥lt i terrenget\n\nMerknad: I mange tilfeller er denne forskjellig fra oppdateringsdato, da registrerte endringer kan bufres i en kortere eller lengre periode fÃ¸r disse legges inn i databasen.\nVed fÃ¸rstegangsregistrering settes Datafangstdato lik fÃ¸rsteDatafangstdato.",
         "cardinality": "0..1",
         "taggedValues": {
           "SOSI_navn": "DATAFANGSTDATO"
@@ -342,13 +342,13 @@
       {
         "name": "kvalitet",
         "type": "Posisjonskvalitet",
-        "description": "beskrivelse av kvaliteten på stedfestingen",
+        "description": "beskrivelse av kvaliteten pÃ¥ stedfestingen",
         "cardinality": "0..1",
         "attributes": [
           {
-            "name": "målemetode",
-            "type": "Målemetode",
-            "description": "metode for måling i grunnriss (x,y), og høyde (z) når metoden er den samme som ved måling i grunnriss",
+            "name": "mÃ¥lemetode",
+            "type": "MÃ¥lemetode",
+            "description": "metode for mÃ¥ling i grunnriss (x,y), og hÃ¸yde (z) nÃ¥r metoden er den samme som ved mÃ¥ling i grunnriss",
             "cardinality": "1",
             "valueDomain": {
               "kind": "codelist",
@@ -357,16 +357,16 @@
               "codeList": "https://register.geonorge.no/sosi-kodelister/generelle-konsepter/4.5/m%C3%A5lemetodekode"
             },
             "taggedValues": {
-              "SOSI_navn": "MÅLEMETODE"
+              "SOSI_navn": "MÃ…LEMETODE"
             }
           },
           {
-            "name": "nøyaktighet",
+            "name": "nÃ¸yaktighet",
             "type": "Integer",
             "description": "punktstandardavviket i grunnriss for punkter samt tverravvik for linjer\n\nMerknad:\nOppgitt i cm",
             "cardinality": "0..1",
             "taggedValues": {
-              "SOSI_navn": "NØYAKTIGHET"
+              "SOSI_navn": "NÃ˜YAKTIGHET"
             }
           }
         ]
@@ -374,7 +374,7 @@
       {
         "name": "datauttaksdato",
         "type": "DateTime",
-        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller på om det er uttak fra en originaldatabase eller en kopidatabase.",
+        "description": "dato for uttak fra en database\n\nMerknad:\nSkiller seg fra Kopidato ved at en ikke skiller pÃ¥ om det er uttak fra en originaldatabase eller en kopidatabase.",
         "cardinality": "0..1",
         "taggedValues": {
           "SOSI_navn": "DATAUTTAKSDATO"
@@ -383,7 +383,7 @@
       {
         "name": "opphav",
         "type": "CharacterString",
-        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan også beskrive navn på person og årsak til oppdatering",
+        "description": "referanse til opphavsmaterialet, kildematerialet, organisasjons/publiseringskilde\n\nMerknad:\nKan ogsÃ¥ beskrive navn pÃ¥ person og Ã¥rsak til oppdatering",
         "cardinality": "0..1",
         "taggedValues": {
           "SOSI_navn": "OPPHAV"
@@ -401,10 +401,10 @@
   },
   {
     "name": "Fylke",
-    "description": "administrativ inndeling av nasjonen på regionalt nivå\n\nMerknad: Tilsvarer NUTS 3 på internasjonalt statistisk nivå",
+    "description": "administrativ inndeling av nasjonen pÃ¥ regionalt nivÃ¥\n\nMerknad: Tilsvarer NUTS 3 pÃ¥ internasjonalt statistisk nivÃ¥",
     "attributes": [
       {
-        "name": "område",
+        "name": "omrÃ¥de",
         "type": "GM_MultiSurface",
         "description": "den geografiske avgrensingen av stemmekretsen.",
         "cardinality": "1",
@@ -415,7 +415,7 @@
       {
         "name": "administrativEnhetNavn",
         "type": "AdministrativEnhetNavn",
-        "description": "offisielt navn på en kommune, et fylke eller en nasjon",
+        "description": "offisielt navn pÃ¥ en kommune, et fylke eller en nasjon",
         "cardinality": "1..*",
         "taggedValues": {
           "SOSI_navn": "ADMENHETNAVN"
@@ -424,16 +424,16 @@
           {
             "name": "navn",
             "type": "CharacterString",
-            "description": "navnet på den administrative enheten i angitt språk.",
+            "description": "navnet pÃ¥ den administrative enheten i angitt sprÃ¥k.",
             "cardinality": "1",
             "taggedValues": {
               "SOSI_navn": "NAVN"
             }
           },
           {
-            "name": "språk",
-            "type": "Språkkode",
-            "description": "angir språk for det administrative navnet.",
+            "name": "sprÃ¥k",
+            "type": "SprÃ¥kkode",
+            "description": "angir sprÃ¥k for det administrative navnet.",
             "cardinality": "1",
             "valueDomain": {
               "kind": "codelist",
@@ -471,19 +471,19 @@
                   "label": "Southern Sami"
                 }
               ],
-              "definition": "ISO 639 del 3 språkkodetabell\n\nMerknad: ufullstendig kodeliste pga. importfeil\n\nlanguage code tables of ISO 639 part 3\n\nISO 639-3 is a code that aims to define three-letter identifiers for all known human languages. At the core of ISO 639-3 are the individual languages already accounted for in ISO 639-2."
+              "definition": "ISO 639 del 3 sprÃ¥kkodetabell\n\nMerknad: ufullstendig kodeliste pga. importfeil\n\nlanguage code tables of ISO 639 part 3\n\nISO 639-3 is a code that aims to define three-letter identifiers for all known human languages. At the core of ISO 639-3 are the individual languages already accounted for in ISO 639-2."
             },
             "taggedValues": {
-              "SOSI_navn": "SPRÅK"
+              "SOSI_navn": "SPRÃ…K"
             }
           },
           {
-            "name": "rekkefølge",
+            "name": "rekkefÃ¸lge",
             "type": "Integer",
-            "description": "angir presentasjonsrekkefølge i sammenstaninger av nav på administretiv enhet ved presentasjon på alle sprøkformer.",
+            "description": "angir presentasjonsrekkefÃ¸lge i sammenstaninger av nav pÃ¥ administretiv enhet ved presentasjon pÃ¥ alle sprÃ¸kformer.",
             "cardinality": "0..1",
             "taggedValues": {
-              "SOSI_navn": "REKKEFØLGE"
+              "SOSI_navn": "REKKEFÃ˜LGE"
             }
           }
         ]
@@ -491,11 +491,11 @@
       {
         "name": "fylkesnummer",
         "type": "Fylkesnummer",
-        "description": "nummerering av fylker i henhold til Statistisk sentralbyrå sin offisielle liste\n\nMerknad:\nDet presiseres at fylkesnummer alltid skal ha 2 sifre, dvs. eventuelt med ledende null. Fylkesnummer benyttes for kopling mot en rekke andre registre som også benytter 2 sifre.",
+        "description": "nummerering av fylker i henhold til Statistisk sentralbyrÃ¥ sin offisielle liste\n\nMerknad:\nDet presiseres at fylkesnummer alltid skal ha 2 sifre, dvs. eventuelt med ledende null. Fylkesnummer benyttes for kopling mot en rekke andre registre som ogsÃ¥ benytter 2 sifre.",
         "cardinality": "1",
         "valueDomain": {
           "kind": "codelist",
-          "definition": "nummerering av fylker <font color=\"#333333\"> </font>\n<font color=\"#333333\">\n</font><font color=\"#333333\">Merknad: Inneholder fremtidige, gyldige og utgåtte nummer. Fylket skal alltid ha 2 sifre, dvs. eventuelt med ledende null.</font>\n<i>URI til ekstern kodeliste:</i> https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/fylkesnummer",
+          "definition": "nummerering av fylker <font color=\"#333333\"> </font>\n<font color=\"#333333\">\n</font><font color=\"#333333\">Merknad: Inneholder fremtidige, gyldige og utgÃ¥tte nummer. Fylket skal alltid ha 2 sifre, dvs. eventuelt med ledende null.</font>\n<i>URI til ekstern kodeliste:</i> https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/fylkesnummer",
           "asDictionary": "true",
           "codeList": "https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/fylkesnummer?"
         },
@@ -506,19 +506,19 @@
       {
         "name": "fylkesnavn",
         "type": "CharacterString",
-        "description": "Offisielt navn på et fylke. Merk: Hvis fylket har flere vedtatte parallellnavn, framstår disse i en sammenhengende tekststreng.",
+        "description": "Offisielt navn pÃ¥ et fylke. Merk: Hvis fylket har flere vedtatte parallellnavn, framstÃ¥r disse i en sammenhengende tekststreng.",
         "cardinality": "1",
         "taggedValues": {
           "SOSI_navn": "FYLKESNAVN"
         }
       },
       {
-        "name": "samiskForvaltningsområde",
+        "name": "samiskForvaltningsomrÃ¥de",
         "type": "Boolean",
-        "description": "angir om fylket er en del ac samisk forvaltningaområde",
+        "description": "angir om fylket er en del ac samisk forvaltningaomrÃ¥de",
         "cardinality": "0..1",
         "taggedValues": {
-          "SOSI_navn": "SAMISKFORVALTNINGSOMRÅDE"
+          "SOSI_navn": "SAMISKFORVALTNINGSOMRÃ…DE"
         }
       }
     ],

@@ -63,8 +63,15 @@ class RenderFeatureCatalogueOutputsTests(unittest.TestCase):
         )
         self.assertIsInstance(output_nonotes, str)
         self.assertTrue(output_nonotes.strip())
+        # include_notes=False means no PlantUML note blocks. It does not mean the
+        # output is free of apostrophes: _append_diagram_preamble always emits
+        # "'"-prefixed PlantUML comments (the render hint and the scale directive),
+        # and a description may legitimately contain one.
         self.assertNotIn("note right of", output_nonotes)
-        self.assertNotIn("'", output_nonotes)
+        note_lines = [
+            line for line in output_nonotes.splitlines() if line.strip().startswith("note")
+        ]
+        self.assertEqual(note_lines, [])
         PUML_OUTPUT_NONOTES_PATH.write_text(output_nonotes, encoding="utf-8")
         self.assertTrue(PUML_OUTPUT_NONOTES_PATH.exists())
         self.assertGreater(len(PUML_OUTPUT_NONOTES_PATH.read_text(encoding="utf-8").strip()), 0)

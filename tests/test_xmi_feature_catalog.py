@@ -21,13 +21,21 @@ class XmiFeatureCatalogTests(unittest.TestCase):
         self.assertEqual(feature["description"], "Fixture description")
         self.assertFalse(feature["abstract"])
 
-        geometry = feature["geometry"]
-        self.assertEqual(geometry["type"], "GM_Surface")
-        self.assertEqual(geometry["name"], "GEOM")
-
         attributes = {entry["name"]: entry for entry in feature["attributes"]}
         self.assertIn("STATUS", attributes)
         self.assertIn("DETAILS", attributes)
+
+        # Geometry in a SOSI UML model is an ordinary attribute with a real name,
+        # type and multiplicity, and a feature type may have several of them
+        # (a position and an area, say). It is therefore left in 'attributes'
+        # rather than lifted into the separate 'geometry' slot, which belongs to
+        # the OGC API and GeoPackage loaders where geometry is a distinct,
+        # unnamed storage concept.
+        self.assertNotIn("geometry", feature)
+        geometry = attributes["GEOM"]
+        self.assertEqual(geometry["type"], "GM_Surface")
+        self.assertEqual(geometry["cardinality"], "1")
+        self.assertEqual(geometry["taggedValues"], {"SOSI_navn": "GEOM"})
 
         status = attributes["STATUS"]
         self.assertEqual(status["cardinality"], "0..*")
@@ -62,8 +70,13 @@ class XmiFeatureCatalogTests(unittest.TestCase):
 
         out_path = Path(__file__).resolve().parent.parent / "feature_catalogue.json"
         feature_types = load_feature_types_from_xmi(url)
-        out_path.write_text(json.dumps(feature_types, indent=2, ensure_ascii=False))
-        saved = json.loads(out_path.read_text())
+        # Without an explicit encoding this writes the locale codepage on Windows,
+        # which leaves feature_catalogue.json as cp1252 and makes every consumer
+        # that reads it as UTF-8 fail.
+        out_path.write_text(
+            json.dumps(feature_types, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        saved = json.loads(out_path.read_text(encoding="utf-8"))
 
         self.assertIsInstance(saved, list)
         self.assertGreater(len(saved), 0)
