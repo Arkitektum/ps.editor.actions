@@ -30,6 +30,7 @@ __all__ = [
     "write_config",
     "XML_SCHEMA_TARGET_CLASS",
     "JSON_SCHEMA_TARGET_CLASS",
+    "LDPROXY_TARGET_CLASS",
 ]
 
 CONFIG_NS = "http://www.interactive-instruments.de/ShapeChange/Configuration/1.1"
@@ -51,6 +52,14 @@ XML_SCHEMA_TARGET_CLASS = (
 JSON_SCHEMA_TARGET_CLASS = (
     "de.interactive_instruments.shapechange.core.target.json.JsonSchemaTarget"
 )
+# ldproxy configuration target (ShapeChange 4.x). Emits an ldproxy 3.x entities/store
+# (SQL/PostGIS feature provider + OGC API service + codelist configs) -- a starting
+# template for a PostGIS deployment (no GeoPackage provider support in ldproxy today).
+LDPROXY_TARGET_CLASS = (
+    "de.interactive_instruments.shapechange.core.target.ldproxy2.Ldproxy2Target"
+)
+# Key ldproxy2 encoding rules (extends the universal '*' rule set).
+_LDPROXY_RULES = ("rule-ldp2-all-associativeTablesWithSeparatePkField",)
 
 _REMOTE_CONFIG_BASE = "https://shapechange.net/resources/config"
 _BUNDLED_CONFIG_BASE = "config"
@@ -132,6 +141,10 @@ def build_config(
     xsd_directory: Path,
     json_directory: Path,
     app_schema_name: str,
+    ldproxy_directory: Path | None = None,
+    ldproxy_srid: int = 25833,
+    ldproxy_native_timezone: str = "Europe/Oslo",
+    ldproxy_target_class: str = LDPROXY_TARGET_CLASS,
     targets: Sequence[str] = ("xsd", "json"),
     xsd_encoding_rule: str = SOSI_XSD_ENCODING_RULE,
     json_schema_version: str = "2019-09",
@@ -152,7 +165,7 @@ def build_config(
     distribution directory, so relative paths would break.
     """
     selected = {target.strip().lower() for target in targets if target and target.strip()}
-    unknown = selected - {"xsd", "json"}
+    unknown = selected - {"xsd", "json", "ldproxy"}
     if unknown:
         raise ValueError(f"Unknown ShapeChange target(s): {', '.join(sorted(unknown))}.")
     if not selected:
@@ -242,6 +255,26 @@ def build_config(
             _encoding_rules(json_target, json_encoding_rule, json_rules)
             _json_map_entries(json_target, SOSI_JSON_MAP_ENTRIES)
         _include(json_target, include_base, "StandardMapEntries_JSON.xml")
+
+    if "ldproxy" in selected and ldproxy_directory is not None:
+        # ldproxy 3.x entities/store: SQL/PostGIS feature provider + OGC API service +
+        # codelist configs. Utkast/startmal — provider-mappingen antar et PostGIS-skjema
+        # (synteserer tabell-/kolonnenavn fra modellen via navnekonvensjoner). ldproxy har
+        # ingen GeoPackage-provider i dag.
+        ldp_target = _sub(targets_element, "Target")
+        ldp_target.set("class", ldproxy_target_class)
+        ldp_target.set("mode", "enabled")
+        ldp_target.set("inputs", "INPUT")
+        _target_parameter(ldp_target, "outputDirectory", str(ldproxy_directory))
+        _target_parameter(ldp_target, "srid", str(ldproxy_srid))
+        if ldproxy_native_timezone:
+            _target_parameter(ldp_target, "nativeTimeZone", ldproxy_native_timezone)
+        _target_parameter(ldp_target, "defaultEncodingRule", "ldproxy2")
+        _target_parameter(ldp_target, "documentationTemplate", "[[documentation]]")
+        _target_parameter(ldp_target, "documentationNoValue", "")
+        _encoding_rules(ldp_target, "ldproxy2", _LDPROXY_RULES, extends="*")
+        _include(ldp_target, include_base, "StandardMapEntries_Ldproxy2.xml")
+        _include(ldp_target, include_base, "StandardSqlMapEntries-PostgreSQL.xml")
 
     tree = ET.ElementTree(root)
     ET.indent(tree, space=" ")

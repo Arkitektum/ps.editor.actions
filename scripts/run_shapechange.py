@@ -52,6 +52,7 @@ CONFIG_FILENAME = "shapechange-config.xml"
 LOG_FILENAME = "log.xml"
 XSD_DIRNAME = "xsd"
 JSON_DIRNAME = "jsonschema"
+LDPROXY_DIRNAME = "ldproxy"
 
 
 def _paths_for(output_dir: Path) -> dict[str, Path]:
@@ -62,6 +63,7 @@ def _paths_for(output_dir: Path) -> dict[str, Path]:
         "shapechange_log": output_dir / LOG_FILENAME,
         "xsd_directory": output_dir / XSD_DIRNAME,
         "json_schema_directory": output_dir / JSON_DIRNAME,
+        "ldproxy_directory": output_dir / LDPROXY_DIRNAME,
     }
 
 
@@ -73,6 +75,7 @@ def _print_paths(paths: dict[str, Path]) -> None:
         "shapechange_log",
         "xsd_directory",
         "json_schema_directory",
+        "ldproxy_directory",
     ):
         print(f"[paths] {key}={paths[key]}")
 
@@ -161,6 +164,7 @@ def _generate(args: argparse.Namespace) -> int:
         log_path=paths["shapechange_log"],
         xsd_directory=paths["xsd_directory"],
         json_directory=paths["json_schema_directory"],
+        ldproxy_directory=paths["ldproxy_directory"],
         app_schema_name=schema_name,
         targets=targets,
         xsd_encoding_rule=args.xsd_encoding_rule,
@@ -343,7 +347,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--targets",
         default="xsd,json",
-        help="Comma-separated list of ShapeChange targets to enable: xsd, json.",
+        help="Comma-separated list of ShapeChange targets to enable: xsd, json, ldproxy.",
     )
     parser.add_argument(
         "--xsd-encoding-rule",
