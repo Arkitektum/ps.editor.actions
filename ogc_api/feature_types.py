@@ -1752,6 +1752,26 @@ def _resolve_attribute_details(
     return details
 
 
+# JSON Schema scalar types that carry no codelist identity. An inline enum on such a
+# type is anonymous; naming its codelist after the primitive collapses every one of
+# them into a single "string" codelist downstream (_collect_codelists keys on `type`).
+_GENERIC_ENUM_TYPES = frozenset(
+    {"string", "characterstring", "integer", "number", "real", "boolean", "uri", "url", "unknown", ""}
+)
+
+
+def _is_inline_enumeration(value_domain: Any) -> bool:
+    """True for an OGC-derived inline enum with no external codelist reference."""
+    if not isinstance(value_domain, Mapping):
+        return False
+    if value_domain.get("codeList"):
+        return False
+    if value_domain.get("type") == "enumeration":
+        return True
+    listed = value_domain.get("listedValues")
+    return isinstance(listed, Sequence) and not isinstance(listed, (str, bytes)) and bool(listed)
+
+
 def _node_to_attribute(node: _AttributeNode) -> dict[str, Any]:
     attr_type = node.type
     if not isinstance(attr_type, str) or not attr_type:
@@ -1759,6 +1779,14 @@ def _node_to_attribute(node: _AttributeNode) -> dict[str, Any]:
             attr_type = _derive_complex_type_name(node.details, node.name)
         else:
             attr_type = "unknown"
+
+    # An inline enumeration (type "string"/"integer" + enum) is anonymous in JSON
+    # Schema. Keeping the primitive type would merge every such attribute into one
+    # nonsense codelist named after the primitive; name it after the property instead
+    # (reusing $ref/title when present) so each enumeration stays distinct and
+    # equally-named properties across feature types share a single codelist.
+    if _is_inline_enumeration(node.value_domain) and attr_type.lower() in _GENERIC_ENUM_TYPES:
+        attr_type = _derive_complex_type_name(node.details, node.name)
 
     attribute: dict[str, Any] = {
         "name": node.name,

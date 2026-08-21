@@ -6,7 +6,10 @@ from pathlib import Path
 import unittest
 
 from ogc_api.feature_types import (
+    _AttributeNode,
     _collections_url_candidates,
+    _is_inline_enumeration,
+    _node_to_attribute,
     load_feature_types,
 )
 
@@ -87,6 +90,54 @@ class OgcApiFeaturesIntegrationTests(unittest.TestCase):
         self.assertIsInstance(first["attributes"], list)
         self.assertIn("geometry", first)
         self.assertIsInstance(first["geometry"], dict)
+
+
+class InlineEnumerationNamingTests(unittest.TestCase):
+    """Anonymous inline enums (type 'string' + enum) must be named after the
+    property, not the JSON primitive -- otherwise every one of them collapses into
+    a single 'string' codelist downstream (_collect_codelists keys on `type`)."""
+
+    def _enum_node(self, name: str, *, attr_type: str = "string", details=None) -> _AttributeNode:
+        return _AttributeNode(
+            name=name,
+            path=(name,),
+            type=attr_type,
+            details=details,
+            value_domain={
+                "type": "enumeration",
+                "listedValues": [{"value": "1", "label": "en"}],
+            },
+        )
+
+    def test_inline_enum_is_named_after_the_property(self) -> None:
+        attr = _node_to_attribute(self._enum_node("losmassetype"))
+        self.assertEqual(attr["type"], "Losmassetype")
+
+    def test_distinct_properties_get_distinct_type_names(self) -> None:
+        a = _node_to_attribute(self._enum_node("temakvalitet"))["type"]
+        b = _node_to_attribute(self._enum_node("losmassetype"))["type"]
+        self.assertEqual({a, b}, {"Temakvalitet", "Losmassetype"})
+        self.assertNotIn("string", {a, b})
+
+    def test_norwegian_letters_are_preserved(self) -> None:
+        attr = _node_to_attribute(self._enum_node("målemetode"))
+        self.assertEqual(attr["type"], "Målemetode")
+
+    def test_ref_name_wins_over_property_name(self) -> None:
+        node = self._enum_node(
+            "kvalitet", details={"$ref": "#/definitions/Datafangstmetode"}
+        )
+        self.assertEqual(_node_to_attribute(node)["type"], "Datafangstmetode")
+
+    def test_plain_scalar_without_enum_keeps_primitive_type(self) -> None:
+        node = _AttributeNode(name="navn", path=("navn",), type="string")
+        self.assertEqual(_node_to_attribute(node)["type"], "string")
+
+    def test_external_codelist_reference_is_left_untouched(self) -> None:
+        node = self._enum_node("kommune")
+        node.value_domain = {"codeList": "https://register.example/kommune"}
+        self.assertFalse(_is_inline_enumeration(node.value_domain))
+        self.assertEqual(_node_to_attribute(node)["type"], "string")
 
 
 if __name__ == "__main__":  # pragma: no cover
