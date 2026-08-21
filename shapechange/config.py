@@ -278,8 +278,10 @@ def build_config(
         _target_parameter(ldp_target, "documentationTemplate", "[[documentation]]")
         _target_parameter(ldp_target, "documentationNoValue", "")
         _encoding_rules(ldp_target, "ldproxy2", _LDPROXY_RULES, extends="*")
+        # Kun ldproxy-map-entriene: de mapper til ldproxy sitt verditype-domene
+        # (STRING/GEOMETRY/…). SQL-DDL-map-entriene (MULTIPOINT/POINT/…) er IKKE gyldige
+        # for Ldproxy2Target og får den semantiske valideringen til å stoppe kjøringen.
         _include(ldp_target, include_base, "StandardMapEntries_Ldproxy2.xml")
-        _include(ldp_target, include_base, "StandardSqlMapEntries-PostgreSQL.xml")
 
     tree = ET.ElementTree(root)
     ET.indent(tree, space=" ")

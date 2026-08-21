@@ -282,5 +282,41 @@ class ConfigWriteTests(unittest.TestCase):
             self.assertEqual(parsed.getroot().tag, _q("ShapeChangeConfiguration"))
 
 
+class LdproxyTargetTests(unittest.TestCase):
+    LDPROXY_CLASS = (
+        "de.interactive_instruments.shapechange.core.target.ldproxy2.Ldproxy2Target"
+    )
+
+    def _ldproxy_target(self, **overrides: object) -> ET.Element:
+        root = _build(
+            ldproxy_directory=Path("/out/ldproxy"), targets=["ldproxy"], **overrides
+        )
+        targets = root.find(_q("targets"))
+        assert targets is not None
+        for target in targets.findall(_q("Target")):
+            if target.get("class") == self.LDPROXY_CLASS:
+                return target
+        self.fail("ldproxy target not found")
+
+    def test_ldproxy_target_uses_gistools_primary_key(self) -> None:
+        params = _parameters(self._ldproxy_target(), "targetParameter")
+        self.assertEqual(params["primaryKeyColumn"], "objid")
+        self.assertEqual(params["srid"], "25833")
+
+    def test_ldproxy_target_omits_sql_ddl_map_entries(self) -> None:
+        # StandardSqlMapEntries-PostgreSQL.xml carries SQL-DDL target types
+        # (MULTIPOINT/POINT/...) that Ldproxy2Target rejects during semantic
+        # validation, silently aborting the whole run. It must never be
+        # included for the ldproxy target.
+        hrefs = [
+            entry.get("href", "")
+            for entry in self._ldproxy_target().findall(f"{{{XI_NS}}}include")
+        ]
+        self.assertTrue(
+            any(href.endswith("StandardMapEntries_Ldproxy2.xml") for href in hrefs)
+        )
+        self.assertFalse(any("StandardSqlMapEntries" in href for href in hrefs))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
