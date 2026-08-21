@@ -144,6 +144,7 @@ def build_config(
     ldproxy_directory: Path | None = None,
     ldproxy_srid: int = 25833,
     ldproxy_native_timezone: str = "Europe/Oslo",
+    ldproxy_primary_key_column: str = "objid",
     ldproxy_target_class: str = LDPROXY_TARGET_CLASS,
     targets: Sequence[str] = ("xsd", "json"),
     xsd_encoding_rule: str = SOSI_XSD_ENCODING_RULE,
@@ -267,6 +268,10 @@ def build_config(
         ldp_target.set("inputs", "INPUT")
         _target_parameter(ldp_target, "outputDirectory", str(ldproxy_directory))
         _target_parameter(ldp_target, "srid", str(ldproxy_srid))
+        # Gistools/PostGIS-etablering bruker «objid» som primærnøkkel (ShapeChange-default
+        # er «id»). Jf. https://arkitektum.atlassian.net/wiki/spaces/gistools/pages/524373
+        if ldproxy_primary_key_column:
+            _target_parameter(ldp_target, "primaryKeyColumn", ldproxy_primary_key_column)
         if ldproxy_native_timezone:
             _target_parameter(ldp_target, "nativeTimeZone", ldproxy_native_timezone)
         _target_parameter(ldp_target, "defaultEncodingRule", "ldproxy2")
