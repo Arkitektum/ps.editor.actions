@@ -57,6 +57,24 @@ _GPKG_GEOM = {
     "geometry": "GEOMETRY",
 }
 
+# SOSI geometry type short-names (Norwegian) used in SOSI UML models instead of the
+# ISO GM_* names, e.g. Havnedata/NRL. Without these the object type would be written as
+# an aspatial 'attributes' table instead of a 'features' table.
+_SOSI_GEOM = {
+    "punkt": "POINT",
+    "sverm": "MULTIPOINT",
+    "kurve": "LINESTRING",
+    "linje": "LINESTRING",
+    "bue": "LINESTRING",
+    "buep": "LINESTRING",
+    "sirkel": "LINESTRING",
+    "sirkelbue": "LINESTRING",
+    "sammensattkurve": "LINESTRING",
+    "flate": "MULTIPOLYGON",
+    "trekant": "MULTIPOLYGON",
+    "sammensattflate": "MULTIPOLYGON",
+}
+
 # ISO 19107 GM_* type (XMI geometry attribute) -> GPKG geometry_type_name.
 _GM_GEOM = {
     "gm_point": "POINT",
@@ -309,12 +327,13 @@ def _collect_columns(
 
         sql_type = _sql_column_type(attribute.get("type"))
         raw_type = str(attribute.get("type") or "").strip().lower()
+        is_geometry = raw_type.startswith("gm_") or raw_type in _SOSI_GEOM
         columns.append(
             {
                 "name": col_name,
                 "sql_type": sql_type,
-                "is_geometry": raw_type.startswith("gm_"),
-                "gm_type": _GM_GEOM.get(raw_type, "GEOMETRY"),
+                "is_geometry": is_geometry,
+                "gm_type": _GM_GEOM.get(raw_type) or _SOSI_GEOM.get(raw_type) or "GEOMETRY",
                 "notnull": str(attribute.get("cardinality") or "").strip() == "1",
                 "is_pk": attribute.get("ogcRole") == "id",
                 "title": attribute.get("name"),
@@ -366,7 +385,9 @@ def _write_feature_type(
                 geom_column = column["name"]
                 geom_type = column["gm_type"]
                 break
-    data_columns = [c for c in columns if c["name"] != geom_column]
+    # En feature-tabell har ÉN geometrikolonne. Ekskluder alle geometri-attributter
+    # (ikke bare den valgte) — SOSI-typer har ofte både f.eks. Flate og Punkt.
+    data_columns = [c for c in columns if not c["is_geometry"] and c["name"] != geom_column]
 
     # Build column DDL. Ensure an integer primary key.
     pk_column = next((c for c in data_columns if c["is_pk"]), None)

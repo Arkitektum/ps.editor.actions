@@ -289,6 +289,61 @@ class ExternalCodeListTests(unittest.TestCase):
         self.assertIn("register.geonorge.no", desc)
 
 
+class SosiGeometryTests(unittest.TestCase):
+    """SOSI UML models use Punkt/Kurve/Flate instead of GM_* (Havnedata, NRL)."""
+
+    def _write(self, feature_types):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "sosi.gpkg"
+        write_geopackage(feature_types, path)
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        self.addCleanup(conn.close)
+        return conn
+
+    def test_sosi_geometry_types_become_feature_tables(self) -> None:
+        conn = self._write(
+            [
+                {"name": "Punktobjekt", "attributes": [{"name": "posisjon", "type": "Punkt", "cardinality": "1"}]},
+                {"name": "Linjeobjekt", "attributes": [{"name": "grense", "type": "Kurve", "cardinality": "1"}]},
+                {"name": "Flateobjekt", "attributes": [{"name": "område", "type": "Flate", "cardinality": "1"}]},
+            ]
+        )
+        contents = {r["table_name"]: r["data_type"] for r in conn.execute("SELECT table_name, data_type FROM gpkg_contents")}
+        self.assertEqual(contents, {"Punktobjekt": "features", "Linjeobjekt": "features", "Flateobjekt": "features"})
+        geom = {r["table_name"]: r["geometry_type_name"] for r in conn.execute("SELECT table_name, geometry_type_name FROM gpkg_geometry_columns")}
+        self.assertEqual(geom, {"Punktobjekt": "POINT", "Linjeobjekt": "LINESTRING", "Flateobjekt": "MULTIPOLYGON"})
+
+    def test_multiple_geometry_attributes_keep_one_geometry_column(self) -> None:
+        # A SOSI type often has both a Flate and a Punkt representation.
+        conn = self._write(
+            [
+                {
+                    "name": "Havneanlegg",
+                    "attributes": [
+                        {"name": "navn", "type": "string", "cardinality": "0..1"},
+                        {"name": "område", "type": "Flate", "cardinality": "1"},
+                        {"name": "posisjon", "type": "Punkt", "cardinality": "1"},
+                    ],
+                }
+            ]
+        )
+        self.assertEqual(
+            self._scalar_conn(conn, "SELECT data_type FROM gpkg_contents WHERE table_name='Havneanlegg'"),
+            "features",
+        )
+        # One geometry column (the first: område/Flate); the other geometry attr is not a column.
+        cols = {r["name"] for r in conn.execute('PRAGMA table_info("Havneanlegg")')}
+        self.assertIn("område", cols)
+        self.assertNotIn("posisjon", cols)
+        self.assertIn("navn", cols)
+
+    @staticmethod
+    def _scalar_conn(conn, sql):
+        return conn.execute(sql).fetchone()[0]
+
+
 class GeonorgeResolverUnitTests(unittest.TestCase):
     def test_api_url_inserts_api_segment(self) -> None:
         self.assertEqual(
