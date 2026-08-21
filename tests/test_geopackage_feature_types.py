@@ -18,6 +18,7 @@ from geopackage.feature_types import (  # noqa: E402
     _resolve_atom_feed,
     load_feature_types_from_geopackage,
 )
+from geopackage.writer import write_geopackage  # noqa: E402
 
 
 def _build_geopackage(path: Path) -> None:
@@ -183,6 +184,66 @@ class AtomFeedResolveTests(unittest.TestCase):
         )
         self.assertNotIn("troms", href)
         self.assertEqual(href, "https://example.test/download/25833.file")
+
+
+class SchemaExtensionRoundTripTests(unittest.TestCase):
+    """The reader must recover per-column descriptions + code lists (Schema extension)."""
+
+    def test_descriptions_and_codelists_survive_round_trip(self) -> None:
+        catalogue = [
+            {
+                "name": "Bygg",
+                "description": "En bygning.",
+                "geometry": {
+                    "type": "geometry-polygon",
+                    "storageCrs": "http://www.opengis.net/def/crs/EPSG/0/25833",
+                    "ogcRole": "primary-geometry",
+                },
+                "attributes": [
+                    {"name": "lokalId", "type": "integer", "cardinality": "1", "ogcRole": "id"},
+                    {
+                        "name": "bygningstype",
+                        "type": "string",
+                        "cardinality": "1",
+                        "description": "type bygning",
+                        "valueDomain": {
+                            "listedValues": [
+                                {"value": "1", "label": "Bolig"},
+                                {"value": "2", "label": "Fritid"},
+                            ]
+                        },
+                    },
+                    {
+                        "name": "kommunenr",
+                        "type": "string",
+                        "cardinality": "0..1",
+                        "description": "kommune",
+                        "valueDomain": {
+                            "codeList": "https://register.geonorge.no/sosi-kodelister/kommunenummer"
+                        },
+                    },
+                ],
+            }
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "rt.gpkg"
+            write_geopackage(catalogue, path)
+            result = load_feature_types_from_geopackage(str(path))
+
+        attrs = {a["name"]: a for a in result[0]["attributes"]}
+        # Per-column description recovered.
+        self.assertEqual(attrs["bygningstype"]["description"], "type bygning")
+        self.assertEqual(attrs["kommunenr"]["description"], "kommune")
+        # Inline code list recovered as listedValues.
+        self.assertEqual(
+            attrs["bygningstype"]["valueDomain"]["listedValues"],
+            [{"value": "1", "label": "Bolig"}, {"value": "2", "label": "Fritid"}],
+        )
+        # External code list recovered as a codeList URL (parsed from the description ref).
+        self.assertEqual(
+            attrs["kommunenr"]["valueDomain"]["codeList"],
+            "https://register.geonorge.no/sosi-kodelister/kommunenummer",
+        )
 
 
 if __name__ == "__main__":

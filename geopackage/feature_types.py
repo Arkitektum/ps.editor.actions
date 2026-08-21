@@ -21,6 +21,7 @@ Atom feed itself is unauthenticated.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import tempfile
 import xml.etree.ElementTree as ET
@@ -284,6 +285,43 @@ def _build_geometry(connection: sqlite3.Connection, geometry_row: sqlite3.Row) -
     return geometry
 
 
+def _read_schema_extension(
+    connection: sqlite3.Connection,
+) -> tuple[dict[tuple[str, str], dict[str, Any]], dict[str, list[dict[str, str]]]]:
+    """Read the GeoPackage Schema extension: per-column metadata + enum code lists.
+
+    Returns ``{(table, column): {description, constraint_name}}`` and
+    ``{constraint_name: [{value, label}]}``. Missing extension tables -> empty maps,
+    so a plain GeoPackage without the Schema extension still loads.
+    """
+    columns: dict[tuple[str, str], dict[str, Any]] = {}
+    try:
+        for row in connection.execute(
+            "SELECT table_name, column_name, description, constraint_name FROM gpkg_data_columns"
+        ):
+            columns[(row["table_name"], row["column_name"])] = {
+                "description": row["description"] or "",
+                "constraint_name": row["constraint_name"],
+            }
+    except sqlite3.Error:
+        pass
+
+    enums: dict[str, list[dict[str, str]]] = {}
+    try:
+        for row in connection.execute(
+            "SELECT constraint_name, value, description FROM gpkg_data_column_constraints "
+            "WHERE constraint_type = 'enum' ORDER BY rowid"
+        ):
+            if row["value"] is None:
+                continue
+            enums.setdefault(row["constraint_name"], []).append(
+                {"value": str(row["value"]), "label": row["description"] or ""}
+            )
+    except sqlite3.Error:
+        pass
+    return columns, enums
+
+
 def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
     _assert_geopackage(gpkg_path)
     connection = sqlite3.connect(str(gpkg_path))
@@ -306,6 +344,9 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
         ):
             geometry_columns[row["table_name"]] = row
 
+        # Schema-utvidelsen: per-egenskap beskrivelse + kodelister (enum).
+        data_columns, enums = _read_schema_extension(connection)
+
         feature_types: list[dict[str, Any]] = []
         for content in contents:
             table = content["table_name"]
@@ -323,6 +364,26 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
                 }
                 if column["pk"]:
                     attribute["ogcRole"] = "id"
+
+                # Berik med beskrivelse + kodeliste fra Schema-utvidelsen.
+                meta = data_columns.get((table, column["name"]))
+                if meta:
+                    description = meta["description"]
+                    # Eksterne kodelister lagres av writeren som "…\n\nKodeliste: <url>".
+                    code_list_url = None
+                    match = re.search(r"Kodeliste:\s*(\S+)", description)
+                    if match:
+                        code_list_url = match.group(1)
+                        description = re.sub(
+                            r"\s*Kodeliste:\s*\S+\s*$", "", description
+                        ).strip()
+                    if description:
+                        attribute["description"] = description
+                    listed = enums.get(meta["constraint_name"]) if meta["constraint_name"] else None
+                    if listed:
+                        attribute["valueDomain"] = {"listedValues": listed}
+                    elif code_list_url:
+                        attribute["valueDomain"] = {"codeList": code_list_url}
                 attributes.append(attribute)
 
             feature_type: dict[str, Any] = {
