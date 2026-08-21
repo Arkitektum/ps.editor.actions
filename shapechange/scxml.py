@@ -365,6 +365,31 @@ def _assign_ids(specs: Sequence[_ClassSpec]) -> dict[str, str]:
 # --------------------------------------------------------------------------- #
 
 
+# SOSI geometry short-names (Norwegian) -> ISO GM_* so ShapeChange resolves them to
+# GML geometry via its standard map entries. SOSI UML models (Havnedata, NRL, …) use
+# these instead of GM_*; without normalisation the property gets an unknown value type
+# and no geometry is produced in the XSD/JSON schema.
+_SOSI_GEOMETRY = {
+    "punkt": "GM_Point",
+    "sverm": "GM_MultiPoint",
+    "kurve": "GM_Curve",
+    "linje": "GM_Curve",
+    "bue": "GM_Curve",
+    "buep": "GM_Curve",
+    "sirkel": "GM_Curve",
+    "sirkelbue": "GM_Curve",
+    "sammensattkurve": "GM_Curve",
+    "flate": "GM_Surface",
+    "trekant": "GM_Surface",
+    "sammensattflate": "GM_Surface",
+}
+
+
+def _normalized_type_name(raw: str) -> str:
+    """Map a value type to its ShapeChange type name, normalising SOSI geometry names."""
+    return _SOSI_GEOMETRY.get(raw.strip().lower()) or map_type(raw or "unknown")
+
+
 def _write_property(
     parent: ET.Element,
     attribute: Mapping[str, Any],
@@ -387,7 +412,7 @@ def _write_property(
 
     _sub(element, "sequenceNumber", str(sequence_number))
 
-    type_name = map_type(_text(attribute.get("type")) or "unknown")
+    type_name = _normalized_type_name(_text(attribute.get("type")))
     if type_name:
         type_id = class_ids.get(type_name)
         if type_id:

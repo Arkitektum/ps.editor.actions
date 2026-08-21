@@ -164,6 +164,25 @@ class ScxmlStructureTests(unittest.TestCase):
         eiendom_geometry = _properties(classes["Eiendom"])["geometry"]
         self.assertEqual(eiendom_geometry.findtext(_q("typeName")), "GM_Surface")
 
+    def test_sosi_geometry_short_names_normalise_to_gm_types(self) -> None:
+        # SOSI UML models (Havnedata, NRL) use Punkt/Kurve/Flate instead of GM_*.
+        root = _build(
+            [
+                {
+                    "name": "Havneanlegg",
+                    "attributes": [
+                        {"name": "posisjon", "type": "Punkt", "cardinality": "1"},
+                        {"name": "grense", "type": "Kurve", "cardinality": "1"},
+                        {"name": "område", "type": "Flate", "cardinality": "1"},
+                    ],
+                }
+            ]
+        )
+        props = _properties(_classes(root)["Havneanlegg"])
+        self.assertEqual(props["posisjon"].findtext(_q("typeName")), "GM_Point")
+        self.assertEqual(props["grense"].findtext(_q("typeName")), "GM_Curve")
+        self.assertEqual(props["område"].findtext(_q("typeName")), "GM_Surface")
+
     def test_geometry_falls_back_to_gm_object_when_unrecognised(self) -> None:
         root = _build(
             [

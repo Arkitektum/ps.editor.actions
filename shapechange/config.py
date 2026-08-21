@@ -202,6 +202,10 @@ def build_config(
         _target_parameter(xsd_target, "outputDirectory", str(xsd_directory))
         _target_parameter(xsd_target, "sortedOutput", "true")
         _target_parameter(xsd_target, "defaultEncodingRule", xsd_encoding_rule)
+        # Bruk 'documentation'-deskriptoren (som SCXML-eksporten skriver) i XSD-annotasjoner.
+        # ShapeChange sin default er '[[definition]]', som er tom i vår modell -> ingen definisjoner.
+        _target_parameter(xsd_target, "documentationTemplate", "[[documentation]]")
+        _target_parameter(xsd_target, "documentationNoValue", "")
         xsd_rules = custom_xsd_rules(xsd_encoding_rule)
         if xsd_rules:
             _encoding_rules(
@@ -227,6 +231,9 @@ def build_config(
             _target_parameter(json_target, "jsonBaseUri", json_base_uri)
         _target_parameter(json_target, "entityTypeName", entity_type_name)
         _target_parameter(json_target, "defaultEncodingRule", json_encoding_rule)
+        # Samme som XSD: hent definisjonene fra 'documentation'-deskriptoren.
+        _target_parameter(json_target, "documentationTemplate", "[[documentation]]")
+        _target_parameter(json_target, "documentationNoValue", "")
         json_rules = custom_json_rules(json_encoding_rule)
         if json_rules:
             # Deliberately no "extends": both built-in JSON rules pull in
