@@ -134,9 +134,8 @@ class GeoPackageSchemaTests(unittest.TestCase):
         attributes = {a["name"]: a for a in ft["attributes"]}
         # Geometry column is excluded from attributes.
         self.assertNotIn("geom", attributes)
-        # Primary key -> mandatory + id role.
-        self.assertEqual(attributes["fid"]["cardinality"], "1")
-        self.assertEqual(attributes["fid"]["ogcRole"], "id")
+        # The synthetic surrogate primary key (fid/objid) is not a model attribute.
+        self.assertNotIn("fid", attributes)
         # NOT NULL -> mandatory.
         self.assertEqual(attributes["informasjon"]["cardinality"], "1")
         self.assertEqual(attributes["informasjon"]["type"], "string")

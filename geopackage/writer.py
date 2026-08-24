@@ -161,6 +161,18 @@ def _geometry_type_name(ft: dict[str, Any]) -> str | None:
     return None
 
 
+def _geometry_column_name(ft: dict[str, Any]) -> str:
+    """Geometry column name, mirroring the geometry property name ShapeChange writes
+    (``geometry.name`` or ``"geometry"``). Matching it lets one ldproxy provider serve
+    both this GeoPackage (GPKG dialect) and a PostGIS deployment."""
+    geometry = ft.get("geometry")
+    if isinstance(geometry, dict):
+        name = str(geometry.get("name") or "").strip()
+        if name:
+            return name
+    return "geometry"
+
+
 # --------------------------------------------------------------------------- #
 # Base GeoPackage scaffolding
 # --------------------------------------------------------------------------- #
@@ -372,7 +384,7 @@ def _write_feature_type(
 
     # Determine the geometry column: explicit geometry dict, else a GM_* attribute.
     geom_type = _geometry_type_name(ft)
-    geom_column = "geom" if geom_type else None
+    geom_column = _geometry_column_name(ft) if geom_type else None
     srs_id = default_crs
     if geom_type:
         code = _epsg_code((ft.get("geometry") or {}).get("storageCrs")) or _epsg_code(
@@ -389,19 +401,18 @@ def _write_feature_type(
     # (ikke bare den valgte) — SOSI-typer har ofte både f.eks. Flate og Punkt.
     data_columns = [c for c in columns if not c["is_geometry"] and c["name"] != geom_column]
 
-    # Build column DDL. Ensure an integer primary key.
-    pk_column = next((c for c in data_columns if c["is_pk"]), None)
-    ddl_parts: list[str] = []
-    if pk_column is None:
-        ddl_parts.append("fid INTEGER PRIMARY KEY AUTOINCREMENT")
+    # Build column DDL. Gistools/PostGIS-konvensjonen (og ShapeChange ldproxy-provideren)
+    # bruker en syntetisk heltalls-PK «objid» AUTOINCREMENT, slik at én ldproxy-provider
+    # passer både denne gpkg-en (GPKG-dialekt) og en PostGIS-base. Modell-egenskaper som
+    # ellers ville vært nøkkel (f.eks. lokalid) beholdes som vanlige kolonner.
+    ddl_parts: list[str] = ["objid INTEGER PRIMARY KEY AUTOINCREMENT"]
     for column in data_columns:
+        if column["name"].lower() == "objid":
+            continue  # unngå kollisjon med den syntetiske primærnøkkelen
         piece = f"{_q(column['name'])} "
-        if column is pk_column:
-            piece += "INTEGER PRIMARY KEY"
-        else:
-            piece += column["sql_type"] or "TEXT"
-            if column["notnull"]:
-                piece += " NOT NULL"
+        piece += column["sql_type"] or "TEXT"
+        if column["notnull"]:
+            piece += " NOT NULL"
         ddl_parts.append(piece)
     if geom_column:
         ddl_parts.append(f"{_q(geom_column)} {geom_type}")

@@ -178,7 +178,10 @@ class GeoPackageWriterTests(unittest.TestCase):
         )
         attrs = {a["name"]: a for a in dj["attributes"]}
         self.assertNotIn("geom", attrs)
-        self.assertEqual(attrs["lokalId"]["ogcRole"], "id")
+        # objid is the synthetic surrogate PK (Gistools/ldproxy convention), not a
+        # model attribute; lokalId is now an ordinary NOT NULL column.
+        self.assertNotIn("objid", attrs)
+        self.assertNotIn("ogcRole", attrs["lokalId"])
         self.assertEqual(attrs["lokalId"]["cardinality"], "1")
         self.assertIn("arealformaal", attrs)
         self.assertIn("kommunenummer", attrs)

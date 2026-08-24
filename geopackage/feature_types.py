@@ -357,6 +357,9 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
             for column in connection.execute(f'PRAGMA table_info("{table}")'):
                 if column["name"] == geometry_column_name:
                     continue
+                # Syntetisk surrogat-PK (objid/fid) er ikke en modell-egenskap.
+                if column["pk"] and column["name"].lower() in ("objid", "fid"):
+                    continue
                 attribute: dict[str, Any] = {
                     "name": column["name"],
                     "type": _map_column_type(column["type"]),

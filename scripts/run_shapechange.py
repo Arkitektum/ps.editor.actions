@@ -35,6 +35,10 @@ from shapechange.config import (  # noqa: E402
     XML_SCHEMA_TARGET_CLASS,
     write_config,
 )
+from shapechange.ldproxy_provider import (  # noqa: E402
+    apply_geopackage_provider,
+    discover_gpkg_name,
+)
 from shapechange.log_report import (  # noqa: E402
     format_github_annotations,
     read_log_report,
@@ -289,9 +293,27 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=("generate", "check"),
+        choices=("generate", "check", "ldproxy-provider"),
         default="generate",
-        help="'generate' writes the model and configuration; 'check' evaluates the log.",
+        help=(
+            "'generate' writes the model and configuration; 'check' evaluates the log; "
+            "'ldproxy-provider' rewrites the generated ldproxy provider's connectionInfo "
+            "for the chosen dialect (post-JAR)."
+        ),
+    )
+    parser.add_argument(
+        "--ldproxy-provider",
+        choices=("postgis", "geopackage"),
+        default="postgis",
+        help=(
+            "In 'ldproxy-provider' mode: 'postgis' keeps the ShapeChange PGIS provider; "
+            "'geopackage' rewrites connectionInfo to the GPKG dialect pointing at the "
+            "generated GeoPackage."
+        ),
+    )
+    parser.add_argument(
+        "--gpkg-name",
+        help="Filename of the GeoPackage to reference from a geopackage ldproxy provider.",
     )
     parser.add_argument(
         "--output-dir",
@@ -425,11 +447,46 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _ldproxy_provider(args: argparse.Namespace) -> int:
+    """Rewrite the generated ldproxy provider for the selected dialect (post-JAR)."""
+    if args.ldproxy_provider != "geopackage":
+        return 0  # postgis: keep ShapeChange's PGIS provider as-is
+
+    ldproxy_dir = Path(args.output_dir).resolve() / LDPROXY_DIRNAME
+    if not ldproxy_dir.is_dir():
+        print(
+            f"No ldproxy output at {ldproxy_dir}; nothing to rewrite.", file=sys.stderr
+        )
+        return 0
+
+    gpkg_name = (args.gpkg_name or "").strip() or (
+        discover_gpkg_name(ldproxy_dir) or ""
+    )
+    if not gpkg_name:
+        print(
+            "Could not determine the GeoPackage filename for the ldproxy provider; "
+            "pass --gpkg-name (no single .gpkg found next to the ldproxy output).",
+            file=sys.stderr,
+        )
+        return 1
+
+    changed = apply_geopackage_provider(ldproxy_dir, gpkg_name)
+    if not changed:
+        print(f"No ldproxy provider found under {ldproxy_dir}.", file=sys.stderr)
+        return 0
+    for provider in changed:
+        print(f"Rewrote ldproxy provider to GPKG dialect ({gpkg_name}): {provider}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
 
     if args.mode == "check":
         return _check(args)
+
+    if args.mode == "ldproxy-provider":
+        return _ldproxy_provider(args)
 
     if not args.target_namespace or not args.target_namespace.strip():
         print(

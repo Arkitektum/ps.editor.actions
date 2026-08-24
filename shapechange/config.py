@@ -54,12 +54,21 @@ JSON_SCHEMA_TARGET_CLASS = (
 )
 # ldproxy configuration target (ShapeChange 4.x). Emits an ldproxy 3.x entities/store
 # (SQL/PostGIS feature provider + OGC API service + codelist configs) -- a starting
-# template for a PostGIS deployment (no GeoPackage provider support in ldproxy today).
+# template for a PostGIS deployment. The target hardcodes the PostGIS (PGIS) dialect;
+# ldproxy itself also supports a GeoPackage provider (dialect GPKG), but emitting that
+# is a documented future enhancement of the ShapeChange target, not yet available.
 LDPROXY_TARGET_CLASS = (
     "de.interactive_instruments.shapechange.core.target.ldproxy2.Ldproxy2Target"
 )
 # Key ldproxy2 encoding rules (extends the universal '*' rule set).
 _LDPROXY_RULES = ("rule-ldp2-all-associativeTablesWithSeparatePkField",)
+# Flattener transformation run in front of the ldproxy target so single-valued complex
+# datatypes become columns (identifikasjon_lokalId, kvalitet_målemetode) instead of
+# separate join tables. This matches both the GeoPackage writer and the Gistools PostGIS
+# convention, so one provider structure fits both the PGIS and the GPKG dialect.
+LDPROXY_FLATTENER_CLASS = (
+    "de.interactive_instruments.shapechange.core.transformation.flattening.Flattener"
+)
 
 _REMOTE_CONFIG_BASE = "https://shapechange.net/resources/config"
 _BUNDLED_CONFIG_BASE = "config"
@@ -145,6 +154,8 @@ def build_config(
     ldproxy_srid: int = 25833,
     ldproxy_native_timezone: str = "Europe/Oslo",
     ldproxy_primary_key_column: str = "objid",
+    ldproxy_flatten: bool = True,
+    ldproxy_flatten_separator: str = "_",
     ldproxy_target_class: str = LDPROXY_TARGET_CLASS,
     targets: Sequence[str] = ("xsd", "json"),
     xsd_encoding_rule: str = SOSI_XSD_ENCODING_RULE,
@@ -204,6 +215,27 @@ def build_config(
     _parameter(log_element, "reportLevel", report_level)
     _parameter(log_element, "logFile", str(log_path))
 
+    # Flattener transformation feeding ONLY the ldproxy target (xsd/json keep the rich,
+    # unflattened model). Must sit between <log> and <targets> in the config document.
+    ldproxy_input_id = "INPUT"
+    if "ldproxy" in selected and ldproxy_directory is not None and ldproxy_flatten:
+        transformers_element = _sub(root, "transformers")
+        flattener = _sub(transformers_element, "Transformer")
+        flattener.set("class", LDPROXY_FLATTENER_CLASS)
+        flattener.set("mode", "enabled")
+        flattener.set("id", "LDPROXY_FLAT")
+        flattener.set("input", "INPUT")
+        flat_params = _sub(flattener, "parameters")
+        sep_param = _sub(flat_params, "ProcessParameter")
+        sep_param.set("name", "separatorForPropertyFromNonUnion")
+        sep_param.set("value", ldproxy_flatten_separator)
+        flat_rules = _sub(flattener, "rules")
+        flat_ruleset = _sub(flat_rules, "ProcessRuleSet")
+        flat_ruleset.set("name", "flattener")
+        flat_rule = _sub(flat_ruleset, "rule")
+        flat_rule.set("name", "rule-trf-prop-flatten-types")
+        ldproxy_input_id = "LDPROXY_FLAT"
+
     targets_element = _sub(root, "targets")
 
     if "xsd" in selected:
@@ -260,12 +292,13 @@ def build_config(
     if "ldproxy" in selected and ldproxy_directory is not None:
         # ldproxy 3.x entities/store: SQL/PostGIS feature provider + OGC API service +
         # codelist configs. Utkast/startmal — provider-mappingen antar et PostGIS-skjema
-        # (synteserer tabell-/kolonnenavn fra modellen via navnekonvensjoner). ldproxy har
-        # ingen GeoPackage-provider i dag.
+        # (synteserer tabell-/kolonnenavn fra modellen via navnekonvensjoner). ShapeChange
+        # skriver kun PGIS-dialekt; ldproxy støtter også GeoPackage (GPKG), men det er en
+        # dokumentert fremtidig utvidelse av targetet.
         ldp_target = _sub(targets_element, "Target")
         ldp_target.set("class", ldproxy_target_class)
         ldp_target.set("mode", "enabled")
-        ldp_target.set("inputs", "INPUT")
+        ldp_target.set("inputs", ldproxy_input_id)
         _target_parameter(ldp_target, "outputDirectory", str(ldproxy_directory))
         _target_parameter(ldp_target, "srid", str(ldproxy_srid))
         # Gistools/PostGIS-etablering bruker «objid» som primærnøkkel (ShapeChange-default
