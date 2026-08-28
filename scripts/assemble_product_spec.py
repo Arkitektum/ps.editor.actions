@@ -89,6 +89,66 @@ def _collect_neighbor_includes(
     return includes
 
 
+# Output-filer som legges inn i Leveranse-tabellen (deliverySection) med raw-lenke til
+# repoet. (glob-mønster relativt til spec-katalogen, visningsnavn, format.)
+_DELIVERABLE_PATTERNS: list[tuple[str, str, str]] = [
+    ("**/*.gpkg", "GeoPackage", "GPKG"),
+    ("**/schema/xsd/**/*.xsd", "GML/XSD-skjema", "XSD"),
+    ("**/schema/jsonschema/**/*.json", "JSON Schema", "JSON Schema"),
+]
+
+
+def _output_delivery_entry(name: str, url: str, fmt: str) -> dict[str, Any]:
+    return {
+        "delivery": {
+            "deliveryMedium": {
+                "deliveryMediumName": name,
+                "deliveryService": {
+                    "serviceEndpoint": url,
+                    "serviceProperty": {"type": "Fil", "value": "Nedlasting"},
+                },
+            },
+            "deliveryFormat": [{"formatName": fmt}],
+        }
+    }
+
+
+def _build_output_file_deliveries(
+    spec_dir: Path, repo_root: Path, raw_base: str
+) -> list[dict[str, Any]]:
+    """Scan the spec directory for generated deliverable files (GeoPackage + schema)
+    and turn each into a deliverySection entry linking to the file in the repo."""
+    base = raw_base.rstrip("/")
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for pattern, name_base, fmt in _DELIVERABLE_PATTERNS:
+        for path in sorted(spec_dir.glob(pattern)):
+            if not path.is_file():
+                continue
+            rel = os.path.relpath(path.resolve(), repo_root.resolve()).replace(os.sep, "/")
+            if rel.startswith("..") or rel in seen:
+                continue
+            seen.add(rel)
+            url = f"{base}/{rel}"
+            entries.append(_output_delivery_entry(f"{name_base}: {path.stem}", url, fmt))
+    return entries
+
+
+def _augment_delivery_section(
+    psdata_path: Path, spec_dir: Path, repo_root: Path, raw_base: str
+) -> None:
+    """Append generated output-file deliveries to the psdata deliverySection (in place)."""
+    extra = _build_output_file_deliveries(spec_dir, repo_root, raw_base)
+    if not extra:
+        return
+    psdata = json.loads(psdata_path.read_text(encoding="utf-8"))
+    existing = psdata.get("deliverySection")
+    deliveries = list(existing) if isinstance(existing, list) else []
+    deliveries.extend(extra)
+    psdata["deliverySection"] = deliveries
+    psdata_path.write_text(json.dumps(psdata, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
 _HEADING_RE = re.compile(r"^(#{1,6})\s+.+$")
 
 
@@ -148,7 +208,19 @@ def assemble_product_specification(
     xmi_feature_catalogue_png: Path | None,
     updated: str | None,
     strip_empty_headings: bool = True,
+    repo_raw_base: str | None = None,
+    repo_root: Path | None = None,
 ) -> Path:
+    # Berik Leveranse-tabellen med raw-lenker til de genererte filene (GeoPackage/skjema)
+    # før templaten rendres. Kjøres i assemble fordi ShapeChange-skjemaene først finnes nå.
+    if repo_raw_base:
+        _augment_delivery_section(
+            psdata_path,
+            psdata_path.parent,
+            repo_root or Path.cwd(),
+            repo_raw_base,
+        )
+
     psdata = json.loads(psdata_path.read_text(encoding="utf-8"))
 
     includes: list[IncludeResource] = [
@@ -274,6 +346,19 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="Preserve headings even if their sections are empty after templating.",
     )
+    parser.add_argument(
+        "--repo-raw-base",
+        help=(
+            "Raw base URL of the repo (e.g. https://raw.githubusercontent.com/{owner}/"
+            "{repo}/{ref}). When set, generated output files (GeoPackage/schema) are added "
+            "to the delivery section as links."
+        ),
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        help="Repository root used to compute file paths for --repo-raw-base (default: cwd).",
+    )
     return parser.parse_args(argv)
 
 
@@ -298,6 +383,8 @@ def main(argv: list[str] | None = None) -> int:
             xmi_feature_catalogue_png=args.xmi_feature_catalogue_png,
             updated=args.updated,
             strip_empty_headings=not args.keep_empty_headings,
+            repo_raw_base=args.repo_raw_base,
+            repo_root=args.repo_root,
         )
     except Exception as error:  # pragma: no cover - defensive logging
         print(f"Failed to assemble product specification: {error}", file=sys.stderr)

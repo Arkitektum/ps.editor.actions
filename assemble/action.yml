@@ -31,6 +31,11 @@ inputs:
   updated:
     description: Optional override for the updated field in the rendered specification.
     required: false
+  repo-raw-base:
+    description: >-
+      Raw base URL of the repository (e.g. https://raw.githubusercontent.com/{owner}/{repo}/{ref}).
+      When set, generated output files (GeoPackage/schema) are linked from the delivery section.
+    required: false
 outputs:
   spec-markdown:
     description: Path to the assembled product specification Markdown file.
@@ -75,6 +80,9 @@ runs:
         fi
         if [ -n "${{ inputs.updated }}" ]; then
           ARGS+=("--updated" "${{ inputs.updated }}")
+        fi
+        if [ -n "${{ inputs.repo-raw-base }}" ]; then
+          ARGS+=("--repo-raw-base" "${{ inputs.repo-raw-base }}" "--repo-root" "$GITHUB_WORKSPACE")
         fi
         python "${{ github.action_path }}/../scripts/assemble_product_spec.py" "${ARGS[@]}"
         {

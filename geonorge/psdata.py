@@ -178,6 +178,8 @@ def build_psdata(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any
             "portrayal": _extract_portrayal(metadata),
             "deliverySection": _extract_deliveries(metadata),
             "metadataSection": _build_metadata_section(metadata_id, metadata),
+            # Produktark + Produktside — rendres i siste kapittel (Tilleggsinformasjon).
+            "additionalReferences": _product_reference_links(metadata) or None,
         }
     )
 
@@ -1044,6 +1046,20 @@ def _extract_distribution_format(value: Any) -> str | None:
     return _normalize_string(value)
 
 
+def _product_reference_links(metadata: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Produktark + Produktside som {title, href}-referanser til siste kapittel
+    (Tilleggsinformasjon). Rene Geonorge-referanser, ikke leveranser."""
+    refs: list[dict[str, str]] = []
+    for title, key in (
+        ("Produktark", "ProductSheetUrl"),
+        ("Produktside", "ProductPageUrl"),
+    ):
+        href = _normalize_string(metadata.get(key))
+        if href:
+            refs.append({"title": title, "href": href})
+    return refs
+
+
 def _collect_links(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
     links: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -1065,6 +1081,7 @@ def _collect_links(metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
             links.append(link)
 
     add_link(metadata.get("MetadataXmlUrl"), rel="describedby", link_type="application/xml", title="Metadata (ISO 19139)")
+    add_link(metadata.get("ProductSheetUrl"), rel="about", link_type="text/html", title="Produktark")
     add_link(metadata.get("ProductPageUrl"), rel="about", link_type="text/html", title="Produktside")
     add_link(metadata.get("DownloadUrl"), rel="enclosure", link_type="text/html", title="Nedlasting")
     add_link(metadata.get("DistributionUrl"), rel="enclosure", link_type="text/html", title="Distribusjon")

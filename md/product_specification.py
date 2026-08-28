@@ -212,7 +212,26 @@ def build_context(psdata: Mapping[str, Any], *, updated: str | None = None) -> d
         if formatted:
             context["deliverySection"] = formatted
 
+    additional_refs = context.get("additionalReferences")
+    if isinstance(additional_refs, (list, Sequence)) and not isinstance(additional_refs, (str, bytes)):
+        formatted = _format_additional_references(additional_refs)
+        context["additionalReferences"] = formatted
+
     return context
+
+
+def _format_additional_references(references: Sequence[Any]) -> str:
+    """Render Produktark/Produktside-referanser som en punktliste med lenker."""
+    lines: list[str] = []
+    for ref in references:
+        if not isinstance(ref, Mapping):
+            continue
+        href = str(ref.get("href", "")).strip()
+        if not href:
+            continue
+        title = str(ref.get("title", "")).strip() or href
+        lines.append(f"- **{title}:** [{href}]({href})")
+    return "\n".join(lines)
 
 
 def render_product_specification(
