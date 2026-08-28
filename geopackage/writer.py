@@ -4,12 +4,15 @@ Given the assembled feature-type dicts (the same structure produced by the OGC/X
 GeoPackage loaders), this writes a valid, **empty** GeoPackage (structure only, no
 data rows) using the standard-library :mod:`sqlite3` — no GDAL dependency.
 
-Two OGC GeoPackage extensions carry the richer semantics:
+Three extensions carry the richer semantics:
 
 * **Schema** (``gpkg_schema``): column metadata in ``gpkg_data_columns`` and
   code lists / enumerations in ``gpkg_data_column_constraints``.
 * **Related Tables** (RTE): associations between feature types via
   ``gpkgext_relations`` + (empty) mapping tables.
+* ``ps_value_domain`` (custom): the parts of a value domain the Schema extension
+  has nowhere to put -- the model's type name, the ``<<codeList>>`` vs
+  ``<<enumeration>>`` stereotype, the definition, and ``asDictionary``.
 
 This is the inverse of :mod:`geopackage.feature_types` (the reader), so a written
 GeoPackage read back with ``load_feature_types_from_geopackage`` reproduces the model.
@@ -218,12 +221,30 @@ CREATE TABLE gpkgext_relations (
   related_table_name TEXT NOT NULL, related_primary_column TEXT NOT NULL DEFAULT 'id',
   relation_name TEXT NOT NULL, mapping_table_name TEXT NOT NULL UNIQUE
 );
+CREATE TABLE ps_value_domain (
+  table_name TEXT NOT NULL, column_name TEXT NOT NULL,
+  type_name TEXT, kind TEXT, definition TEXT, as_dictionary TEXT, code_list TEXT,
+  CONSTRAINT pk_pvd PRIMARY KEY (table_name, column_name)
+);
 """
 
 _SCHEMA_EXTENSION = "gpkg_schema"
 _SCHEMA_DEFINITION = "http://www.geopackage.org/spec/#extension_schema"
 _RTE_EXTENSION = "related_tables"
 _RTE_DEFINITION = "http://www.geopackage.org/spec/related-tables/"
+
+# The GeoPackage Schema extension can only express a flat list of enum values, so
+# it has nowhere to keep the parts of a value domain that ShapeChange needs: which
+# stereotype the class had (<<codeList>> vs <<enumeration>> decide between a union
+# and a closed restriction in the XSD), the code list definition, and asDictionary.
+# A custom extension table carries them instead. The GeoPackage spec allows
+# author-prefixed extension names, and readers that do not know it simply ignore
+# the table.
+_VALUE_DOMAIN_TABLE = "ps_value_domain"
+_VALUE_DOMAIN_EXTENSION = "ps_value_domain"
+_VALUE_DOMAIN_DEFINITION = (
+    "https://github.com/arkitektum/ps.editor.actions#value-domain-metadata"
+)
 
 
 def _init_base(connection: sqlite3.Connection) -> None:
@@ -247,6 +268,7 @@ def _init_base(connection: sqlite3.Connection) -> None:
         [
             ("gpkg_data_columns", _SCHEMA_EXTENSION, _SCHEMA_DEFINITION),
             ("gpkg_data_column_constraints", _SCHEMA_EXTENSION, _SCHEMA_DEFINITION),
+            (_VALUE_DOMAIN_TABLE, _VALUE_DOMAIN_EXTENSION, _VALUE_DOMAIN_DEFINITION),
         ],
     )
 
@@ -321,7 +343,7 @@ def _collect_columns(
     """Flatten attributes into column descriptors.
 
     Each descriptor: {name, sql_type, notnull, is_pk, is_geometry, gm_type,
-    title, description, value_domain}.
+    title, description, type_name, value_domain}.
     """
     columns: list[dict[str, Any]] = []
     for attribute in attributes:
@@ -350,6 +372,9 @@ def _collect_columns(
                 "is_pk": attribute.get("ogcRole") == "id",
                 "title": attribute.get("name"),
                 "description": attribute.get("description"),
+                # The model's own type name. A GeoPackage column keeps only a SQL
+                # type, so this is preserved separately for value domains.
+                "type_name": attribute.get("type"),
                 "value_domain": attribute.get("valueDomain"),
             }
         )
@@ -446,11 +471,12 @@ def _write_feature_type(
 
         if isinstance(value_domain, dict):
             listed = value_domain.get("listedValues")
+            code_list = value_domain.get("codeList")
+
             if isinstance(listed, list) and listed:
                 constraint_name = f"{table}_{column['name']}"
                 _write_enum_constraint(connection, constraint_name, listed)
-            elif value_domain.get("codeList"):
-                code_list = value_domain.get("codeList")
+            elif code_list:
                 # Resolve the external code list to enum constraint rows when a
                 # resolver is available (e.g. Geonorge SOSI-registeret); otherwise,
                 # or on failure, fall back to referencing the URL only.
@@ -458,12 +484,20 @@ def _write_feature_type(
                 if resolved:
                     constraint_name = f"{table}_{column['name']}"
                     _write_enum_constraint(connection, constraint_name, resolved)
-                # Keep the source URL in the description for provenance either way.
+
+            # A code list can carry both inline values and a register URL. The
+            # values win for the enum constraint, but the URL is recorded either
+            # way -- dropping it would lose the link to the register.
+            if code_list:
                 description = (
                     f"{description}\n\nKodeliste: {code_list}"
                     if description
                     else f"Kodeliste: {code_list}"
                 )
+
+            _write_value_domain(
+                connection, table, column["name"], column.get("type_name"), value_domain
+            )
 
         if description or column["title"] or constraint_name:
             connection.execute(
@@ -475,6 +509,41 @@ def _write_feature_type(
             schema_used["used"] = True
 
     return table
+
+
+def _write_value_domain(
+    connection: sqlite3.Connection,
+    table: str,
+    column: str,
+    type_name: str | None,
+    value_domain: dict[str, Any],
+) -> None:
+    """Record the parts of a value domain the Schema extension cannot express.
+
+    ``type_name`` is the model's name for the value domain class. A GeoPackage
+    column only carries a SQL type, so without it every code list in the file
+    reads back as ``string`` and they all collapse into one class downstream.
+    """
+    kind = value_domain.get("kind")
+    definition = value_domain.get("definition")
+    as_dictionary = value_domain.get("asDictionary")
+    code_list = value_domain.get("codeList")
+    if not any((type_name, kind, definition, as_dictionary, code_list)):
+        return
+    connection.execute(
+        f"INSERT OR REPLACE INTO {_VALUE_DOMAIN_TABLE} "
+        "(table_name, column_name, type_name, kind, definition, as_dictionary, code_list) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            table,
+            column,
+            str(type_name) if type_name else None,
+            str(kind) if kind else None,
+            str(definition) if definition else None,
+            str(as_dictionary) if as_dictionary else None,
+            str(code_list) if code_list else None,
+        ),
+    )
 
 
 def _write_enum_constraint(

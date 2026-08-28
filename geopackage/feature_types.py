@@ -322,6 +322,42 @@ def _read_schema_extension(
     return columns, enums
 
 
+def _read_value_domains(
+    connection: sqlite3.Connection,
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Read the value-domain metadata the Schema extension cannot express.
+
+    Written by this repository's GeoPackage writer into ``ps_value_domain``.
+    Missing table -> empty map, so GeoPackages from other tools still load.
+    """
+    domains: dict[tuple[str, str], dict[str, str]] = {}
+    try:
+        rows = connection.execute(
+            "SELECT table_name, column_name, type_name, kind, definition, as_dictionary, "
+            "code_list FROM ps_value_domain"
+        )
+    except sqlite3.Error:
+        return domains
+
+    for row in rows:
+        entry: dict[str, str] = {}
+        if row["type_name"]:
+            # Not part of the value domain itself; carried alongside so the reader
+            # can restore the model type name over the column's SQL type.
+            entry["_typeName"] = row["type_name"]
+        if row["kind"]:
+            entry["kind"] = row["kind"]
+        if row["definition"]:
+            entry["definition"] = row["definition"]
+        if row["as_dictionary"]:
+            entry["asDictionary"] = row["as_dictionary"]
+        if row["code_list"]:
+            entry["codeList"] = row["code_list"]
+        if entry:
+            domains[(row["table_name"], row["column_name"])] = entry
+    return domains
+
+
 def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
     _assert_geopackage(gpkg_path)
     connection = sqlite3.connect(str(gpkg_path))
@@ -346,6 +382,7 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
 
         # Schema-utvidelsen: per-egenskap beskrivelse + kodelister (enum).
         data_columns, enums = _read_schema_extension(connection)
+        value_domains = _read_value_domains(connection)
 
         feature_types: list[dict[str, Any]] = []
         for content in contents:
@@ -370,9 +407,12 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
 
                 # Berik med beskrivelse + kodeliste fra Schema-utvidelsen.
                 meta = data_columns.get((table, column["name"]))
+                domain: dict[str, Any] = {}
                 if meta:
                     description = meta["description"]
-                    # Eksterne kodelister lagres av writeren som "…\n\nKodeliste: <url>".
+                    # Eldre filer la den eksterne kodelista i beskrivelsen som
+                    # "…\n\nKodeliste: <url>". Den strippes fortsatt ut, både for
+                    # bakoverkompatibilitet og for å holde beskrivelsen ren.
                     code_list_url = None
                     match = re.search(r"Kodeliste:\s*(\S+)", description)
                     if match:
@@ -384,9 +424,21 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
                         attribute["description"] = description
                     listed = enums.get(meta["constraint_name"]) if meta["constraint_name"] else None
                     if listed:
-                        attribute["valueDomain"] = {"listedValues": listed}
-                    elif code_list_url:
-                        attribute["valueDomain"] = {"codeList": code_list_url}
+                        domain["listedValues"] = listed
+                    if code_list_url:
+                        domain["codeList"] = code_list_url
+
+                # ps_value_domain er autoritativ: den bærer typenavnet, stereotypen,
+                # definisjonen og asDictionary, som Schema-utvidelsen ikke har plass til.
+                stored = dict(value_domains.get((table, column["name"]), {}))
+                model_type = stored.pop("_typeName", None)
+                if model_type:
+                    # Kolonnen har bare en SQL-type; uten dette ville alle kodelister
+                    # i filen lest tilbake som «string» og smeltet sammen til én klasse.
+                    attribute["type"] = model_type
+                domain.update(stored)
+                if domain:
+                    attribute["valueDomain"] = domain
                 attributes.append(attribute)
 
             feature_type: dict[str, Any] = {

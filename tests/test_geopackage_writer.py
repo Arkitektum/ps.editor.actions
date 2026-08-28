@@ -347,6 +347,125 @@ class SosiGeometryTests(unittest.TestCase):
         return conn.execute(sql).fetchone()[0]
 
 
+class ValueDomainRoundTripTests(unittest.TestCase):
+    """The value-domain metadata the GeoPackage Schema extension cannot express.
+
+    A GeoPackage column carries only a SQL type and a flat enum constraint, so the
+    model's type name, its <<codeList>>/<<enumeration>> stereotype, the definition
+    and asDictionary are kept in the custom ps_value_domain table instead.
+    """
+
+    def _feature_types(self) -> list[dict]:
+        return [
+            {
+                "name": "Test",
+                "description": "Objekttype.",
+                "geometry": {"type": "geometry-polygon"},
+                "attributes": [
+                    {
+                        "name": "begge",
+                        "type": "K1",
+                        "cardinality": "1",
+                        "description": "Har begge.",
+                        "valueDomain": {
+                            "kind": "codelist",
+                            "listedValues": [{"value": "a", "label": "A-en"}],
+                            "codeList": "https://register.geonorge.no/kl1",
+                            "definition": "Definisjon av K1.",
+                            "asDictionary": "true",
+                        },
+                    },
+                    {
+                        "name": "enum",
+                        "type": "E1",
+                        "cardinality": "1",
+                        "valueDomain": {
+                            "kind": "enumeration",
+                            "listedValues": [{"value": "x", "label": "X-en"}],
+                        },
+                    },
+                    {
+                        "name": "vanlig",
+                        "type": "string",
+                        "cardinality": "0..1",
+                        "description": "Uten domene.",
+                    },
+                ],
+            }
+        ]
+
+    def _round_trip(self) -> dict[str, dict]:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = Path(tmp.name) / "model.gpkg"
+        write_geopackage(self._feature_types(), self.path)
+        loaded = load_feature_types_from_geopackage(str(self.path))
+        return {a["name"]: a for a in loaded[0]["attributes"]}
+
+    def test_inline_values_and_register_url_both_survive(self) -> None:
+        # A code list may carry both; the values win for the enum constraint, but
+        # dropping the URL would lose the link to the register.
+        domain = self._round_trip()["begge"]["valueDomain"]
+        self.assertEqual(domain["listedValues"], [{"value": "a", "label": "A-en"}])
+        self.assertEqual(domain["codeList"], "https://register.geonorge.no/kl1")
+
+    def test_stereotype_definition_and_as_dictionary_survive(self) -> None:
+        attributes = self._round_trip()
+        begge = attributes["begge"]["valueDomain"]
+        self.assertEqual(begge["kind"], "codelist")
+        self.assertEqual(begge["definition"], "Definisjon av K1.")
+        self.assertEqual(begge["asDictionary"], "true")
+        # An enumeration must not read back as a code list: the two produce
+        # different XSD encodings downstream.
+        self.assertEqual(attributes["enum"]["valueDomain"]["kind"], "enumeration")
+
+    def test_model_type_name_survives(self) -> None:
+        attributes = self._round_trip()
+        self.assertEqual(attributes["begge"]["type"], "K1")
+        self.assertEqual(attributes["enum"]["type"], "E1")
+        # Columns without a value domain keep the type derived from SQL.
+        self.assertEqual(attributes["vanlig"]["type"], "string")
+
+    def test_descriptions_survive(self) -> None:
+        attributes = self._round_trip()
+        self.assertEqual(attributes["begge"]["description"], "Har begge.")
+        self.assertEqual(attributes["vanlig"]["description"], "Uten domene.")
+
+    def test_extension_is_registered(self) -> None:
+        self._round_trip()
+        conn = sqlite3.connect(str(self.path))
+        self.addCleanup(conn.close)
+        row = conn.execute(
+            "SELECT scope FROM gpkg_extensions WHERE extension_name='ps_value_domain'"
+        ).fetchone()
+        self.assertIsNotNone(row)
+
+    def test_geopackage_without_the_table_still_loads(self) -> None:
+        # Files written by other tools, or by an older version of this writer.
+        self._round_trip()
+        conn = sqlite3.connect(str(self.path))
+        conn.execute("DROP TABLE ps_value_domain")
+        conn.execute("DELETE FROM gpkg_extensions WHERE extension_name='ps_value_domain'")
+        conn.commit()
+        conn.close()
+
+        attributes = {
+            a["name"]: a
+            for a in load_feature_types_from_geopackage(str(self.path))[0]["attributes"]
+        }
+        # Without the sidecar the enum values and the URL still come through, via
+        # the Schema extension and the "Kodeliste:" convention in the description.
+        self.assertEqual(
+            attributes["begge"]["valueDomain"]["listedValues"],
+            [{"value": "a", "label": "A-en"}],
+        )
+        self.assertEqual(
+            attributes["begge"]["valueDomain"]["codeList"],
+            "https://register.geonorge.no/kl1",
+        )
+        self.assertNotIn("kind", attributes["begge"]["valueDomain"])
+
+
 class GeonorgeResolverUnitTests(unittest.TestCase):
     def test_api_url_inserts_api_segment(self) -> None:
         self.assertEqual(
