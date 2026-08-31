@@ -466,6 +466,148 @@ class ValueDomainRoundTripTests(unittest.TestCase):
         self.assertNotIn("kind", attributes["begge"]["valueDomain"])
 
 
+class ConstraintNamingTests(unittest.TestCase):
+    """GeoPackage requires constraint names to be lowercase (Requirement 106)."""
+
+    def _write(self, feature_types) -> sqlite3.Connection:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "model.gpkg"
+        write_geopackage(feature_types, path)
+        self.path = path
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        self.addCleanup(conn.close)
+        return conn
+
+    def _names(self, conn) -> list[str]:
+        return [
+            r["constraint_name"]
+            for r in conn.execute(
+                "SELECT constraint_name FROM gpkg_data_columns "
+                "WHERE constraint_name IS NOT NULL"
+            )
+        ]
+
+    def test_constraint_names_are_lowercase_ascii(self) -> None:
+        # A Norwegian model would otherwise produce names with spaces, capitals
+        # and characters such as "ø".
+        conn = self._write(
+            [
+                {
+                    "name": "Dyrkbar jord",
+                    "geometry": {"type": "geometry-polygon"},
+                    "attributes": [
+                        {
+                            "name": "samiskForvaltningsområde",
+                            "type": "K",
+                            "cardinality": "1",
+                            "valueDomain": {"listedValues": [{"value": "JA", "label": "Ja"}]},
+                        }
+                    ],
+                }
+            ]
+        )
+        names = self._names(conn)
+        self.assertTrue(names)
+        for name in names:
+            self.assertRegex(name, r"^[a-z][a-z0-9_]*$")
+
+    def test_constraint_type_is_lowercase_enum(self) -> None:
+        conn = self._write(
+            [
+                {
+                    "name": "T",
+                    "geometry": {"type": "geometry-polygon"},
+                    "attributes": [
+                        {
+                            "name": "k",
+                            "type": "K",
+                            "cardinality": "1",
+                            "valueDomain": {"listedValues": [{"value": "a", "label": "A"}]},
+                        }
+                    ],
+                }
+            ]
+        )
+        types = {
+            r["constraint_type"]
+            for r in conn.execute("SELECT constraint_type FROM gpkg_data_column_constraints")
+        }
+        self.assertEqual(types, {"enum"})
+
+    def test_enum_values_keep_their_case(self) -> None:
+        # The spec calls the value column case sensitive, so codes must not be
+        # folded along with the constraint name.
+        conn = self._write(
+            [
+                {
+                    "name": "T",
+                    "geometry": {"type": "geometry-polygon"},
+                    "attributes": [
+                        {
+                            "name": "k",
+                            "type": "K",
+                            "cardinality": "1",
+                            "valueDomain": {
+                                "listedValues": [
+                                    {"value": "JA", "label": "Ja"},
+                                    {"value": "NEI", "label": "Nei"},
+                                ]
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+        values = {
+            r["value"]
+            for r in conn.execute("SELECT value FROM gpkg_data_column_constraints")
+        }
+        self.assertEqual(values, {"JA", "NEI"})
+
+    def test_names_that_sanitise_to_the_same_string_stay_distinct(self) -> None:
+        # "område" and "omrade" collapse onto each other once non-ASCII is dropped.
+        conn = self._write(
+            [
+                {
+                    "name": "T",
+                    "geometry": {"type": "geometry-polygon"},
+                    "attributes": [
+                        {
+                            "name": "område",
+                            "type": "K1",
+                            "cardinality": "1",
+                            "valueDomain": {"listedValues": [{"value": "1", "label": "En"}]},
+                        },
+                        {
+                            "name": "omrade",
+                            "type": "K2",
+                            "cardinality": "1",
+                            "valueDomain": {"listedValues": [{"value": "2", "label": "To"}]},
+                        },
+                    ],
+                }
+            ]
+        )
+        names = self._names(conn)
+        self.assertEqual(len(names), len(set(names)))
+
+        # Each column must still resolve to its own values, not a merged set.
+        attributes = {
+            a["name"]: a
+            for a in load_feature_types_from_geopackage(str(self.path))[0]["attributes"]
+        }
+        self.assertEqual(
+            attributes["område"]["valueDomain"]["listedValues"],
+            [{"value": "1", "label": "En"}],
+        )
+        self.assertEqual(
+            attributes["omrade"]["valueDomain"]["listedValues"],
+            [{"value": "2", "label": "To"}],
+        )
+
+
 class GeonorgeResolverUnitTests(unittest.TestCase):
     def test_api_url_inserts_api_segment(self) -> None:
         self.assertEqual(

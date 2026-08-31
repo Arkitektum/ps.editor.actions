@@ -115,6 +115,28 @@ def _ascii_ident(text: str) -> str:
     return slug or "rel"
 
 
+def _constraint_name(table: str, column: str, used: set[str]) -> str:
+    """Build a constraint_name that satisfies the GeoPackage spec.
+
+    Requirement 106 says a gpkg_data_columns.constraint_name "SHALL be lowercase",
+    and the interoperability guidance asks user-defined names to start with a
+    lowercase letter and use only ``[a-z0-9_]``. A raw "<table>_<column>" would
+    otherwise carry spaces, capitals and Norwegian characters straight through
+    (e.g. "Dyrkbar jord_samiskForvaltningsomrade"). Sanitising collapses distinct
+    names onto each other, so a numeric suffix keeps them unique.
+    """
+    base = f"{_ascii_ident(table)}_{_ascii_ident(column)}".lower().strip("_")
+    if not base or not base[0].isalpha():
+        base = f"c_{base}" if base else "c"
+    candidate = base
+    suffix = 2
+    while candidate in used:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    used.add(candidate)
+    return candidate
+
+
 def _sql_column_type(cat_type: str | None) -> str:
     """Map a feature-catalogue attribute type to a SQLite column type.
 
@@ -393,6 +415,7 @@ def _write_feature_type(
     default_crs: int,
     srs_seen: set[int],
     schema_used: dict[str, bool],
+    constraint_names: set[str],
     by_name: dict[str, dict[str, Any]],
     codelist_resolver: CodeListResolver | None = None,
 ) -> str | None:
@@ -474,7 +497,7 @@ def _write_feature_type(
             code_list = value_domain.get("codeList")
 
             if isinstance(listed, list) and listed:
-                constraint_name = f"{table}_{column['name']}"
+                constraint_name = _constraint_name(table, column["name"], constraint_names)
                 _write_enum_constraint(connection, constraint_name, listed)
             elif code_list:
                 # Resolve the external code list to enum constraint rows when a
@@ -482,7 +505,9 @@ def _write_feature_type(
                 # or on failure, fall back to referencing the URL only.
                 resolved = codelist_resolver(code_list) if codelist_resolver else None
                 if resolved:
-                    constraint_name = f"{table}_{column['name']}"
+                    constraint_name = _constraint_name(
+                        table, column["name"], constraint_names
+                    )
                     _write_enum_constraint(connection, constraint_name, resolved)
 
             # A code list can carry both inline values and a register URL. The
@@ -751,6 +776,7 @@ def write_geopackage(
         _init_base(connection)
         srs_seen: set[int] = {-1, 0, 4326}
         schema_used = {"used": False}
+        constraint_names: set[str] = set()
         # Navneoppslag for arv (inkluderer abstrakte supertyper).
         by_name = {
             ft["name"]: ft
@@ -766,6 +792,7 @@ def write_geopackage(
                     default_crs=default_crs,
                     srs_seen=srs_seen,
                     schema_used=schema_used,
+                    constraint_names=constraint_names,
                     by_name=by_name,
                     codelist_resolver=resolver,
                 )
