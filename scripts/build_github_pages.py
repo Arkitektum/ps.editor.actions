@@ -66,7 +66,7 @@ _HTML_TEMPLATE = Template(
       }
 
       .page-section {
-        width: min(90rem, calc(100% - 2rem));
+        width: min(84rem, calc(100% - 2rem));
         margin: 0 auto;
         padding: clamp(1.5rem, 3vw, 3rem) 0;
       }
@@ -224,9 +224,6 @@ _HTML_TEMPLATE = Template(
       .article-content ol {
         line-height: 1.7;
         margin-bottom: 1rem;
-        /* En bred spalte hjelper tabellene, men gjoer brodteksten tung aa lese.
-           Maalet holdes derfor paa en lesbar linjelengde uavhengig av spalten. */
-        max-width: 78ch;
       }
 
       .article-content table {
@@ -241,8 +238,10 @@ _HTML_TEMPLATE = Template(
         border: 1px solid var(--ds-color-border-subtle, #e5e7eb);
         padding: 0.75rem 1rem;
         text-align: left;
-        /* Uten dette presser en lang, ubrytelig verdi hele tabellen ut av kortet. */
-        overflow-wrap: anywhere;
+        /* Uten dette presser en lang, ubrytelig verdi hele tabellen ut av kortet.
+           break-word, ikke anywhere: anywhere paavirker min-content-bredden og lar
+           tabellen brekke midt i helt vanlige ord som "Endepunkt". */
+        overflow-wrap: break-word;
       }
 
       .article-content blockquote {
@@ -384,7 +383,7 @@ _INDEX_TEMPLATE = Template(
       }
 
       .page-section {
-        width: min(90rem, calc(100% - 2rem));
+        width: min(84rem, calc(100% - 2rem));
         margin: 0 auto;
         padding: clamp(2rem, 4vw, 3.5rem) 0;
       }
