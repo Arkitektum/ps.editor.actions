@@ -212,12 +212,72 @@ def build_context(psdata: Mapping[str, Any], *, updated: str | None = None) -> d
         if formatted:
             context["deliverySection"] = formatted
 
+    quality_section = context.get("dataQualitySection")
+    if isinstance(quality_section, Mapping):
+        formatted = _format_data_quality_report(quality_section.get("report"))
+        if formatted:
+            # Kopi, slik at psdata-strukturen ikke muteres under rendering.
+            quality = dict(quality_section)
+            quality["report"] = formatted
+            context["dataQualitySection"] = quality
+
     additional_refs = context.get("additionalReferences")
     if isinstance(additional_refs, (list, Sequence)) and not isinstance(additional_refs, (str, bytes)):
         formatted = _format_additional_references(additional_refs)
         context["additionalReferences"] = formatted
 
     return context
+
+
+def _format_data_quality_report(report: Any) -> str:
+    """Render kvalitetsrapporten med ett mål per blokk.
+
+    Standardformateringen slår alle nøklene i en rapportoppføring sammen på én
+    linje, slik at «Målebeskrivelse» og «Resultat» blir hengende etter
+    «Kvalitetsmål» i løpende tekst. Her løftes målets navn opp som ledetekst, og
+    de øvrige feltene settes som egne linjer under.
+
+    Nøkler utover ``nameOfMeasure`` beholder rekkefølgen fra kilden, så felter
+    som ``descriptiveResult`` kommer med uten at de må listes opp her.
+    """
+    if isinstance(report, Mapping):
+        entries: list[Any] = [report]
+    elif isinstance(report, Sequence) and not isinstance(report, (str, bytes)):
+        entries = list(report)
+    else:
+        return ""
+
+    blocks: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            rendered = _stringify(entry)
+            if rendered.strip():
+                blocks.append(rendered.strip())
+            continue
+
+        lines: list[str] = []
+        measure = entry.get("nameOfMeasure")
+        if measure is not None and str(measure).strip():
+            label = _translate_label("nameOfMeasure")
+            lines.append(f"**{label}**: {str(measure).strip()}")
+
+        details: list[str] = []
+        for key, value in entry.items():
+            if key == "nameOfMeasure":
+                continue
+            rendered = value if isinstance(value, str) else _stringify(value)
+            rendered = str(rendered).strip()
+            if not rendered:
+                continue
+            details.append(f"- **{_translate_label(key)}**: {rendered}")
+
+        if lines and details:
+            lines.append("")
+        lines.extend(details)
+        if lines:
+            blocks.append("\n".join(lines))
+
+    return "\n\n".join(blocks)
 
 
 def _format_additional_references(references: Sequence[Any]) -> str:

@@ -429,8 +429,25 @@ def _build_data_content_section(metadata: Mapping[str, Any]) -> dict[str, Any] |
 # dataQualitySection
 # ---------------------------------------------------------------------------
 
+def _quantitative_result_measure(value: Any) -> str:
+    """Trekk ut måle*beskrivelsen* fra en QuantitativeResult-verdi.
+
+    Verdiene er på formen «Prosentvis oppfyllelse av FAIR-prinsipper: 90%», der
+    selve tallet står bakerst. Beskrivelsen foran er den samme teksten som
+    QualitySpecifications bruker som Title.
+    """
+    text = str(value or "").strip()
+    if ":" in text:
+        text = text.rsplit(":", 1)[0]
+    return text.strip()
+
+
 def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
     elements: list[dict[str, Any]] = []
+    # Geonorge fører den samme målingen to steder: strukturert i
+    # QualitySpecifications, og som en flat oppsummering i QuantitativeResult.
+    # Titlene herfra brukes til å luke ut gjentakelsen nedenfor.
+    spec_titles: set[str] = set()
 
     quality_specs = metadata.get("QualitySpecifications")
     if isinstance(quality_specs, Sequence) and not isinstance(quality_specs, (str, bytes)):
@@ -439,10 +456,16 @@ def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
                 continue
             explanation = _normalize_string(spec.get("Explanation"))
             quantitative_result = _normalize_string(spec.get("QuantitativeResult"))
+            title = _normalize_string(spec.get("Title"))
+            if title:
+                spec_titles.add(title.casefold())
             entry = _compact_mapping(
                 {
                     "nameOfMeasure": _normalize_string(spec.get("Title")),
-                    "measureDescription": explanation,
+                    # Uten tallresultat er Explanation selve utfallet ("Dataene er i
+                    # henhold til produktspesifikasjonen"), og foeres som beskrivende
+                    # resultat. Aa sette begge feltene ga samme setning to ganger.
+                    "measureDescription": explanation if quantitative_result else None,
                     "descriptiveResult": explanation if not quantitative_result else None,
                     "result": quantitative_result,
                 }
@@ -453,6 +476,10 @@ def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
     quantitative = metadata.get("QuantitativeResult")
     if isinstance(quantitative, Mapping):
         for key, value in quantitative.items():
+            # Hopp over verdier som bare gjentar en QualitySpecifications-post;
+            # ellers står den samme målingen to ganger i Datakvalitet-kapitlet.
+            if _quantitative_result_measure(value).casefold() in spec_titles:
+                continue
             entry = _compact_mapping(
                 {
                     "nameOfMeasure": _normalize_string(key),
