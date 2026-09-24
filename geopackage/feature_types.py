@@ -334,7 +334,7 @@ def _read_value_domains(
     try:
         rows = connection.execute(
             "SELECT table_name, column_name, type_name, kind, definition, as_dictionary, "
-            "code_list FROM ps_value_domain"
+            "code_list, cardinality, related_table FROM ps_value_domain"
         )
     except sqlite3.Error:
         return domains
@@ -353,9 +353,101 @@ def _read_value_domains(
             entry["asDictionary"] = row["as_dictionary"]
         if row["code_list"]:
             entry["codeList"] = row["code_list"]
+        if row["cardinality"]:
+            # Carried for repeating attributes; the relation itself cannot say
+            # whether the attribute was 0..* or 1..*.
+            entry["cardinality"] = row["cardinality"]
+        if row["related_table"]:
+            entry["relatedTable"] = row["related_table"]
         if entry:
             domains[(row["table_name"], row["column_name"])] = entry
     return domains
+
+
+def _read_multivalued_attributes(
+    connection: sqlite3.Connection,
+    data_columns: dict[tuple[str, str], dict[str, Any]],
+    enums: dict[str, list[dict[str, str]]],
+    value_domains: dict[tuple[str, str], dict[str, str]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Rebuild attributes that were written as related attributes tables.
+
+    A GeoPackage column holds one value, so an attribute that may repeat lives in
+    its own table linked through the Related Tables Extension. Without this the
+    attribute would be missing from the feature type entirely.
+    """
+    by_base: dict[str, list[dict[str, Any]]] = {}
+    try:
+        relations = list(
+            connection.execute(
+                "SELECT base_table_name, related_table_name FROM gpkgext_relations "
+                "WHERE relation_name = 'attributes'"
+            )
+        )
+    except sqlite3.Error:
+        return by_base
+
+    for relation in relations:
+        base = relation["base_table_name"]
+        related = relation["related_table_name"]
+
+        # The attribute name is recorded alongside the multiplicity; fall back on
+        # stripping the base-table prefix the writer used.
+        name = ""
+        stored: dict[str, str] = {}
+        for (owner, column), entry in value_domains.items():
+            if owner == base and entry.get("relatedTable") == related:
+                name, stored = column, entry
+                break
+        if not name:
+            prefix = f"{base}_"
+            name = related[len(prefix):] if related.startswith(prefix) else related
+
+        nested: list[dict[str, Any]] = []
+        for column in connection.execute(f'PRAGMA table_info("{related}")'):
+            if column["pk"] and column["name"].lower() in ("objid", "fid"):
+                continue
+            child: dict[str, Any] = {
+                "name": column["name"],
+                "type": _map_column_type(column["type"]),
+                "cardinality": "1" if column["notnull"] else "0..1",
+            }
+            meta = data_columns.get((related, column["name"]))
+            if meta:
+                if meta["description"]:
+                    child["description"] = meta["description"]
+                listed = enums.get(meta["constraint_name"]) if meta["constraint_name"] else None
+                if listed:
+                    child["valueDomain"] = {"listedValues": listed}
+            domain = value_domains.get((related, column["name"]))
+            if domain:
+                model_type = dict(domain).pop("_typeName", None)
+                if model_type:
+                    child["type"] = model_type
+            nested.append(child)
+
+        if not nested:
+            continue
+
+        attribute: dict[str, Any] = {
+            "name": name,
+            "type": stored.get("_typeName") or name,
+            "cardinality": stored.get("cardinality") or "0..*",
+        }
+        # One value column named after the attribute means it was a simple
+        # repeating value, not a complex type.
+        if len(nested) == 1 and nested[0]["name"] == name:
+            attribute["type"] = stored.get("_typeName") or nested[0]["type"]
+            if "valueDomain" in nested[0]:
+                attribute["valueDomain"] = nested[0]["valueDomain"]
+            if "description" in nested[0]:
+                attribute["description"] = nested[0]["description"]
+        else:
+            attribute["attributes"] = nested
+
+        by_base.setdefault(base, []).append(attribute)
+
+    return by_base
 
 
 def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
@@ -383,6 +475,9 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
         # Schema-utvidelsen: per-egenskap beskrivelse + kodelister (enum).
         data_columns, enums = _read_schema_extension(connection)
         value_domains = _read_value_domains(connection)
+        multivalued = _read_multivalued_attributes(
+            connection, data_columns, enums, value_domains
+        )
 
         feature_types: list[dict[str, Any]] = []
         for content in contents:
@@ -431,6 +526,8 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
                 # ps_value_domain er autoritativ: den bærer typenavnet, stereotypen,
                 # definisjonen og asDictionary, som Schema-utvidelsen ikke har plass til.
                 stored = dict(value_domains.get((table, column["name"]), {}))
+                stored.pop("cardinality", None)
+                stored.pop("relatedTable", None)
                 model_type = stored.pop("_typeName", None)
                 if model_type:
                     # Kolonnen har bare en SQL-type; uten dette ville alle kodelister
@@ -447,6 +544,9 @@ def _read_geopackage_schema(gpkg_path: Path) -> list[dict[str, Any]]:
             }
             if geometry_row is not None:
                 feature_type["geometry"] = _build_geometry(connection, geometry_row)
+            # Repeating attributes live in their own related tables, so they are
+            # appended rather than read off this table's columns.
+            attributes.extend(multivalued.get(table, []))
             feature_type["attributes"] = attributes
             feature_types.append(feature_type)
 

@@ -93,6 +93,34 @@ _GM_GEOM = {
     "gm_aggregate": "GEOMETRY",
 }
 
+# Synthetic integer primary key on every feature table. The Gistools/PostGIS
+# convention (and the ShapeChange ldproxy provider) use "objid", so one ldproxy
+# provider fits both this GeoPackage and a PostGIS database. gpkgext_relations
+# must name this same column, or an RTE-aware client looks for a column that is
+# not there and treats the relation as invalid.
+PRIMARY_KEY_COLUMN = "objid"
+
+# Relation profile for a related attributes table (OGC Related Tables Extension,
+# clause 7.5). "simple_attributes" is the stricter sibling: it forbids NULL in
+# every column, which an optional attribute breaks, so "attributes" is used.
+_RTE_ATTRIBUTES_RELATION = "attributes"
+
+
+def _is_multivalued(cardinality: Any) -> bool:
+    """True when the attribute may hold more than one value.
+
+    A GeoPackage column holds a single value, so these cannot be written as a
+    column without silently dropping every value but one. They become a related
+    attributes table instead.
+    """
+    text = str(cardinality or "").strip().replace(" ", "")
+    if not text:
+        return False
+    upper = text.rsplit("..", 1)[-1] if ".." in text else text
+    if upper in {"*", "n", "-1", "unbounded"}:
+        return True
+    return upper.isdigit() and int(upper) > 1
+
 _WGS84_WKT = (
     'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,'
     'AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,'
@@ -246,6 +274,7 @@ CREATE TABLE gpkgext_relations (
 CREATE TABLE ps_value_domain (
   table_name TEXT NOT NULL, column_name TEXT NOT NULL,
   type_name TEXT, kind TEXT, definition TEXT, as_dictionary TEXT, code_list TEXT,
+  cardinality TEXT, related_table TEXT,
   CONSTRAINT pk_pvd PRIMARY KEY (table_name, column_name)
 );
 """
@@ -361,11 +390,15 @@ def _collect_columns(
     attributes: list[dict[str, Any]],
     *,
     prefix: str = "",
+    multivalued: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Flatten attributes into column descriptors.
 
     Each descriptor: {name, sql_type, notnull, is_pk, is_geometry, gm_type,
     title, description, type_name, value_domain}.
+
+    Attributes that may repeat are not turned into columns. They are appended to
+    ``multivalued`` so the caller can give each one a related attributes table.
     """
     columns: list[dict[str, Any]] = []
     for attribute in attributes:
@@ -376,9 +409,15 @@ def _collect_columns(
             continue
         col_name = f"{prefix}{name}"
 
+        if multivalued is not None and _is_multivalued(attribute.get("cardinality")):
+            multivalued.append({"path": col_name, "attribute": attribute})
+            continue
+
         nested = attribute.get("attributes")
         if isinstance(nested, list) and nested:
-            columns.extend(_collect_columns(nested, prefix=f"{col_name}_"))
+            columns.extend(
+                _collect_columns(nested, prefix=f"{col_name}_", multivalued=multivalued)
+            )
             continue
 
         sql_type = _sql_column_type(attribute.get("type"))
@@ -416,6 +455,7 @@ def _write_feature_type(
     srs_seen: set[int],
     schema_used: dict[str, bool],
     constraint_names: set[str],
+    rte_used: dict[str, bool],
     by_name: dict[str, dict[str, Any]],
     codelist_resolver: CodeListResolver | None = None,
 ) -> str | None:
@@ -428,7 +468,10 @@ def _write_feature_type(
     table = name.strip()
 
     # Inkluder arvede attributter fra (evt. abstrakte) supertyper.
-    columns = _collect_columns(_effective_attributes(ft, by_name))
+    multivalued: list[dict[str, Any]] = []
+    columns = _collect_columns(
+        _effective_attributes(ft, by_name), multivalued=multivalued
+    )
 
     # Determine the geometry column: explicit geometry dict, else a GM_* attribute.
     geom_type = _geometry_type_name(ft)
@@ -453,9 +496,9 @@ def _write_feature_type(
     # bruker en syntetisk heltalls-PK «objid» AUTOINCREMENT, slik at én ldproxy-provider
     # passer både denne gpkg-en (GPKG-dialekt) og en PostGIS-base. Modell-egenskaper som
     # ellers ville vært nøkkel (f.eks. lokalid) beholdes som vanlige kolonner.
-    ddl_parts: list[str] = ["objid INTEGER PRIMARY KEY AUTOINCREMENT"]
+    ddl_parts: list[str] = [f"{PRIMARY_KEY_COLUMN} INTEGER PRIMARY KEY AUTOINCREMENT"]
     for column in data_columns:
-        if column["name"].lower() == "objid":
+        if column["name"].lower() == PRIMARY_KEY_COLUMN:
             continue  # unngå kollisjon med den syntetiske primærnøkkelen
         piece = f"{_q(column['name'])} "
         piece += column["sql_type"] or "TEXT"
@@ -486,8 +529,41 @@ def _write_feature_type(
             (table, "attributes", name, ft.get("description") or "", None),
         )
 
-    # Schema extension: column metadata + code-list constraints.
-    for column in data_columns:
+    _write_column_metadata(
+        connection,
+        table=table,
+        columns=data_columns,
+        schema_used=schema_used,
+        constraint_names=constraint_names,
+        codelist_resolver=codelist_resolver,
+    )
+
+    for entry in multivalued:
+        _write_multivalued_attribute(
+            connection,
+            base_table=table,
+            path=entry["path"],
+            attribute=entry["attribute"],
+            schema_used=schema_used,
+            constraint_names=constraint_names,
+            rte_used=rte_used,
+            codelist_resolver=codelist_resolver,
+        )
+
+    return table
+
+
+def _write_column_metadata(
+    connection: sqlite3.Connection,
+    *,
+    table: str,
+    columns: list[dict[str, Any]],
+    schema_used: dict[str, bool],
+    constraint_names: set[str],
+    codelist_resolver: CodeListResolver | None,
+) -> None:
+    """Schema-extension column metadata plus code-list constraints."""
+    for column in columns:
         value_domain = column["value_domain"]
         constraint_name = None
         description = column["description"]
@@ -533,7 +609,100 @@ def _write_feature_type(
             )
             schema_used["used"] = True
 
-    return table
+
+def _write_multivalued_attribute(
+    connection: sqlite3.Connection,
+    *,
+    base_table: str,
+    path: str,
+    attribute: dict[str, Any],
+    schema_used: dict[str, bool],
+    constraint_names: set[str],
+    rte_used: dict[str, bool],
+    codelist_resolver: CodeListResolver | None,
+) -> None:
+    """Give a repeating attribute its own table, related to the base table.
+
+    A complex attribute contributes one column per nested field; a simple one
+    contributes a single column named after the attribute itself.
+    """
+    related_table = f"{_ascii_ident(base_table)}_{_ascii_ident(path)}"
+    mapping_table = f"{related_table}_map"
+    if _table_exists(connection, related_table):
+        return
+
+    nested = attribute.get("attributes")
+    if isinstance(nested, list) and nested:
+        value_columns = _collect_columns(nested)
+    else:
+        single = dict(attribute)
+        # The outer multiplicity is carried by the relation, so each row holds
+        # exactly one value.
+        single["cardinality"] = "1"
+        value_columns = _collect_columns([single])
+    value_columns = [column for column in value_columns if not column["is_geometry"]]
+    if not value_columns:
+        return
+
+    ddl = [f"{PRIMARY_KEY_COLUMN} INTEGER PRIMARY KEY AUTOINCREMENT"]
+    for column in value_columns:
+        piece = f"{_q(column['name'])} {column['sql_type'] or 'TEXT'}"
+        if column["notnull"]:
+            piece += " NOT NULL"
+        ddl.append(piece)
+    connection.execute(f"CREATE TABLE {_q(related_table)} ({', '.join(ddl)})")
+    connection.execute(
+        "INSERT INTO gpkg_contents "
+        "(table_name, data_type, identifier, description, srs_id) VALUES (?,?,?,?,?)",
+        (
+            related_table,
+            "attributes",
+            f"{base_table}.{path}",
+            attribute.get("description") or "",
+            None,
+        ),
+    )
+
+    _write_column_metadata(
+        connection,
+        table=related_table,
+        columns=value_columns,
+        schema_used=schema_used,
+        constraint_names=constraint_names,
+        codelist_resolver=codelist_resolver,
+    )
+
+    _write_relation(
+        connection,
+        base_table=base_table,
+        related_table=related_table,
+        mapping_table=mapping_table,
+        relation_name=_RTE_ATTRIBUTES_RELATION,
+        rte_used=rte_used,
+    )
+    # The declared multiplicity is not expressible in the GeoPackage tables, so
+    # it is kept alongside the other value-domain metadata for the round trip.
+    connection.execute(
+        f"INSERT OR REPLACE INTO {_VALUE_DOMAIN_TABLE} "
+        "(table_name, column_name, type_name, cardinality, related_table) "
+        "VALUES (?,?,?,?,?)",
+        (
+            base_table,
+            path,
+            str(attribute.get("type") or "") or None,
+            str(attribute.get("cardinality") or "") or None,
+            # Names are ASCII-sanitised, so the table name cannot be derived
+            # back from the attribute name.
+            related_table,
+        ),
+    )
+
+
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    return row is not None
 
 
 def _write_value_domain(
@@ -683,11 +852,63 @@ def _memoize_resolver(resolver: CodeListResolver) -> CodeListResolver:
 # --------------------------------------------------------------------------- #
 
 
+def _write_relation(
+    connection: sqlite3.Connection,
+    *,
+    base_table: str,
+    related_table: str,
+    mapping_table: str,
+    relation_name: str,
+    rte_used: dict[str, bool],
+) -> None:
+    """Register one Related Tables relation and its mapping table.
+
+    The mapping table gets an integer primary key on top of base_id/related_id:
+    GDAL and QGIS need one to load it as a valid layer, and the extension allows
+    columns beyond the two required ones.
+    """
+    connection.execute(
+        f"CREATE TABLE {_q(mapping_table)} "
+        "(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "base_id INTEGER NOT NULL, related_id INTEGER NOT NULL)"
+    )
+    connection.execute(
+        "INSERT INTO gpkgext_relations "
+        "(base_table_name, base_primary_column, related_table_name, "
+        "related_primary_column, relation_name, mapping_table_name) "
+        "VALUES (?,?,?,?,?,?)",
+        (
+            base_table,
+            PRIMARY_KEY_COLUMN,
+            related_table,
+            PRIMARY_KEY_COLUMN,
+            relation_name,
+            mapping_table,
+        ),
+    )
+    if not rte_used.get("used"):
+        connection.execute(
+            "INSERT INTO gpkg_extensions "
+            "(table_name, column_name, extension_name, definition, scope) "
+            "VALUES ('gpkgext_relations', NULL, ?, ?, 'read-write')",
+            (_RTE_EXTENSION, _RTE_DEFINITION),
+        )
+        rte_used["used"] = True
+    connection.execute(
+        "INSERT INTO gpkg_extensions "
+        "(table_name, column_name, extension_name, definition, scope) "
+        "VALUES (?, NULL, ?, ?, 'read-write')",
+        (mapping_table, _RTE_EXTENSION, _RTE_DEFINITION),
+    )
+
+
 def _write_relations(
-    connection: sqlite3.Connection, feature_types: list[dict[str, Any]], tables: set[str]
+    connection: sqlite3.Connection,
+    feature_types: list[dict[str, Any]],
+    tables: set[str],
+    rte_used: dict[str, bool],
 ) -> None:
     mapping_registered: set[str] = set()
-    rte_registered = False
     for ft in feature_types:
         base = ft.get("name")
         if not isinstance(base, str) or base not in tables:
@@ -712,31 +933,13 @@ def _write_relations(
             # id-PK: GDAL/QGIS trenger en heltalls-primærnøkkel (FID) for å laste
             # mapping-tabellen som et gyldig lag — ellers blir RTE-relasjonen
             # «ugyldig». RTE-standarden tillater kolonner utover base_id/related_id.
-            connection.execute(
-                f"CREATE TABLE {_q(mapping_table)} "
-                "(id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                "base_id INTEGER NOT NULL, related_id INTEGER NOT NULL)"
-            )
-            connection.execute(
-                "INSERT INTO gpkgext_relations "
-                "(base_table_name, base_primary_column, related_table_name, "
-                "related_primary_column, relation_name, mapping_table_name) "
-                "VALUES (?, 'fid', ?, 'fid', 'features', ?)",
-                (base, target, mapping_table),
-            )
-            if not rte_registered:
-                connection.execute(
-                    "INSERT INTO gpkg_extensions "
-                    "(table_name, column_name, extension_name, definition, scope) "
-                    "VALUES ('gpkgext_relations', NULL, ?, ?, 'read-write')",
-                    (_RTE_EXTENSION, _RTE_DEFINITION),
-                )
-                rte_registered = True
-            connection.execute(
-                "INSERT INTO gpkg_extensions "
-                "(table_name, column_name, extension_name, definition, scope) "
-                "VALUES (?, NULL, ?, ?, 'read-write')",
-                (mapping_table, _RTE_EXTENSION, _RTE_DEFINITION),
+            _write_relation(
+                connection,
+                base_table=base,
+                related_table=target,
+                mapping_table=mapping_table,
+                relation_name="features",
+                rte_used=rte_used,
             )
 
 
@@ -777,6 +980,7 @@ def write_geopackage(
         srs_seen: set[int] = {-1, 0, 4326}
         schema_used = {"used": False}
         constraint_names: set[str] = set()
+        rte_used = {"used": False}
         # Navneoppslag for arv (inkluderer abstrakte supertyper).
         by_name = {
             ft["name"]: ft
@@ -793,12 +997,13 @@ def write_geopackage(
                     srs_seen=srs_seen,
                     schema_used=schema_used,
                     constraint_names=constraint_names,
+                    rte_used=rte_used,
                     by_name=by_name,
                     codelist_resolver=resolver,
                 )
                 if table:
                     tables.add(table)
-        _write_relations(connection, feature_types, tables)
+        _write_relations(connection, feature_types, tables, rte_used)
         connection.commit()
     finally:
         connection.close()

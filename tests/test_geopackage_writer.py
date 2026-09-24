@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from geopackage.feature_types import load_feature_types_from_geopackage  # noqa: E402
 from geopackage.writer import (  # noqa: E402
+    PRIMARY_KEY_COLUMN,
     _geonorge_api_url,
     _parse_geonorge_codelist,
     write_geopackage,
@@ -164,6 +165,30 @@ class GeoPackageWriterTests(unittest.TestCase):
         self.assertEqual(len([c for c in info if c["pk"]]), 1)
         ext = {r[0] for r in self.conn.execute("SELECT extension_name FROM gpkg_extensions")}
         self.assertIn("related_tables", ext)
+
+    def test_relations_name_the_real_primary_key_column(self) -> None:
+        # base_primary_column / related_primary_column must name a column that
+        # actually exists, or an RTE-aware client (QGIS, GDAL) cannot resolve the
+        # relation. The feature tables use a synthetic "objid"; a hardcoded "fid"
+        # here pointed at nothing.
+        rows = list(
+            self.conn.execute(
+                "SELECT base_table_name, base_primary_column, related_table_name, "
+                "related_primary_column FROM gpkgext_relations"
+            )
+        )
+        self.assertTrue(rows)
+        for row in rows:
+            for table, column in (
+                (row["base_table_name"], row["base_primary_column"]),
+                (row["related_table_name"], row["related_primary_column"]),
+            ):
+                columns = {
+                    c["name"]
+                    for c in self.conn.execute(f'PRAGMA table_info("{table}")')
+                }
+                self.assertIn(column, columns, f"{table}.{column} does not exist")
+                self.assertEqual(column, PRIMARY_KEY_COLUMN)
 
     def test_round_trip_with_reader(self) -> None:
         # Read the written GeoPackage back with the #2 reader.
@@ -464,6 +489,144 @@ class ValueDomainRoundTripTests(unittest.TestCase):
             "https://register.geonorge.no/kl1",
         )
         self.assertNotIn("kind", attributes["begge"]["valueDomain"])
+
+
+class MultivaluedAttributeTests(unittest.TestCase):
+    """Attributes that may repeat cannot be a column.
+
+    A GeoPackage column holds one value, so writing `status [0..*]` as a column
+    silently keeps only one of them. They become a related attributes table
+    instead, linked through the Related Tables Extension.
+    """
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = Path(tmp.name) / "model.gpkg"
+        write_geopackage(
+            [
+                {
+                    "name": "Bygning",
+                    "geometry": {"type": "geometry-polygon"},
+                    "attributes": [
+                        {"name": "navn", "type": "string", "cardinality": "1"},
+                        {
+                            "name": "status",
+                            "type": "Status",
+                            "cardinality": "0..*",
+                            "valueDomain": {
+                                "listedValues": [{"value": "a", "label": "A"}]
+                            },
+                        },
+                        {
+                            "name": "adresse",
+                            "type": "Adresse",
+                            "cardinality": "1..*",
+                            "attributes": [
+                                {"name": "gatenavn", "type": "string", "cardinality": "1"},
+                                {"name": "husnummer", "type": "integer", "cardinality": "0..1"},
+                            ],
+                        },
+                        {
+                            "name": "kvalitet",
+                            "type": "Kvalitet",
+                            "cardinality": "0..1",
+                            "attributes": [
+                                {"name": "metode", "type": "string", "cardinality": "1"}
+                            ],
+                        },
+                    ],
+                }
+            ],
+            self.path,
+        )
+        self.conn = sqlite3.connect(str(self.path))
+        self.conn.row_factory = sqlite3.Row
+        self.addCleanup(self.conn.close)
+
+    def _columns(self, table: str) -> list[str]:
+        return [c["name"] for c in self.conn.execute(f'PRAGMA table_info("{table}")')]
+
+    def test_repeating_attributes_leave_the_base_table(self) -> None:
+        columns = self._columns("Bygning")
+        self.assertNotIn("status", columns)
+        self.assertNotIn("adresse_gatenavn", columns)
+        # Single-valued complex attributes are still flattened into columns.
+        self.assertIn("kvalitet_metode", columns)
+        self.assertIn("navn", columns)
+
+    def test_related_tables_hold_the_values(self) -> None:
+        self.assertEqual(self._columns("Bygning_status"), [PRIMARY_KEY_COLUMN, "status"])
+        self.assertEqual(
+            self._columns("Bygning_adresse"),
+            [PRIMARY_KEY_COLUMN, "gatenavn", "husnummer"],
+        )
+
+    def test_related_tables_are_registered_as_attributes(self) -> None:
+        kinds = {
+            r["table_name"]: r["data_type"]
+            for r in self.conn.execute("SELECT table_name, data_type FROM gpkg_contents")
+        }
+        self.assertEqual(kinds["Bygning_status"], "attributes")
+        self.assertEqual(kinds["Bygning_adresse"], "attributes")
+        self.assertEqual(kinds["Bygning"], "features")
+
+    def test_relation_uses_the_attributes_profile(self) -> None:
+        # "simple_attributes" forbids NULL in every column, which an optional
+        # attribute such as husnummer breaks.
+        rows = list(
+            self.conn.execute(
+                "SELECT related_table_name, relation_name FROM gpkgext_relations"
+            )
+        )
+        self.assertEqual({r["relation_name"] for r in rows}, {"attributes"})
+        self.assertEqual(
+            {r["related_table_name"] for r in rows},
+            {"Bygning_status", "Bygning_adresse"},
+        )
+
+    def test_mapping_tables_exist_and_are_registered(self) -> None:
+        for row in self.conn.execute(
+            "SELECT mapping_table_name FROM gpkgext_relations"
+        ):
+            mapping = row["mapping_table_name"]
+            self.assertTrue({"base_id", "related_id"}.issubset(set(self._columns(mapping))))
+            registered = {
+                r[0]
+                for r in self.conn.execute(
+                    "SELECT table_name FROM gpkg_extensions WHERE extension_name='related_tables'"
+                )
+            }
+            self.assertIn(mapping, registered)
+
+    def test_round_trip_keeps_multiplicity_and_structure(self) -> None:
+        attributes = {
+            a["name"]: a
+            for a in load_feature_types_from_geopackage(str(self.path))[0]["attributes"]
+        }
+
+        self.assertEqual(attributes["status"]["cardinality"], "0..*")
+        self.assertEqual(attributes["status"]["type"], "Status")
+        self.assertEqual(
+            attributes["status"]["valueDomain"]["listedValues"],
+            [{"value": "a", "label": "A"}],
+        )
+
+        adresse = attributes["adresse"]
+        self.assertEqual(adresse["cardinality"], "1..*")
+        self.assertEqual(adresse["type"], "Adresse")
+        self.assertEqual(
+            [entry["name"] for entry in adresse["attributes"]],
+            ["gatenavn", "husnummer"],
+        )
+
+    def test_single_valued_attributes_are_unaffected(self) -> None:
+        attributes = {
+            a["name"]: a
+            for a in load_feature_types_from_geopackage(str(self.path))[0]["attributes"]
+        }
+        self.assertEqual(attributes["navn"]["cardinality"], "1")
+        self.assertIn("kvalitet_metode", attributes)
 
 
 class ConstraintNamingTests(unittest.TestCase):
