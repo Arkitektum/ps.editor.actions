@@ -29,6 +29,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from geopackage.realisation import split_multi_geometry_types
+
 # Resolves an external code-list URL to ``[{"value","label"}]`` rows, or None when
 # it cannot be resolved (unknown host, network/parse failure). Injected so the
 # writer stays offline-safe and testable; production passes _fetch_geonorge_codelist.
@@ -955,6 +957,7 @@ def write_geopackage(
     default_crs: int = 25833,
     identifier: str | None = None,
     codelist_resolver: CodeListResolver | None = None,
+    split_multi_geometry: bool = True,
 ) -> Path:
     """Write an empty GeoPackage materialising ``feature_types`` to ``path``.
 
@@ -966,6 +969,13 @@ def write_geopackage(
     :func:`_fetch_geonorge_codelist` to resolve SOSI code lists from the Geonorge
     register), otherwise the URL is kept in the column description only. Associations
     become Related-Tables relations with empty mapping tables.
+
+    A GeoPackage feature table holds one geometry column, so a class modelled with
+    several geometry properties cannot be realised as a single table. With
+    ``split_multi_geometry`` (the default) each geometry becomes its own feature
+    type, suffixed ``_flate``/``_linje``/``_punkt``; see
+    :mod:`geopackage.realisation`. Turn it off to keep the first geometry and drop
+    the rest.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -974,6 +984,16 @@ def write_geopackage(
 
     resolver = _memoize_resolver(codelist_resolver) if codelist_resolver else None
 
+    # Inheritance is resolved against the modelled names, so the lookup is built
+    # before the split renames anything.
+    modelled_by_name = {
+        ft["name"]: ft
+        for ft in feature_types
+        if isinstance(ft, dict) and isinstance(ft.get("name"), str)
+    }
+    if split_multi_geometry:
+        feature_types = split_multi_geometry_types(feature_types)
+
     connection = sqlite3.connect(str(path))
     try:
         _init_base(connection)
@@ -981,12 +1001,17 @@ def write_geopackage(
         schema_used = {"used": False}
         constraint_names: set[str] = set()
         rte_used = {"used": False}
-        # Navneoppslag for arv (inkluderer abstrakte supertyper).
-        by_name = {
-            ft["name"]: ft
-            for ft in feature_types
-            if isinstance(ft, dict) and isinstance(ft.get("name"), str)
-        }
+        # Navneoppslag for arv (inkluderer abstrakte supertyper). Supertyper
+        # refereres med det modellerte navnet, så oppslaget må inneholde begge:
+        # de modellerte navnene og de realiserte.
+        by_name = dict(modelled_by_name)
+        by_name.update(
+            {
+                ft["name"]: ft
+                for ft in feature_types
+                if isinstance(ft, dict) and isinstance(ft.get("name"), str)
+            }
+        )
         tables: set[str] = set()
         for ft in feature_types:
             if isinstance(ft, dict):

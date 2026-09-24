@@ -343,29 +343,88 @@ class SosiGeometryTests(unittest.TestCase):
         geom = {r["table_name"]: r["geometry_type_name"] for r in conn.execute("SELECT table_name, geometry_type_name FROM gpkg_geometry_columns")}
         self.assertEqual(geom, {"Punktobjekt": "POINT", "Linjeobjekt": "LINESTRING", "Flateobjekt": "MULTIPOLYGON"})
 
-    def test_multiple_geometry_attributes_keep_one_geometry_column(self) -> None:
-        # A SOSI type often has both a Flate and a Punkt representation.
+    _MULTI_GEOMETRY = [
+        {
+            "name": "Havneanlegg",
+            "attributes": [
+                {"name": "navn", "type": "string", "cardinality": "0..1"},
+                {"name": "område", "type": "Flate", "cardinality": "1"},
+                {"name": "posisjon", "type": "Punkt", "cardinality": "1"},
+            ],
+        }
+    ]
+
+    def test_multiple_geometries_become_one_type_each(self) -> None:
+        # A GeoPackage feature table holds one geometry column, so a SOSI type
+        # with both a Flate and a Punkt cannot be realised as a single table.
+        conn = self._write(self._MULTI_GEOMETRY)
+        tables = {
+            r["table_name"]
+            for r in conn.execute(
+                "SELECT table_name FROM gpkg_contents WHERE data_type='features'"
+            )
+        }
+        self.assertEqual(tables, {"Havneanlegg_flate", "Havneanlegg_punkt"})
+
+    def test_each_realised_type_keeps_its_own_geometry(self) -> None:
+        conn = self._write(self._MULTI_GEOMETRY)
+        geometries = {
+            r["table_name"]: (r["column_name"], r["geometry_type_name"])
+            for r in conn.execute(
+                "SELECT table_name, column_name, geometry_type_name "
+                "FROM gpkg_geometry_columns"
+            )
+        }
+        self.assertEqual(geometries["Havneanlegg_flate"], ("område", "MULTIPOLYGON"))
+        self.assertEqual(geometries["Havneanlegg_punkt"], ("posisjon", "POINT"))
+
+    def test_non_geometry_attributes_are_carried_to_every_part(self) -> None:
+        conn = self._write(self._MULTI_GEOMETRY)
+        for table, own, other in (
+            ("Havneanlegg_flate", "område", "posisjon"),
+            ("Havneanlegg_punkt", "posisjon", "område"),
+        ):
+            cols = {r["name"] for r in conn.execute(f'PRAGMA table_info("{table}")')}
+            self.assertIn("navn", cols)
+            self.assertIn(own, cols)
+            self.assertNotIn(other, cols)
+
+    def test_splitting_can_be_turned_off(self) -> None:
+        # Without it the first geometry wins and the rest are dropped, which is
+        # why the split is the default.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "model.gpkg"
+        write_geopackage(self._MULTI_GEOMETRY, path, split_multi_geometry=False)
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        self.addCleanup(conn.close)
+        tables = {
+            r["table_name"]
+            for r in conn.execute(
+                "SELECT table_name FROM gpkg_contents WHERE data_type='features'"
+            )
+        }
+        self.assertEqual(tables, {"Havneanlegg"})
+
+    def test_single_geometry_type_is_not_renamed(self) -> None:
         conn = self._write(
             [
                 {
-                    "name": "Havneanlegg",
+                    "name": "Kai",
                     "attributes": [
-                        {"name": "navn", "type": "string", "cardinality": "0..1"},
-                        {"name": "område", "type": "Flate", "cardinality": "1"},
-                        {"name": "posisjon", "type": "Punkt", "cardinality": "1"},
+                        {"name": "område", "type": "Flate", "cardinality": "1"}
                     ],
                 }
             ]
         )
-        self.assertEqual(
-            self._scalar_conn(conn, "SELECT data_type FROM gpkg_contents WHERE table_name='Havneanlegg'"),
-            "features",
-        )
-        # One geometry column (the first: område/Flate); the other geometry attr is not a column.
-        cols = {r["name"] for r in conn.execute('PRAGMA table_info("Havneanlegg")')}
-        self.assertIn("område", cols)
-        self.assertNotIn("posisjon", cols)
-        self.assertIn("navn", cols)
+        tables = {
+            r["table_name"]
+            for r in conn.execute(
+                "SELECT table_name FROM gpkg_contents WHERE data_type='features'"
+            )
+        }
+        self.assertEqual(tables, {"Kai"})
 
     @staticmethod
     def _scalar_conn(conn, sql):
