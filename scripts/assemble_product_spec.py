@@ -149,6 +149,89 @@ def _augment_delivery_section(
     psdata_path.write_text(json.dumps(psdata, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+# Hvor mye av hvert kapittel som fylles automatisk. Kobling kapittel → psdata-seksjoner
+# speiler malen data/template/ps.md.hbs. Datamodell-kapittelet telles fra feature_catalogue
+# .json (objektkatalog), ikke psdata. Frontend leser dette som `chapterAutofill`.
+_CHAPTER_PSDATA_PATHS: dict[str, list[str]] = {
+    "om_spesifikasjonen": ["date", "language", "contact"],
+    "om_produktet": [
+        "identificationSection.abstract",
+        "identificationSection.keyword",
+        "identificationSection.topicCategory",
+        "identificationSection.spatialRepresentationType",
+        "identificationSection.spatialResolution",
+        "identificationSection.restriction",
+        "identificationSection.extent",
+        "identificationSection.contact",
+    ],
+    "formaal": ["identificationSection.purpose.summary"],
+    "bruksomraade": ["identificationSection.purpose.useCase.summary"],
+    "omfang": ["scopeSection"],
+    "datainnhold_og_struktur": ["dataContentAndStructureSection"],
+    "referansesystem": ["referenceSystemSection"],
+    "datakvalitet": ["dataQualitySection"],
+    "datafangst_og_produksjon": ["dataCaptureAndProductionSection"],
+    "vedlikehold": ["maintenanceSection"],
+    "presentasjon": ["portrayal"],
+    "leveranse": ["deliverySection"],
+    "metadata": ["metadataSection"],
+    "tilleggsinformasjon": [
+        "identificationSection.supplementalInformation",
+        "additionalReferences",
+    ],
+}
+
+
+def _count_words(value: Any) -> int:
+    """Rekursivt ord-antall i alle tekst-verdier. Tall/boolske (id-er, koder, koordinater)
+    teller ikke som «ord»."""
+    if isinstance(value, str):
+        return len(value.split())
+    if isinstance(value, bool) or value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return 0
+    if isinstance(value, dict):
+        return sum(_count_words(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return sum(_count_words(v) for v in value)
+    return 0
+
+
+def _resolve_path(obj: Any, dotted: str) -> Any:
+    cur = obj
+    for key in dotted.split("."):
+        if isinstance(cur, dict):
+            cur = cur.get(key)
+        else:
+            return None
+    return cur
+
+
+def _write_chapter_autofill(psdata_path: Path, spec_dir: Path) -> None:
+    """Beregn og skriv `chapterAutofill` (ord-antall per kapittel fra Geonorge-metadata +
+    datamodell) inn i psdata, så editoren kan vise hvilke kapitler som allerede er fylt."""
+    psdata = json.loads(psdata_path.read_text(encoding="utf-8"))
+    counts: dict[str, int] = {}
+    for chapter, paths in _CHAPTER_PSDATA_PATHS.items():
+        counts[chapter] = sum(_count_words(_resolve_path(psdata, p)) for p in paths)
+
+    # Datamodell/objektkatalog: fra feature_catalogue.json per datakilde (scope).
+    fc_words = 0
+    for fc in sorted(spec_dir.glob("**/*_feature_catalogue.json")):
+        try:
+            fc_words += _count_words(json.loads(fc.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    if fc_words:
+        counts["datamodell"] = counts.get("datamodell", 0) + fc_words
+
+    psdata["chapterAutofill"] = counts
+    psdata_path.write_text(
+        json.dumps(psdata, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
 _HEADING_RE = re.compile(r"^(#{1,6})\s+.+$")
 
 
@@ -220,6 +303,10 @@ def assemble_product_specification(
             repo_root or Path.cwd(),
             repo_raw_base,
         )
+
+    # Ord-antall per kapittel (Geonorge-metadata + datamodell) inn i psdata, så editoren
+    # viser hvilke kapitler som allerede er fylt fra eksisterende info.
+    _write_chapter_autofill(psdata_path, psdata_path.parent)
 
     psdata = json.loads(psdata_path.read_text(encoding="utf-8"))
 

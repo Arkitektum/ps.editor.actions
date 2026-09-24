@@ -75,6 +75,14 @@ inputs:
       defaultGeoJson, defaultPlainJson.
     required: false
     default: sosiJson
+  referenced-schemas:
+    description: >-
+      YAML/JSON list (or a path to one) of application schemas this model references
+      but does not define. Each entry needs 'name', 'target-namespace' and
+      'xmi-model'; 'xmlns-prefix', 'version', 'xsd-document' and 'location' are
+      optional. ShapeChange then emits an <import> for each, instead of copying the
+      borrowed types into this schema.
+    required: false
   represent-tagged-values:
     description: >-
       Comma-separated tagged values to emit as sc:taggedValue appinfo in the XSD.
@@ -186,6 +194,7 @@ runs:
         INPUT_JSON_SCHEMA_VERSION: ${{ inputs.json-schema-version }}
         INPUT_JSON_BASE_URI: ${{ inputs.json-base-uri }}
         INPUT_JSON_ENCODING_RULE: ${{ inputs.json-encoding-rule }}
+        INPUT_REFERENCED_SCHEMAS: ${{ inputs.referenced-schemas }}
         INPUT_REPRESENT_TAGGED_VALUES: ${{ inputs.represent-tagged-values }}
         INPUT_CODELIST_AS_DICTIONARY: ${{ inputs.codelist-as-dictionary }}
         INPUT_ENTITY_TYPE_NAME: ${{ inputs.entity-type-name }}
@@ -242,6 +251,9 @@ runs:
           fi
           if [ -n "$INPUT_JSON_ENCODING_RULE" ]; then
             ARGS+=("--json-encoding-rule" "$INPUT_JSON_ENCODING_RULE")
+          fi
+          if [ -n "$INPUT_REFERENCED_SCHEMAS" ]; then
+            ARGS+=("--referenced-schemas" "$INPUT_REFERENCED_SCHEMAS")
           fi
           if [ -n "$INPUT_REPRESENT_TAGGED_VALUES" ]; then
             ARGS+=("--represent-tagged-values" "$INPUT_REPRESENT_TAGGED_VALUES")

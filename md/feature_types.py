@@ -44,6 +44,9 @@ def render_feature_types_to_markdown(
         if not isinstance(feature_type, Mapping):
             raise TypeError("Each feature type entry must be a mapping")
 
+        if _is_external(feature_type):
+            continue
+
         name = str(feature_type.get("name", "Unnamed feature type")).strip() or "Unnamed feature type"
         if feature_type.get("abstract") is True:
             name = f"{name} (abstrakt)"
@@ -116,6 +119,16 @@ def render_feature_types_to_markdown(
     if output:
         return f"{output}\n\n{codelists_heading}\n\n{codelists_body}"
     return f"{codelists_heading}\n\n{codelists_body}"
+
+
+def _is_external(feature_type: Any) -> bool:
+    """Klasser som bare refereres, og er definert i en annen modellfil.
+
+    De har verken attributter eller beskrivelse, saa de hoerer ikke hjemme i
+    objektkatalogen. De tegnes derimot i diagrammet, slik at relasjoner paa tvers
+    av filer har noe aa feste seg i.
+    """
+    return isinstance(feature_type, Mapping) and feature_type.get("external") is True
 
 
 def _collect_codelists(

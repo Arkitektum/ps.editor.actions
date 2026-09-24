@@ -37,6 +37,8 @@ class _UmlClass:
     abstract: bool = False
     attributes: list[_UmlAttribute] = field(default_factory=list)
     package: str = ""
+    # Referenced by this model but defined in another file (an EA stub).
+    external: bool = False
 
 
 def load_feature_types_from_xmi(
@@ -66,6 +68,32 @@ def load_feature_types_from_xmi(
     text = _load_xmi_text(xmi_source, username=username, password=password, http_get=http_get)
     feature_types = _parse_feature_types(text)
     return _filter_feature_types(feature_types, include_only_features)
+
+
+def load_defined_class_names(
+    xmi_source: str | Path,
+    *,
+    username: str = "sosi",
+    password: str = "sosi",
+    http_get: HTTPGet | None = None,
+) -> set[str]:
+    """Names of every class a model file defines.
+
+    Used to work out which schema owns a type that another model only references.
+    Unlike :func:`load_feature_types_from_xmi` this is not limited to feature
+    types: data types and code lists matter too, because they are what a
+    referencing model inlines when it cannot resolve them.
+    """
+    text = _load_xmi_text(
+        xmi_source, username=username, password=password, http_get=http_get
+    )
+    root = ET.fromstring(text)
+    names: set[str] = set()
+    for class_elem in root.findall(".//UML:Class", _NS):
+        name = (class_elem.get("name") or "").strip()
+        if name:
+            names.add(name)
+    return names
 
 
 def _load_xmi_text(
@@ -143,9 +171,19 @@ def _parse_feature_types(text: str) -> list[dict[str, Any]]:
     package_by_class_id = _collect_class_packages(root)
     classes, order = _collect_classes(root, extra_tagged, package_by_class_id)
     parents = _collect_generalizations(root)
+    # Stubs are registered alongside the real classes so associations that cross
+    # into another model can be resolved. They are not feature types themselves
+    # and are filtered out again below.
+    stubs = _collect_class_stubs(root)
+    classes.update(stubs)
     associations = _collect_associations(root, classes)
 
-    classes_by_name = {info.name: info for info in classes.values()}
+    # Stubs are deliberately left out: a stub carries no stereotype, so letting one
+    # shadow a real class of the same name would stop nested datatypes from being
+    # expanded on attributes that reference it.
+    classes_by_name = {
+        info.name: info for info in classes.values() if not info.external
+    }
     codelists = _build_code_lists(
         {
             cid: info
@@ -170,7 +208,97 @@ def _parse_feature_types(text: str) -> list[dict[str, Any]]:
             )
         )
 
+    feature_types.extend(
+        _build_external_references(feature_types, stubs, associations)
+    )
+
     return feature_types
+
+
+def _collect_class_stubs(root: ET.Element) -> dict[str, _UmlClass]:
+    """Classes referenced by this model but defined in another file.
+
+    Enterprise Architect writes them as ``<EAStub UMLType="Class"/>`` carrying
+    only a name and an id -- no stereotype, no attributes, and no pointer to the
+    file that owns them.
+    """
+    stubs: dict[str, _UmlClass] = {}
+    for element in root.iter():
+        if not element.tag.endswith("EAStub"):
+            continue
+        if (element.get("UMLType") or "").strip().lower() != "class":
+            continue
+        stub_id = element.get("xmi.id")
+        name = (element.get("name") or "").strip()
+        if not stub_id or not name:
+            continue
+        stubs[stub_id] = _UmlClass(
+            id=stub_id, name=name, stereotype=None, tagged_values={}, external=True
+        )
+    return stubs
+
+
+def _build_external_references(
+    feature_types: Sequence[Mapping[str, Any]],
+    stubs: Mapping[str, _UmlClass],
+    associations: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Emit the stubs that take part in an association with a feature type.
+
+    Only association partners are included. A stub that merely appears as the
+    *subtype* of a generalization is an external model specialising ours -- an
+    inbound realization, not something this model imports -- and a stub used only
+    as an attribute type already shows up as the type text on that attribute.
+    """
+    known = {
+        str(entry.get("name")): entry
+        for entry in feature_types
+        if isinstance(entry, Mapping) and entry.get("name")
+    }
+
+    used: dict[str, list[dict[str, Any]]] = {}
+
+    # The stub owns the navigable end: "Arealplan --> RpOmraade".
+    for stub_id, stub in stubs.items():
+        # A file can hold both a real class and a stub of the same name, e.g. when
+        # the class also appears on a diagram owned by another package. The real
+        # definition wins; emitting the stub too would duplicate the box.
+        if stub.name in known:
+            continue
+        entries = [
+            dict(entry)
+            for entry in associations.get(stub_id, [])
+            if str(entry.get("target")) in known
+        ]
+        if entries:
+            used.setdefault(stub.name, []).extend(entries)
+
+    # A feature type points at the stub: the box is needed for the line to land.
+    stub_names = {stub.name for stub in stubs.values() if stub.name not in known}
+    for entry in feature_types:
+        relationships = entry.get("relationships")
+        if not isinstance(relationships, Mapping):
+            continue
+        for association in relationships.get("associations") or []:
+            target = str(association.get("target") or "")
+            if target in stub_names:
+                used.setdefault(target, [])
+
+    external: list[dict[str, Any]] = []
+    for name in sorted(used):
+        external.append(
+            {
+                "name": name,
+                "description": "",
+                "external": True,
+                "attributes": [],
+                "relationships": {
+                    "inheritance": [],
+                    "associations": used[name],
+                },
+            }
+        )
+    return external
 
 
 def _filter_feature_types(

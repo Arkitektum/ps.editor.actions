@@ -17,6 +17,7 @@ from md.product_specification import build_context  # noqa: E402
 from scripts.assemble_product_spec import (  # noqa: E402
     _build_output_file_deliveries,
     _augment_delivery_section,
+    _write_chapter_autofill,
 )
 
 
@@ -102,6 +103,38 @@ class OutputDeliveryTests(unittest.TestCase):
             # Existing metadata delivery kept + 3 generated files appended.
             self.assertEqual(deliveries[0], existing)
             self.assertEqual(len(deliveries), 4)
+
+
+class ChapterAutofillTests(unittest.TestCase):
+    def test_counts_geonorge_sections_and_feature_catalogue(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            spec = Path(directory)
+            psdata = {
+                "referenceSystemSection": {"spatialReferenceSystem": "EUREF89 UTM 33"},
+                "maintenanceSection": {"maintenanceAndUpdateFrequency": "Kontinuerlig oppdatering"},
+                "identificationSection": {"abstract": "Et datasett med tre ord"},
+                "metadataSection": {"contact": "Kartverket i Norge"},
+            }
+            psdata_path = spec / "psdata.json"
+            psdata_path.write_text(json.dumps(psdata), encoding="utf-8")
+            # Datamodell-kilden: feature_catalogue.json i en scope-undermappe.
+            scope = spec / "datakilde"
+            scope.mkdir()
+            (scope / "datakilde_feature_catalogue.json").write_text(
+                json.dumps([{"name": "Art", "description": "En art"}]), encoding="utf-8"
+            )
+
+            _write_chapter_autofill(psdata_path, spec)
+            counts = json.loads(psdata_path.read_text(encoding="utf-8"))["chapterAutofill"]
+
+            self.assertEqual(counts["referansesystem"], 3)  # "EUREF89 UTM 33"
+            self.assertEqual(counts["vedlikehold"], 2)  # "Kontinuerlig oppdatering"
+            self.assertEqual(counts["om_produktet"], 5)  # abstract
+            self.assertGreater(counts["metadata"], 0)
+            # datamodell fra feature_catalogue.json: "Art" + "En art"
+            self.assertEqual(counts["datamodell"], 3)
+            # Kapitler uten kilde er 0, ikke utelatt.
+            self.assertEqual(counts["termer_og_definisjoner"] if "termer_og_definisjoner" in counts else 0, 0)
 
 
 if __name__ == "__main__":  # pragma: no cover

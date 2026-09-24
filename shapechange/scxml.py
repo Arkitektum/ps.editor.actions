@@ -244,6 +244,10 @@ def _collect_class_specs(
     for feature_type in feature_types:
         if not isinstance(feature_type, Mapping):
             continue
+        # Classes defined in another model file carry no attributes, so emitting
+        # them would put an empty type into the XSD. They exist for the diagram.
+        if feature_type.get("external") is True:
+            continue
         name = _text(feature_type.get("name"))
         if not name or name in taken:
             continue
@@ -602,6 +606,7 @@ def build_scxml(
     xsd_document: str | None = None,
     json_document: str | None = None,
     as_dictionary: str = "model",
+    referenced_schemas: Sequence[Mapping[str, Any]] = (),
 ) -> ET.ElementTree:
     """Build a ShapeChange SCXML model from feature catalogue entries.
 
@@ -652,11 +657,25 @@ def build_scxml(
         ],
     )
 
+    # A type that another model owns is placed in that model's schema package.
+    # ShapeChange then derives an <import> for it and qualifies the reference with
+    # that schema's prefix, instead of us emitting a second local copy of a type
+    # that already exists in a published schema.
+    owners = _schema_owners(referenced_schemas)
+    borrowed: dict[str, list[_ClassSpec]] = {}
+    own_specs: list[_ClassSpec] = []
+    for spec in specs:
+        owner = owners.get(spec.name)
+        if owner:
+            borrowed.setdefault(owner, []).append(spec)
+        else:
+            own_specs.append(spec)
+
     # Sub-packages only exist when the source model carried package names (the
     # XMI loader is the only one that does). They inherit the target namespace
     # from the schema package, so they are not selected as separate schemas.
     grouped: dict[str, list[_ClassSpec]] = {}
-    for spec in specs:
+    for spec in own_specs:
         grouped.setdefault(spec.package if spec.stereotype == _ST_FEATURE_TYPE else "", []).append(spec)
 
     root_specs = grouped.pop("", [])
@@ -687,11 +706,65 @@ def build_scxml(
                     association_roles=roles_by_class.get(spec.name, []),
                 )
 
+    next_package = 2 + len(grouped)
+    for schema in referenced_schemas:
+        name = _text(schema.get("name"))
+        if not name:
+            continue
+        package_specs = borrowed.get(name, [])
+        if not package_specs:
+            # Nothing from this schema is actually referenced, so declaring it
+            # would add an import nobody uses.
+            continue
+        package = _sub(packages, "Package")
+        _sub(package, "name", name)
+        _sub(package, "id", f"P{next_package}")
+        next_package += 1
+        _add_stereotype(package, _ST_APPLICATION_SCHEMA)
+        stem = _safe_file_stem(name)
+        _add_tagged_values(
+            package,
+            [
+                ("targetNamespace", _text(schema.get("targetNamespace"))),
+                ("xmlns", _text(schema.get("xmlnsPrefix")) or stem.lower()[:6]),
+                ("version", _text(schema.get("version")) or "1.0"),
+                ("xsdDocument", _text(schema.get("xsdDocument")) or f"{stem}.xsd"),
+            ],
+        )
+        classes = _sub(package, "classes")
+        for spec in package_specs:
+            _write_class(
+                classes,
+                spec,
+                class_ids=class_ids,
+                association_roles=roles_by_class.get(spec.name, []),
+            )
+
     _write_associations(root, associations, class_ids)
 
     tree = ET.ElementTree(root)
     ET.indent(tree, space=" ")
     return tree
+
+
+def _schema_owners(
+    referenced_schemas: Sequence[Mapping[str, Any]],
+) -> dict[str, str]:
+    """Map a type name to the referenced schema that defines it.
+
+    Earlier entries win, so the caller controls precedence when two models
+    happen to define the same name.
+    """
+    owners: dict[str, str] = {}
+    for schema in referenced_schemas:
+        name = _text(schema.get("name"))
+        if not name:
+            continue
+        for type_name in schema.get("types") or ():
+            key = _text(type_name)
+            if key and key not in owners:
+                owners[key] = name
+    return owners
 
 
 def _safe_file_stem(name: str) -> str:
@@ -709,6 +782,7 @@ def write_scxml(
     xsd_document: str | None = None,
     json_document: str | None = None,
     as_dictionary: str = "model",
+    referenced_schemas: Sequence[Mapping[str, Any]] = (),
 ) -> Path:
     """Write the SCXML model to ``output_path`` and return the path."""
     tree = build_scxml(
@@ -720,6 +794,7 @@ def write_scxml(
         xsd_document=xsd_document,
         json_document=json_document,
         as_dictionary=as_dictionary,
+        referenced_schemas=referenced_schemas,
     )
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

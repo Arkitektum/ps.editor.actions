@@ -421,6 +421,15 @@ def _append_feature_type(
     class_header, class_alias = _class_header_and_alias(name)
     keyword = "abstract " if feature_type.get("abstract") is True else ""
 
+    if feature_type.get("external") is True:
+        # Defined in another model file, so there are no attributes to show. The
+        # box exists so the relationships that cross the file boundary have
+        # something to connect to.
+        lines.append(f"{indent}class {class_header} <<external>> {{")
+        lines.append(f"{indent}  ' definert i en annen modell")
+        lines.append(f"{indent}}}")
+        return class_alias
+
     lines.append(f"{indent}{keyword}class {class_header} <<featureType>> {{")
 
     attributes_obj = feature_type.get("attributes")

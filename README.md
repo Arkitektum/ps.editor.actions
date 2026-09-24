@@ -166,6 +166,7 @@ Inputs:
 - `json-schema-version` (default `2019-09`): One of `2020-12`, `2019-09`, `draft-07`, `OpenApi30`.
 - `json-base-uri`: Base URI used when constructing `$id` values in the JSON Schema output.
 - `json-encoding-rule` (default `sosiJson`): `sosiJson` is written into the generated configuration; the built-in alternatives are `defaultGeoJson` and `defaultPlainJson`.
+- `referenced-schemas`: YAML/JSON list (or a file path) of application schemas this model references but does not define, so ShapeChange imports the borrowed types instead of copying them — see [Schemas the model borrows from](#schemas-the-model-borrows-from).
 - `represent-tagged-values` (default `SOSI_navn,SOSI_verdi,NVDB_ID`): Tagged values emitted as `sc:taggedValue` appinfo in the XSD. Needs an encoding rule with `rule-xsd-all-tagged-values`, which `sosi` has.
 - `codelist-as-dictionary` (default `model`): `model`, `true` or `false`. Decides how code lists are encoded — see [Code lists](#code-lists).
 - `entity-type-name` (default `@type`): Name of the entity type member in the JSON Schema output.
@@ -255,6 +256,41 @@ Because the JSON structure is flat, the model ShapeChange sees is reconstructed:
 - `targetNamespace`, `xmlns`, `version`, `xsdDocument` and `jsonDocument` are synthesised from the action inputs, since no source carries them.
 
 Constraints (OCL) and classes that are not feature types do not survive the trip through the JSON structure. GeoPackage sources are the thinnest input of all — no relationships, no packages, no code lists — so their schema is a flat rendering of the tables.
+
+### Schemas the model borrows from
+
+A SOSI model is rarely self-contained. `Reguleringsplan-2024.xml` defines 35 feature types but references 55 more classes that live elsewhere — `Arealplan` and `Identifikasjon` in Planregister, `Posisjonskvalitet` and `Målemetode` in the general SOSI packages. Enterprise Architect records these as `<EAStub name="Arealplan" UMLType="Class"/>`, carrying a name and nothing else: no namespace, no file path.
+
+Left alone, the borrowed types are **copied into your schema**. The XSD looks fine and ShapeChange reports no warnings, but `Identifikasjon` ends up as `app:IdentifikasjonPropertyType` in your namespace instead of being imported from the schema that owns it. For the Reguleringsplan model that affects 43 types.
+
+`referenced-schemas` tells ShapeChange who owns what:
+
+```yaml
+- name: Planregister
+  xmi-model: https://sosi.geonorge.no/svn/SOSI/.../Arealplan%205.0/Planregister.xml
+  target-namespace: https://skjema.geonorge.no/SOSI/produktspesifikasjon/Planregister/20260101
+  xmlns-prefix: pr
+  version: "20260101"
+  location: https://skjema.geonorge.no/SOSI/produktspesifikasjon/Planregister/20260101/Planregister.xsd
+```
+
+The referenced model is read only to learn which type names it defines. Those types are then placed in that schema's package, and the result is a proper import:
+
+```xml
+<import namespace="https://skjema.geonorge.no/SOSI/produktspesifikasjon/Planregister/20260101"
+        schemaLocation="https://.../Planregister.xsd"/>
+...
+<element name="identifikasjon" type="pr:IdentifikasjonPropertyType"/>
+```
+
+Only your own schema is generated — the referenced ones are imported, not rebuilt, because `appSchemaNameRegex` still pins the run to the main schema.
+
+Things worth knowing:
+
+- **`location` is what supplies `schemaLocation`.** ShapeChange derives the import itself from the other package's target namespace, but it has no idea where that schema is published. Omit `location` and you get an import without a location. One entry per schema is enough — not one per type.
+- **The declaration cannot be derived from the model.** An EA stub has only a name, so the namespace, prefix and published location have to come from you. The file name is not a reliable guide either: `Reguleringsplan-2024.xml` contains a package called `Reguleringsplan-2026-Utkast`.
+- **A schema whose types are never used is skipped**, so an over-broad list costs nothing but a download.
+- **Types you do not declare stay local.** Declaring Planregister but not the general SOSI packages leaves `Posisjonskvalitet` in your namespace. Add another entry to move it too.
 
 ### The SOSI profile
 

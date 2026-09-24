@@ -21,9 +21,11 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -49,7 +51,10 @@ from shapechange.sosi import (  # noqa: E402
     SOSI_TAGGED_VALUES,
     SOSI_XSD_ENCODING_RULE,
 )
-from xmi.feature_catalog import load_feature_types_from_xmi  # noqa: E402
+from xmi.feature_catalog import (  # noqa: E402
+    load_defined_class_names,
+    load_feature_types_from_xmi,
+)
 
 MODEL_FILENAME = "model.scxml"
 CONFIG_FILENAME = "shapechange-config.xml"
@@ -129,6 +134,71 @@ def _derive_schema_name(args: argparse.Namespace) -> str:
     return stem or "Applikasjonsskjema"
 
 
+def _parse_referenced_schemas(value: str | None) -> list[dict[str, Any]]:
+    """Read the referenced-schemas declaration (inline YAML/JSON or a file path)."""
+    if not value or not value.strip():
+        return []
+
+    path = Path(value)
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else yaml.safe_load(value)
+    if isinstance(data, Mapping) and "referenced-schemas" in data:
+        data = data["referenced-schemas"]
+    if isinstance(data, (str, bytes)) or not isinstance(data, Sequence):
+        raise ValueError(
+            "referenced-schemas must be a list of mappings, or a mapping containing one."
+        )
+
+    schemas: list[dict[str, Any]] = []
+    for entry in data:
+        if not isinstance(entry, Mapping):
+            continue
+        name = str(entry.get("name") or "").strip()
+        namespace = str(entry.get("target-namespace") or "").strip()
+        if not name or not namespace:
+            raise ValueError(
+                "Each referenced schema needs both 'name' and 'target-namespace'."
+            )
+        stem = "".join(char for char in name if char.isalnum()) or "Skjema"
+        xsd_document = str(entry.get("xsd-document") or "").strip() or f"{stem}.xsd"
+        schemas.append(
+            {
+                "name": name,
+                "targetNamespace": namespace,
+                "xmlnsPrefix": str(entry.get("xmlns-prefix") or "").strip() or stem.lower()[:6],
+                "version": str(entry.get("version") or "").strip() or "1.0",
+                "xsdDocument": xsd_document,
+                # Where the schema is published. Without it the <import> is
+                # written without a schemaLocation.
+                "location": str(entry.get("location") or "").strip() or xsd_document,
+                "xmiModel": str(entry.get("xmi-model") or "").strip(),
+                "types": set(),
+            }
+        )
+    return schemas
+
+
+def _resolve_referenced_types(
+    schemas: Sequence[dict[str, Any]], args: argparse.Namespace
+) -> None:
+    """Fill in which type names each referenced schema owns.
+
+    The names come from the referenced model file itself. An EA stub records only
+    a name, so there is no way to derive this from the referencing model alone.
+    """
+    for schema in schemas:
+        source = schema.get("xmiModel")
+        if not source:
+            raise ValueError(
+                f"Referenced schema '{schema['name']}' needs 'xmi-model' so its "
+                "type names can be read."
+            )
+        schema["types"] = load_defined_class_names(
+            source,
+            username=args.xmi_username or "sosi",
+            password=args.xmi_password or "sosi",
+        )
+
+
 def _parse_targets(value: str) -> list[str]:
     return [part.strip() for part in str(value or "").split(",") if part.strip()]
 
@@ -148,6 +218,9 @@ def _generate(args: argparse.Namespace) -> int:
         return 1
 
     schema_name = _derive_schema_name(args)
+    referenced = _parse_referenced_schemas(args.referenced_schemas)
+    if referenced:
+        _resolve_referenced_types(referenced, args)
     targets = _parse_targets(args.targets)
 
     write_scxml(
@@ -160,6 +233,7 @@ def _generate(args: argparse.Namespace) -> int:
         xsd_document=args.xsd_document,
         json_document=args.json_document,
         as_dictionary=args.codelist_as_dictionary,
+        referenced_schemas=referenced,
     )
 
     write_config(
@@ -180,9 +254,15 @@ def _generate(args: argparse.Namespace) -> int:
         json_schema_target_class=args.json_schema_target_class,
         bundled_includes=args.bundled_includes,
         represent_tagged_values=_parse_targets(args.represent_tagged_values),
+        referenced_schemas=referenced,
     )
 
     print(f"Application schema: {schema_name}")
+    for schema in referenced:
+        print(
+            f"Referenced schema: {schema['name']} <{schema['targetNamespace']}> "
+            f"({len(schema['types'])} typer definert)"
+        )
     print(f"XSD encoding rule: {args.xsd_encoding_rule}")
     print(f"JSON encoding rule: {args.json_encoding_rule}")
     print(f"Target namespace: {args.target_namespace}")
@@ -398,6 +478,17 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
             "in the generated configuration and omits rule-json-cls-name-as-anchor, "
             "which produces $anchor values that are invalid for non-ASCII class "
             "names. Built-in alternatives are defaultGeoJson and defaultPlainJson."
+        ),
+    )
+    parser.add_argument(
+        "--referenced-schemas",
+        help=(
+            "YAML/JSON list (or a path to one) of application schemas this model "
+            "references but does not define. Each entry needs 'name', "
+            "'target-namespace' and 'xmi-model'; 'xmlns-prefix', 'version', "
+            "'xsd-document' and 'location' are optional. ShapeChange then derives "
+            "an <import> for each instead of copying the borrowed types into this "
+            "schema."
         ),
     )
     parser.add_argument(

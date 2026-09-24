@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<XMI xmi.version="1.1" xmlns:UML="omg.org/UML1.3">
+  <XMI.content>
+    <UML:Model name="Fixture">
+      <UML:Namespace.ownedElement>
+
+        <UML:Class xmi.id="FT1" name="Planomraade">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="FeatureType" />
+          </UML:ModelElement.stereotype>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="ATTR_ADR" name="adresse">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="type" value="Adresse" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+            <UML:Attribute xmi.id="ATTR_ID" name="identifikasjon">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="type" value="Identifikasjon" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+
+        <UML:Class xmi.id="DT1" name="Adresse">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="dataType" />
+          </UML:ModelElement.stereotype>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="ATTR_GATE" name="gatenavn">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="type" value="CharacterString" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+
+        <!-- Stubb med samme navn som datatypen over. Faar den lov aa skygge for
+             den ekte klassen, slutter nostede attributter aa bli utvidet. -->
+        <EAStub xmi.id="STUB_DT" name="Adresse" UMLType="Class" />
+
+        <UML:Class xmi.id="FT2" name="Grense">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="FeatureType" />
+          </UML:ModelElement.stereotype>
+        </UML:Class>
+
+        <!-- Definert i en annen modellfil, men aggregerer Planomraade herfra.
+             Stubben eier den navigerbare enden, slik Arealplan gjoer i
+             Reguleringsplan-modellen. -->
+        <EAStub xmi.id="STUB_EXT" name="Arealplan" UMLType="Class" />
+
+        <!-- Ekstern modell som spesialiserer vaar klasse: en innkommende
+             realiseringsreferanse, ikke en import. Skal utelates. -->
+        <EAStub xmi.id="STUB_SUB" name="LegacySpesialisering" UMLType="Class" />
+
+        <!-- Brukt kun som attributt-type; vises allerede som typetekst. -->
+        <EAStub xmi.id="STUB_TYPE" name="Identifikasjon" UMLType="Class" />
+
+        <!-- Samme navn som en ekte klasse i fila. Skal ikke gi dobbel boks. -->
+        <EAStub xmi.id="STUB_DUP" name="Grense" UMLType="Class" />
+
+        <UML:Association xmi.id="ASSOC1">
+          <UML:Association.connection>
+            <UML:AssociationEnd type="STUB_EXT" isNavigable="false" aggregation="shared" />
+            <UML:AssociationEnd type="FT1" name="planomraade" isNavigable="true"
+                                multiplicity="0..*" />
+          </UML:Association.connection>
+        </UML:Association>
+
+        <UML:Generalization subtype="STUB_SUB" supertype="FT1" xmi.id="GEN1" />
+
+      </UML:Namespace.ownedElement>
+    </UML:Model>
+  </XMI.content>
+</XMI>

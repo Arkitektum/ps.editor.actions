@@ -11,8 +11,9 @@ both "succeeds" against someone else's schema.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 from xml.etree import ElementTree as ET
 
 from shapechange.sosi import (
@@ -112,6 +113,35 @@ def _include_path(parent: ET.Element, path: Path) -> None:
     element.set("href", path.as_uri())
 
 
+def _xml_namespaces(
+    parent: ET.Element, referenced_schemas: Sequence[Mapping[str, Any]]
+) -> None:
+    """Give the referenced schemas a prefix and a schemaLocation.
+
+    ShapeChange derives the ``<import>`` itself from the other package's
+    targetNamespace, but it has no way of knowing where that schema is published.
+    One entry per schema is enough -- far less than a map entry per type.
+    """
+    entries = [
+        (
+            str(schema.get("xmlnsPrefix") or "").strip(),
+            str(schema.get("targetNamespace") or "").strip(),
+            str(schema.get("location") or "").strip(),
+        )
+        for schema in referenced_schemas
+    ]
+    entries = [(prefix, ns, loc) for prefix, ns, loc in entries if prefix and ns]
+    if not entries:
+        return
+    container = _sub(parent, "xmlNamespaces")
+    for prefix, namespace, location in entries:
+        element = _sub(container, "XmlNamespace")
+        element.set("nsabr", prefix)
+        element.set("ns", namespace)
+        if location:
+            element.set("location", location)
+
+
 def _json_map_entries(
     parent: ET.Element, entries: Sequence[tuple[str, str]]
 ) -> None:
@@ -166,6 +196,7 @@ def build_config(
     xml_schema_target_class: str = XML_SCHEMA_TARGET_CLASS,
     json_schema_target_class: str = JSON_SCHEMA_TARGET_CLASS,
     bundled_includes: bool = False,
+    referenced_schemas: Sequence[Mapping[str, Any]] = (),
     represent_tagged_values: Sequence[str] = SOSI_TAGGED_VALUES,
     report_level: str = "INFO",
 ) -> ET.ElementTree:
@@ -257,6 +288,7 @@ def build_config(
             _encoding_rules(
                 xsd_target, xsd_encoding_rule, xsd_rules, extends="iso19136_2007"
             )
+        _xml_namespaces(xsd_target, referenced_schemas)
         _include(xsd_target, include_base, "StandardRules.xml")
         _include(xsd_target, include_base, "StandardNamespaces.xml")
         _include(xsd_target, include_base, "StandardMapEntries.xml")
