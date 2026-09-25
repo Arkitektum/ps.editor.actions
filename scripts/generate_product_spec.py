@@ -30,6 +30,7 @@ from md.product_specification import (  # noqa: E402
 from catalogue_overrides import apply_overrides, load_overrides  # noqa: E402
 from geopackage.feature_types import load_feature_types_from_geopackage  # noqa: E402
 from odcs.writer import write_odcs  # noqa: E402
+from postgis.feature_types import load_feature_types_from_postgis  # noqa: E402
 from postgis.writer import write_postgis_ddl  # noqa: E402
 from geopackage.writer import (  # noqa: E402
     _fetch_geonorge_codelist,
@@ -237,6 +238,8 @@ def _normalize_scope_generator(value: str | None) -> str:
         return "ogc"
     if normalized in {"geopackage", "gpkg"}:
         return "geopackage"
+    if normalized in {"postgis", "postgresql", "sql"}:
+        return "postgis"
     return ""
 
 
@@ -280,6 +283,14 @@ def _build_scope_catalogues(
                 url,
                 username=xmi_username or "sosi",
                 password=xmi_password or "sosi",
+            )
+        elif generator == "postgis":
+            # A DDL script (.sql), read rather than executed. "schema" picks one
+            # database schema when the script defines several.
+            schema_name = scope.get("schema")
+            feature_types = load_feature_types_from_postgis(
+                url,
+                schema=schema_name.strip() if isinstance(schema_name, str) and schema_name.strip() else None,
             )
         elif generator == "geopackage":
             feature_types = load_feature_types_from_geopackage(
@@ -528,6 +539,7 @@ _SOURCE_KIND_LABELS: dict[str, str] = {
     "xmi": "SOSI UML XMI-fil",
     "ogc": "OGC API - Features",
     "geopackage": "GeoPackage",
+    "postgis": "PostGIS-skjema (SQL)",
 }
 
 
@@ -544,7 +556,7 @@ def _format_source_reference(url: str, generator: str) -> str:
 
     # URL-suffiks-forfining gjelder ikke GeoPackage: kilde-URL-en er ofte en
     # Atom-feed som ender på «.xml», og skal ikke feilmerkes som XMI.
-    if generator != "geopackage":
+    if generator not in ("geopackage", "postgis"):
         lower = url.lower().split("?", 1)[0]
         if lower.endswith(".xsd"):
             label = "GML-skjema (XSD)"

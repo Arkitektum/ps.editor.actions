@@ -378,10 +378,37 @@ Where PostGIS can say more than a GeoPackage, it does:
 - **Enumerations become `CHECK` constraints**, since a closed `<<enumeration>>` has no register to grow from.
 - **Associations follow their multiplicities.** A single-valued end becomes a `<role>_fk` column, many-to-many becomes a join table with its own `objid` and a unique pair of foreign keys. When only one end's multiplicity is known — sources other than XMI record just the far end — a join table is used, since it fits every case. An association to an abstract class references each concrete subtype.
 - Descriptions become `COMMENT ON TABLE`/`COMMENT ON COLUMN`, and every foreign-key column is indexed.
+- External classes (`external: true`, defined in another model) get no table, and associations to them are left out.
 
 Table and column names are lowercased and transliterated to ASCII: `æ`→`ae`, `ø`→`oe`, `å`→`aa`, and anything else outside `[a-z0-9_]` becomes `_`, so `Dyrkbar jord.Høyde` becomes `dyrkbar_jord.hoeyde`. Names longer than PostgreSQL's 63-byte limit are shortened with a hash suffix rather than truncated, so they cannot collide. Code values and descriptions keep their original spelling.
 
-From Python, `postgis.build_postgis_ddl(feature_types, ...)` returns the script and `postgis.write_postgis_ddl(feature_types, path, ...)` writes it. Both also take `default_srid` (default 25833, used when a feature type carries no storage CRS), `allow_z`, `owner` (the schema's `AUTHORIZATION`) and `read_role` (granted `SELECT` on the schema's tables).
+From Python, `postgis.build_postgis_ddl(feature_types, ...)` returns the script and `postgis.write_postgis_ddl(feature_types, path, ...)` writes it. Both also take `default_srid` (default 25833, used when a feature type carries no storage CRS), `allow_z`, `owner` (the schema's `AUTHORIZATION`), `read_role` (granted `SELECT` on the schema's tables) and `model_metadata` (see below).
+
+### Reading a PostGIS schema back
+
+`postgis.load_feature_types_from_postgis(path_or_url, schema=None)` reads a `.sql` script back into feature types, the same structure the XMI, OGC API and GeoPackage loaders return. The script is parsed, not executed, so no database or driver is needed. As a scope source:
+
+```yaml
+scopes:
+  - name: database
+    url: produktspesifikasjon/adm/adm.postgis.sql
+    generator: postgis
+    schema: administrative_enheter   # optional: one schema out of several
+```
+
+**Model metadata.** Lowercased names and flattened columns lose information: `lokalId` becomes `lokalid`, `identifikasjon.lokalId` becomes the column `identifikasjon_lokalid`, and abstract supertypes have no table. So the writer also records the model as a last line in each table and column comment:
+
+```sql
+COMMENT ON COLUMN "kommune"."identifikasjon_lokalid" IS 'lokal identifikator av et objekt
+
+@ps {"from":"SOSI_Fellesegenskaper","path":[{"name":"identifikasjon","type":"Identifikasjon",...},{"name":"lokalId",...}]}';
+```
+
+The line holds the attribute's own keys (name, type, multiplicity, tagged values, value domain), its path through flattened data types, the class that declared it, and on feature tables the feature type itself plus the types that have no table. A script written with it reads back into exactly the feature catalogue it came from. Comments are part of the schema, so the metadata survives `pg_dump --schema-only`. Code values that the lookup tables or `CHECK` constraints already hold are not repeated. Pass `model_metadata=False` to leave the line out.
+
+**Other scripts.** Without the `@ps` lines — `pg_dump --schema-only` output, full dumps (their `COPY` data fills the code lists), scripts from the Gistools PostGIS generator — the reader applies the writer's conventions in reverse: `identifier`/`description` tables are code lists, a table with one required foreign key that cascades from an owner (or is named `<owner>_…`) holds a repeating attribute, two foreign keys unique together form a many-to-many association, any other foreign key to a feature table is an association, `CHECK (col IN …)` is an enumeration, and `objtype`'s default gives the class name. Geometry comes from `geometry(Type, srid)`, `AddGeometryColumn`, or `enforce_srid` checks. Names then stay as the database has them, and flattened columns stay flat.
+
+The parser splits statements on `;` outside strings, quoted names, comments and dollar-quoted function bodies, and skips statements it does not need (functions, indexes, grants, `SET`). A recognised statement that does not parse raises an error naming it.
 
 ## Template
 
@@ -424,6 +451,8 @@ scopes:
     generator: ogc_feature_api
     description: Tjeneste for innsyn i planområder som er varslet for planlegging igangsatt.
 ```
+
+`generator` is one of `xmi`, `ogc_feature_api`, `geopackage` and `postgis` (a `.sql` script — see [Reading a PostGIS schema back](#reading-a-postgis-schema-back)).
 
 Each scope writes its catalogue to `<spec-directory>/<scope-name>/objektkatalog.md`, and the main specification links to them.
 

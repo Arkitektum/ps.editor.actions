@@ -23,11 +23,25 @@ foreign keys or join tables depending on their multiplicities.
 
 Table and column names are lowercased and transliterated to plain ASCII
 (``æ``→``ae``, ``ø``→``oe``, ``å``→``aa``), as in the Gistools PostGIS generator.
+
+That throws information away -- ``lokalId`` becomes ``lokalid``, a flattened
+``identifikasjon.lokalId`` becomes one column, abstract supertypes disappear -- so
+the model itself is recorded as well, as a machine-readable line at the end of the
+table and column comments::
+
+    COMMENT ON COLUMN "kommune"."identifikasjon_lokalid" IS 'Lokal identifikator
+
+    @ps {"from":"SOSI_Fellesegenskaper","path":[{"name":"identifikasjon",...},...]}';
+
+:mod:`postgis.feature_types` reads it back and reproduces the feature catalogue.
+Comments belong to the schema, so the metadata survives ``pg_dump --schema-only``
+where a metadata table's rows would not.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -40,12 +54,20 @@ from geopackage.writer import (
     _SOSI_GEOM,
     PRIMARY_KEY_COLUMN,
     CodeListResolver,
-    _effective_attributes,
     _epsg_code,
     _geometry_column_name,
     _is_multivalued,
     _memoize_resolver,
 )
+
+# Marks the machine-readable model line in a comment. The reader splits on it.
+METADATA_PREFIX = "@ps "
+# Key for the position of an attribute (or feature type) in its original list, so
+# the reader can restore the order that columns and child tables no longer show.
+METADATA_INDEX = "@i"
+# Placeholder for listed values that the lookup table's rows or the CHECK
+# constraint already hold, so they are not written twice.
+METADATA_ROWS = "@rows"
 
 # Column holding the model's class name, as in the Gistools PostGIS generator. It
 # tells rows apart once inheritance has folded several classes into one table.
@@ -187,6 +209,9 @@ class Column:
     comment: str | None = None
     geometry: bool = False
     check_values: list[str] | None = None
+    # Model metadata: the class that declared the attribute and the attribute's
+    # path from that class, one segment per level of flattened data type.
+    meta: dict[str, Any] | None = None
 
 
 @dataclass
@@ -206,6 +231,9 @@ class Table:
     columns: list[Column] = field(default_factory=list)
     unique: list[list[str]] = field(default_factory=list)
     rows: list[tuple[str, str | None]] = field(default_factory=list)
+    # Model metadata of a feature table: the feature type minus its attributes,
+    # and the types that have no table of their own (abstract, external).
+    meta: dict[str, Any] | None = None
 
     def add_column(self, column: Column) -> Column:
         """Add a column, renaming it when a sanitised name is already taken
@@ -253,6 +281,34 @@ def _code_values(items: Any) -> list[tuple[str, str | None]]:
     return values
 
 
+def listed_values_from_rows(rows: list[tuple[str, str | None]]) -> list[dict[str, str]]:
+    """``listedValues`` as the reader rebuilds them from lookup-table rows."""
+    return [
+        {"value": value, "label": label} if label is not None else {"value": value}
+        for value, label in rows
+    ]
+
+
+def _segment(attribute: dict[str, Any], index: int, *, leaf: bool) -> dict[str, Any]:
+    """One level of an attribute's path, as recorded in the model metadata.
+
+    The attribute's own keys are kept as they are, so whatever the source model
+    carries (tagged values, stereotypes) survives. A leaf's description is left
+    out when it is in the column comment already; nested attributes are left out
+    of a non-leaf, since they are columns of their own.
+    """
+    segment = {
+        key: value
+        for key, value in attribute.items()
+        if not (key == "attributes" and not leaf)
+        and not (key == "description" and leaf and value)
+    }
+    if isinstance(segment.get("valueDomain"), dict):
+        segment["valueDomain"] = dict(segment["valueDomain"])
+    segment[METADATA_INDEX] = index
+    return segment
+
+
 class _ModelBuilder:
     def __init__(
         self,
@@ -261,27 +317,33 @@ class _ModelBuilder:
         default_srid: int,
         allow_z: bool,
         object_type_column: bool,
+        model_metadata: bool,
         codelist_resolver: CodeListResolver | None,
     ) -> None:
         self.feature_types = [ft for ft in feature_types if isinstance(ft, dict)]
         self.default_srid = default_srid
         self.allow_z = allow_z
         self.object_type_column = object_type_column
+        self.model_metadata = model_metadata
         self.resolver = codelist_resolver
         self.model = PostgisModel()
         self.by_name = {
             ft["name"]: ft for ft in self.feature_types if isinstance(ft.get("name"), str)
         }
+        self.index_of = {id(ft): index for index, ft in enumerate(self.feature_types)}
         self.table_for_type: dict[str, str] = {}
         self.codelists: dict[str, Table] = {}
-        self.pending_children: list[tuple[Table, str, dict[str, Any], int]] = []
+        self.pending_children: list[tuple[Any, ...]] = []
         self.subtypes: dict[str, list[str]] = {}
         for ft in self.feature_types:
-            relationships = ft.get("relationships")
-            parents = relationships.get("inheritance", []) if isinstance(relationships, dict) else []
-            for parent in parents:
-                if isinstance(parent, str):
-                    self.subtypes.setdefault(parent, []).append(ft["name"])
+            for parent in self._parents(ft):
+                self.subtypes.setdefault(parent, []).append(ft["name"])
+
+    @staticmethod
+    def _parents(ft: dict[str, Any]) -> list[str]:
+        relationships = ft.get("relationships")
+        parents = relationships.get("inheritance", []) if isinstance(relationships, dict) else []
+        return [parent for parent in parents if isinstance(parent, str)]
 
     # -- tables ----------------------------------------------------------- #
 
@@ -299,21 +361,26 @@ class _ModelBuilder:
         return table
 
     def build(self) -> PostgisModel:
-        # Feature tables claim their names first, so a lookup or child table never
-        # takes the name a feature type would have had.
+        # External classes are defined in another model, and abstract ones only
+        # through their subtypes; neither gets a table.
         concrete = [
             ft
             for ft in self.feature_types
-            if isinstance(ft.get("name"), str) and ft["name"].strip() and ft.get("abstract") is not True
+            if isinstance(ft.get("name"), str)
+            and ft["name"].strip()
+            and ft.get("abstract") is not True
+            and ft.get("external") is not True
         ]
+        # Feature tables claim their names first, so a lookup or child table never
+        # takes the name a feature type would have had.
         for ft in concrete:
             self.table_for_type[ft["name"]] = self._unique_table_name(pg_name(ft["name"]))
-        for ft in concrete:
-            self._build_feature_table(ft)
+        feature_tables = [self._build_feature_table(ft) for ft in concrete]
         while self.pending_children:
-            owner, path, attribute, srid = self.pending_children.pop(0)
-            self._build_child_table(owner, path, attribute, srid)
+            self._build_child_table(*self.pending_children.pop(0))
         self._build_associations()
+        if self.model_metadata:
+            self._record_tableless_types(concrete, feature_tables)
         self.model.tables.sort(key=lambda table: _KIND_ORDER[table.kind])
         return self.model
 
@@ -321,14 +388,59 @@ class _ModelBuilder:
         name = _POSTGIS_GEOMETRY.get(kind, "Geometry")
         return f"geometry({name}{'Z' if self.allow_z else ''}, {srid})"
 
-    def _build_feature_table(self, ft: dict[str, Any]) -> None:
+    def _attributes_with_origin(
+        self, ft: dict[str, Any], _seen: set[str] | None = None
+    ) -> list[tuple[dict[str, Any], str, int]]:
+        """The attributes of ``ft`` including inherited ones, each with the class
+        that declared it and its position there.
+
+        Same order and de-duplication as the GeoPackage writer's
+        ``_effective_attributes``: supertype attributes first, the first
+        occurrence of a name wins.
+        """
+        seen = _seen if _seen is not None else set()
+        entries: list[tuple[dict[str, Any], str, int]] = []
+        for parent_name in self._parents(ft):
+            if parent_name in seen:
+                continue
+            seen.add(parent_name)
+            parent = self.by_name.get(parent_name)
+            if parent:
+                entries.extend(self._attributes_with_origin(parent, seen))
+        entries.extend(
+            (attribute, ft["name"], index)
+            for index, attribute in enumerate(ft.get("attributes") or [])
+        )
+        if _seen is not None:
+            return entries
+        names: set[str] = set()
+        result = []
+        for attribute, origin, index in entries:
+            name = attribute.get("name") if isinstance(attribute, dict) else None
+            if isinstance(name, str) and name:
+                if name in names:
+                    continue
+                names.add(name)
+            result.append((attribute, origin, index))
+        return result
+
+    def _build_feature_table(self, ft: dict[str, Any]) -> Table:
         table = self._add_table(
             Table(self.table_for_type[ft["name"]], "feature", comment=ft.get("description") or None)
         )
+        if self.model_metadata:
+            # The description is in the comment already; an empty one is kept, so
+            # the reader can tell "" from a missing description.
+            recorded = {
+                key: value
+                for key, value in ft.items()
+                if key != "attributes" and not (key == "description" and value)
+            }
+            table.meta = {"type": recorded, METADATA_INDEX: self.index_of[id(ft)]}
         table.add_column(_primary_key_column())
-        attributes = _effective_attributes(ft, self.by_name)
+        entries = self._attributes_with_origin(ft)
         if self.object_type_column and not any(
-            isinstance(a, dict) and pg_name(a.get("name")) == OBJECT_TYPE_COLUMN for a in attributes
+            isinstance(a, dict) and pg_name(a.get("name")) == OBJECT_TYPE_COLUMN for a, _, _ in entries
         ):
             table.add_column(
                 Column(OBJECT_TYPE_COLUMN, "text", not_null=True, default=_literal(ft["name"]))
@@ -347,20 +459,83 @@ class _ModelBuilder:
                 Column(pg_name(_geometry_column_name(ft)), self._geometry_type(kind, srid), geometry=True)
             )
 
-        self._add_attributes(table, attributes, prefix="", required=True, srid=srid)
+        self._add_attributes(table, entries, prefix="", required=True, srid=srid, segments=[])
+        return table
+
+    def _record_tableless_types(
+        self, concrete: list[dict[str, Any]], tables: list[Table]
+    ) -> None:
+        """Record every type without a table in the metadata of one feature table.
+
+        Abstract supertypes and external classes have no table, so the reader
+        could not know about them otherwise. Each is recorded once, on the first
+        table it is connected to (a subtype, or an end of an association with it),
+        and on the first table when it is connected to none.
+        """
+        if not tables:
+            return
+        table_names = set(self.table_for_type)
+        tableless = [
+            ft
+            for ft in self.feature_types
+            if isinstance(ft.get("name"), str) and ft["name"] not in table_names
+        ]
+
+        def ancestors(ft: dict[str, Any]) -> set[str]:
+            found: set[str] = set()
+            stack = list(self._parents(ft))
+            while stack:
+                name = stack.pop()
+                if name in found:
+                    continue
+                found.add(name)
+                parent = self.by_name.get(name)
+                if parent:
+                    stack.extend(self._parents(parent))
+            return found
+
+        def targets(ft: dict[str, Any]) -> set[str]:
+            relationships = ft.get("relationships")
+            associations = (
+                relationships.get("associations") if isinstance(relationships, dict) else None
+            )
+            return {
+                a["target"]
+                for a in associations or []
+                if isinstance(a, dict) and isinstance(a.get("target"), str)
+            }
+
+        for other in tableless:
+            name = other["name"]
+            owner = next(
+                (
+                    table
+                    for ft, table in zip(concrete, tables)
+                    if name in ancestors(ft) or name in targets(ft) or ft["name"] in targets(other)
+                ),
+                tables[0],
+            )
+            recorded = {key: value for key, value in other.items() if key != "attributes"}
+            if "attributes" in other and not other.get("attributes"):
+                recorded["attributes"] = other["attributes"]
+            assert owner.meta is not None
+            owner.meta.setdefault("related", []).append(
+                {"type": recorded, METADATA_INDEX: self.index_of[id(other)]}
+            )
 
     # -- attributes ------------------------------------------------------- #
 
     def _add_attributes(
         self,
         table: Table,
-        attributes: list[Any],
+        entries: list[tuple[dict[str, Any], str, int]],
         *,
         prefix: str,
         required: bool,
         srid: int,
+        segments: list[dict[str, Any]],
     ) -> None:
-        for attribute in attributes:
+        for attribute, origin, index in entries:
             if not isinstance(attribute, dict):
                 continue
             name = attribute.get("name")
@@ -370,7 +545,9 @@ class _ModelBuilder:
             cardinality = attribute.get("cardinality")
 
             if _is_multivalued(cardinality):
-                self.pending_children.append((table, path, attribute, srid))
+                self.pending_children.append(
+                    (table, path, attribute, srid, origin, segments, index)
+                )
                 continue
 
             # A flattened field is only mandatory when every level above it is.
@@ -378,10 +555,24 @@ class _ModelBuilder:
             nested = attribute.get("attributes")
             if isinstance(nested, list) and nested:
                 self._add_attributes(
-                    table, nested, prefix=f"{path}_", required=attribute_required, srid=srid
+                    table,
+                    [(child, origin, position) for position, child in enumerate(nested)],
+                    prefix=f"{path}_",
+                    required=attribute_required,
+                    srid=srid,
+                    segments=[*segments, _segment(attribute, index, leaf=False)],
                 )
                 continue
-            self._add_value_column(table, path, attribute, required=attribute_required, srid=srid)
+            self._add_value_column(
+                table,
+                path,
+                attribute,
+                required=attribute_required,
+                srid=srid,
+                origin=origin,
+                segments=segments,
+                index=index,
+            )
 
     def _add_value_column(
         self,
@@ -391,13 +582,24 @@ class _ModelBuilder:
         *,
         required: bool,
         srid: int,
+        origin: str,
+        segments: list[dict[str, Any]],
+        index: int,
+        recorded: dict[str, Any] | None = None,
     ) -> None:
+        """Add the column for one leaf attribute. ``recorded`` is the attribute
+        as the metadata should show it, when that differs from ``attribute``."""
         name = pg_name(path)
         if name in (PRIMARY_KEY_COLUMN, OBJECT_TYPE_COLUMN) and table.has_column(name):
             return  # the synthetic column already stands for it
         raw_type = str(attribute.get("type") or "").strip()
         low = raw_type.lower()
         description = attribute.get("description") or None
+        meta = (
+            {"from": origin, "path": [*segments, _segment(recorded or attribute, index, leaf=True)]}
+            if self.model_metadata
+            else None
+        )
 
         geometry_kind = _GM_GEOM.get(low) or _SOSI_GEOM.get(low)
         if geometry_kind is None and low.startswith("gm_"):
@@ -409,6 +611,7 @@ class _ModelBuilder:
                 not_null=required,
                 geometry=True,
                 comment=description,
+                meta=meta,
             )
             # A geometry dict and a geometry attribute can describe the same property.
             if not any(c.name == name and c.geometry for c in table.columns):
@@ -416,7 +619,7 @@ class _ModelBuilder:
             return
 
         column = table.add_column(
-            Column(name, _COLUMN_TYPE.get(low, "text"), not_null=required, comment=description)
+            Column(name, _COLUMN_TYPE.get(low, "text"), not_null=required, comment=description, meta=meta)
         )
         value_domain = attribute.get("valueDomain")
         if isinstance(value_domain, dict):
@@ -426,7 +629,9 @@ class _ModelBuilder:
         self, table: Table, column: Column, type_name: str, value_domain: dict[str, Any]
     ) -> None:
         code_list = value_domain.get("codeList")
-        values = _code_values(value_domain.get("listedValues"))
+        listed = value_domain.get("listedValues")
+        values = _code_values(listed)
+        from_listed = bool(values)
         if not values and code_list and self.resolver:
             values = _code_values(self.resolver(str(code_list)))
 
@@ -442,12 +647,19 @@ class _ModelBuilder:
             # A closed <<enumeration>> has no register to grow from, so the values
             # belong in the table definition.
             column.check_values = [value for value, _ in values]
-            return
+            stored = [{"value": value} for value, _ in values]
+        else:
+            lookup = self._codelist_table(type_name, table, column, values, value_domain)
+            self.model.foreign_keys.append(
+                ForeignKey(table.name, column.name, lookup.name, CODELIST_KEY_COLUMN)
+            )
+            stored = listed_values_from_rows(values)
 
-        lookup = self._codelist_table(type_name, table, column, values, value_domain)
-        self.model.foreign_keys.append(
-            ForeignKey(table.name, column.name, lookup.name, CODELIST_KEY_COLUMN)
-        )
+        # The values are in the database already; the metadata only repeats them
+        # when that copy would not read back exactly (labels a CHECK cannot hold,
+        # duplicates, codes that are not strings).
+        if column.meta and from_listed and stored == listed:
+            column.meta["path"][-1]["valueDomain"]["listedValues"] = METADATA_ROWS
 
     def _codelist_table(
         self,
@@ -483,7 +695,14 @@ class _ModelBuilder:
         return table
 
     def _build_child_table(
-        self, owner: Table, path: str, attribute: dict[str, Any], srid: int
+        self,
+        owner: Table,
+        path: str,
+        attribute: dict[str, Any],
+        srid: int,
+        origin: str,
+        segments: list[dict[str, Any]],
+        index: int,
     ) -> None:
         """Give a repeating attribute its own table, one row per value.
 
@@ -504,13 +723,31 @@ class _ModelBuilder:
 
         nested = attribute.get("attributes")
         if isinstance(nested, list) and nested:
-            self._add_attributes(child, nested, prefix="", required=True, srid=srid)
+            self._add_attributes(
+                child,
+                [(entry, origin, position) for position, entry in enumerate(nested)],
+                prefix="",
+                required=True,
+                srid=srid,
+                segments=[*segments, _segment(attribute, index, leaf=False)],
+            )
         else:
             # The outer multiplicity is carried by the relation, so each row holds
-            # exactly one value, in a column named after the attribute itself.
+            # exactly one value, in a column named after the attribute itself. The
+            # metadata keeps the real multiplicity.
             single = dict(attribute)
             single["cardinality"] = "1"
-            self._add_value_column(child, str(attribute["name"]), single, required=True, srid=srid)
+            self._add_value_column(
+                child,
+                str(attribute["name"]),
+                single,
+                required=True,
+                srid=srid,
+                origin=origin,
+                segments=segments,
+                index=index,
+                recorded=attribute,
+            )
 
     # -- associations ----------------------------------------------------- #
 
@@ -615,6 +852,7 @@ def build_postgis_model(
     default_srid: int = 25833,
     allow_z: bool = False,
     object_type_column: bool = True,
+    model_metadata: bool = True,
     codelist_resolver: CodeListResolver | None = None,
 ) -> PostgisModel:
     """Build the table model for ``feature_types`` without rendering it."""
@@ -624,8 +862,18 @@ def build_postgis_model(
         default_srid=default_srid,
         allow_z=allow_z,
         object_type_column=object_type_column,
+        model_metadata=model_metadata,
         codelist_resolver=resolver,
     ).build()
+
+
+def _comment_text(comment: str | None, meta: dict[str, Any] | None) -> str | None:
+    """The comment as written: the human text, then the model metadata on a
+    line of its own. JSON escapes newlines, so the metadata stays one line."""
+    parts = [comment] if comment else []
+    if meta is not None:
+        parts.append(METADATA_PREFIX + json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
+    return "\n\n".join(parts) or None
 
 
 # --------------------------------------------------------------------------- #
@@ -755,15 +1003,15 @@ class _Renderer:
 
         comments: list[str] = []
         for table in self.model.tables:
-            if table.comment:
-                comments.append(
-                    f"COMMENT ON TABLE {self.qualified(table.name)} IS {_literal(table.comment)};"
-                )
+            text = _comment_text(table.comment, table.meta)
+            if text:
+                comments.append(f"COMMENT ON TABLE {self.qualified(table.name)} IS {_literal(text)};")
             for column in table.columns:
-                if column.comment:
+                text = _comment_text(column.comment, column.meta)
+                if text:
                     comments.append(
                         f"COMMENT ON COLUMN {self.qualified(table.name)}.{_q(column.name)} "
-                        f"IS {_literal(column.comment)};"
+                        f"IS {_literal(text)};"
                     )
         if comments:
             out.extend(comments)
@@ -791,6 +1039,7 @@ def build_postgis_ddl(
     default_srid: int = 25833,
     allow_z: bool = False,
     object_type_column: bool = True,
+    model_metadata: bool = True,
     owner: str | None = None,
     read_role: str | None = None,
     codelist_resolver: CodeListResolver | None = None,
@@ -804,12 +1053,17 @@ def build_postgis_ddl(
     are resolved to lookup tables when ``codelist_resolver`` is given (pass
     :func:`geopackage.writer._fetch_geonorge_codelist` for the Geonorge register);
     unresolved ones stay plain text columns with the register URL in a comment.
+
+    With ``model_metadata`` (the default) the table and column comments also
+    record the model, so :func:`postgis.feature_types.load_feature_types_from_postgis`
+    can read the script back into the feature catalogue it came from.
     """
     model = build_postgis_model(
         feature_types,
         default_srid=default_srid,
         allow_z=allow_z,
         object_type_column=object_type_column,
+        model_metadata=model_metadata,
         codelist_resolver=codelist_resolver,
     )
     return _Renderer(model, schema=schema).render(owner=owner, read_role=read_role)

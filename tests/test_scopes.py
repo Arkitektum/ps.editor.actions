@@ -95,6 +95,45 @@ class ScopeRenderingTests(unittest.TestCase):
         self.assertIn("XMI_TABLE", written[xmi_path])
         self.assertIn("OGC_TABLE", written[ogc_path])
 
+    def test_postgis_scope_reads_the_script_with_its_schema(self) -> None:
+        scopes = [
+            {
+                "name": "database",
+                "url": "produktspesifikasjon/adm.postgis.sql",
+                "generator": "PostGIS",
+                "schema": " adm ",
+            }
+        ]
+        context = build_context({"identification": {"title": "Test"}}, updated="2025-12-03")
+        assets = {
+            "json_path": Path("db.json"),
+            "markdown_path": Path("db.md"),
+            "markdown_content": "DB_TABLE",
+            "uml_path": Path("db.puml"),
+            "uml_content": "DB_UML",
+        }
+        with patch.object(
+            product_spec, "load_feature_types_from_postgis", return_value=[]
+        ) as loader, patch.object(
+            product_spec, "_build_feature_catalogue_assets", return_value=assets
+        ), patch.object(product_spec, "_write_text_file"):
+            product_spec._build_scope_catalogues(
+                context=context,
+                scopes=scopes,
+                spec_dir=Path("output"),
+                product_title="Test",
+                feature_type_filter=None,
+                xmi_username=None,
+                xmi_password=None,
+            )
+        loader.assert_called_once_with("produktspesifikasjon/adm.postgis.sql", schema="adm")
+
+    def test_postgis_source_label(self) -> None:
+        self.assertEqual(
+            product_spec._format_source_reference("https://example.invalid/adm.xml", "postgis"),
+            "**Kilde:** [PostGIS-skjema (SQL)](https://example.invalid/adm.xml)",
+        )
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

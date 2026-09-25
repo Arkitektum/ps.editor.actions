@@ -177,11 +177,35 @@ class FeatureTableTests(unittest.TestCase):
         )
 
     def test_comments(self) -> None:
-        self.assertIn("COMMENT ON TABLE \"bygning\" IS 'En bygning';", self.ddl)
+        ddl = build_postgis_ddl(self.feature_types, model_metadata=False)
+        self.assertIn("COMMENT ON TABLE \"bygning\" IS 'En bygning';", ddl)
         self.assertIn(
             "COMMENT ON COLUMN \"bygning\".\"bygningsnummer\" IS 'Nummer i matrikkelen';",
+            ddl,
+        )
+
+    def test_model_metadata_follows_the_description(self) -> None:
+        self.assertIn("COMMENT ON TABLE \"bygning\" IS 'En bygning\n\n@ps {", self.ddl)
+        self.assertIn(
+            "COMMENT ON COLUMN \"bygning\".\"bygningsnummer\" IS 'Nummer i matrikkelen\n\n@ps {",
             self.ddl,
         )
+        # Supertypes have no table, so they are recorded where their attributes are.
+        self.assertIn('"related":[{"type":{"name":"Fellesegenskaper"', self.ddl)
+        self.assertIn('"from":"Fellesegenskaper"', self.ddl)
+
+    def test_external_types_get_no_table(self) -> None:
+        model = build_postgis_model(
+            [
+                _feature("Plan", relationships={"inheritance": [], "associations": [
+                    {"target": "Arealplan", "role": "plan", "cardinality": "0..1"}
+                ]}),
+                {"name": "Arealplan", "external": True, "attributes": []},
+            ]
+        )
+        self.assertIsNone(model.table("arealplan"))
+        self.assertEqual(model.foreign_keys, [])
+        self.assertEqual(model.table("plan").meta["related"][0]["type"]["name"], "Arealplan")
 
 
 class RepeatingAttributeTests(unittest.TestCase):
