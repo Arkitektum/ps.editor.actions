@@ -60,6 +60,13 @@ inputs:
     description: "Set to 'true' to also write an ODCS (Open Data Contract Standard v3.1.0) data contract (.odcs.yaml) from the data model."
     required: false
     default: "false"
+  postgis-output:
+    description: "Set to 'true' to also write a PostGIS DDL script (.postgis.sql) that creates an empty PostGIS schema for the data model."
+    required: false
+    default: "false"
+  postgis-schema:
+    description: "Optional database schema for the PostGIS DDL script. Omit to create the tables in the search path (normally 'public')."
+    required: false
 outputs:
   spec-directory:
     description: Directory containing the generated product specification.
@@ -79,6 +86,9 @@ outputs:
   feature-catalogue-geopackage:
     description: Path to the generated GeoPackage (.gpkg) of the data model structure.
     value: ${{ steps.generate.outputs.feature-catalogue-geopackage }}
+  feature-catalogue-postgis:
+    description: Path to the generated PostGIS DDL script (.postgis.sql) of the data model structure.
+    value: ${{ steps.generate.outputs.feature-catalogue-postgis }}
   xmi-feature-catalogue-json:
     description: Path to the XMI feature catalogue JSON cache.
     value: ${{ steps.generate.outputs.xmi-feature-catalogue-json }}
@@ -162,6 +172,12 @@ runs:
         if [ "${{ inputs.odcs-output }}" = "true" ]; then
           ARGS+=("--odcs-output")
         fi
+        if [ "${{ inputs.postgis-output }}" = "true" ]; then
+          ARGS+=("--postgis-output")
+        fi
+        if [ -n "${{ inputs.postgis-schema }}" ]; then
+          ARGS+=("--postgis-schema" "${{ inputs.postgis-schema }}")
+        fi
         ARGS+=("--skip-spec-markdown")
         python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"
         SPEC_DIR=""
@@ -170,6 +186,7 @@ runs:
         FEATURE_CATALOGUE_MD=""
         FEATURE_CATALOGUE_UML=""
         FEATURE_CATALOGUE_GPKG=""
+        FEATURE_CATALOGUE_POSTGIS=""
         XMI_FEATURE_CATALOGUE_JSON=""
         XMI_FEATURE_CATALOGUE_MD=""
         XMI_FEATURE_CATALOGUE_UML=""
@@ -194,6 +211,9 @@ runs:
             "[paths] feature_catalogue_geopackage="*)
               FEATURE_CATALOGUE_GPKG="${line#\[paths\] feature_catalogue_geopackage=}"
               ;;
+            "[paths] feature_catalogue_postgis="*)
+              FEATURE_CATALOGUE_POSTGIS="${line#\[paths\] feature_catalogue_postgis=}"
+              ;;
             "[paths] xmi_feature_catalogue_json="*)
               XMI_FEATURE_CATALOGUE_JSON="${line#\[paths\] xmi_feature_catalogue_json=}"
               ;;
@@ -215,6 +235,7 @@ runs:
           echo "feature-catalogue-markdown=$FEATURE_CATALOGUE_MD"
           echo "feature-catalogue-uml=$FEATURE_CATALOGUE_UML"
           echo "feature-catalogue-geopackage=$FEATURE_CATALOGUE_GPKG"
+          echo "feature-catalogue-postgis=$FEATURE_CATALOGUE_POSTGIS"
           echo "xmi-feature-catalogue-json=$XMI_FEATURE_CATALOGUE_JSON"
           echo "xmi-feature-catalogue-markdown=$XMI_FEATURE_CATALOGUE_MD"
           echo "xmi-feature-catalogue-uml=$XMI_FEATURE_CATALOGUE_UML"

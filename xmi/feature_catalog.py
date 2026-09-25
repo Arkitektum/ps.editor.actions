@@ -473,6 +473,15 @@ def _collect_associations(root: ET.Element, classes: Mapping[str, _UmlClass]) ->
                     entry["role"] = role
                 if cardinality:
                     entry["cardinality"] = cardinality
+                # The near end as well: only both multiplicities together tell a
+                # one-to-many association from a many-to-many one, and the reverse
+                # entry is missing when the association is navigable one way only.
+                source_role = end.get("name") or ""
+                if source_role:
+                    entry["sourceRole"] = source_role
+                source_lower, source_upper = _extract_association_bounds(end)
+                if source_lower or source_upper:
+                    entry["sourceCardinality"] = _format_cardinality(source_lower, source_upper)
                 associations.setdefault(source_id, []).append(entry)
 
     return associations

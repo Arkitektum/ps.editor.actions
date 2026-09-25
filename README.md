@@ -68,6 +68,8 @@ Inputs:
 - `updated`: Explicit value for the `updated` field in the rendered Markdown front matter (propagated to the assemble step).
 - `xmi-model`: Optional path or URL to a SOSI UML XMI feature catalogue. When supplied the OGC API input is ignored.
 - `xmi-username` / `xmi-password` (default `sosi`/`sosi`): Credentials used to download the XMI catalogue.
+- `postgis-output` (default `false`): Also write a PostGIS DDL script of the data model — see [PostGIS schema](#postgis-schema).
+- `postgis-schema`: Database schema the script creates the tables in. Omit to use the search path (normally `public`).
 
 Outputs:
 
@@ -79,6 +81,7 @@ Outputs:
 - `xmi-feature-catalogue-json`: Path to the XMI feature catalogue JSON cache when generated.
 - `xmi-feature-catalogue-markdown`: Path to the XMI feature catalogue Markdown table when generated.
 - `xmi-feature-catalogue-uml`: Path to the XMI feature catalogue PlantUML diagram when generated.
+- `feature-catalogue-postgis`: Path to the PostGIS DDL script (`<slug>.postgis.sql`) when `postgis-output` is set.
 - `spec-markdown`: Reserved path for the final product specification Markdown (always `<spec-directory>/index.md`). The file is created by the assemble action.
 
 ### Assemble specification (`arkitektum/ps.editor.actions/assemble@main`)
@@ -352,6 +355,33 @@ xmlns-prefix: app
 ```
 
 `app` is the prefix Geonorge uses, and is already the default.
+
+## PostGIS schema
+
+With `postgis-output: true` (or `--postgis-output` locally) the prepare action also writes `<slug>.postgis.sql`: a script that creates an empty PostGIS schema for the data model. It is plain SQL — nothing connects to a database — and runs in a single transaction:
+
+```bash
+psql -v ON_ERROR_STOP=1 -d mydb -f produktspesifikasjon/<slug>/<slug>.postgis.sql
+```
+
+The layout follows the same conventions as the GeoPackage output, so one ldproxy provider structure fits both:
+
+- every table has an integer identity primary key `objid`, plus an `objtype` column holding the class name;
+- abstract classes get no table; their attributes are materialised in every concrete subtype;
+- single-valued data types are flattened into columns (`identifikasjon_lokalid`);
+- an attribute that may repeat gets a child table `<table>_<attribute>` whose `<table>_fk` column references the owner with `ON DELETE CASCADE`.
+
+Where PostGIS can say more than a GeoPackage, it does:
+
+- **Several geometries stay in one table.** `Bygning` with a surface and a point keeps both as geometry columns; there is no split into `Bygning_flate`/`Bygning_punkt`. Each geometry column gets a GIST index.
+- **Code lists become lookup tables** `(identifier, description)` filled with the code values and referenced by a foreign key. External code lists are fetched from the Geonorge register; when that fails the column stays `text` and the register URL goes into the column comment.
+- **Enumerations become `CHECK` constraints**, since a closed `<<enumeration>>` has no register to grow from.
+- **Associations follow their multiplicities.** A single-valued end becomes a `<role>_fk` column, many-to-many becomes a join table with its own `objid` and a unique pair of foreign keys. When only one end's multiplicity is known — sources other than XMI record just the far end — a join table is used, since it fits every case. An association to an abstract class references each concrete subtype.
+- Descriptions become `COMMENT ON TABLE`/`COMMENT ON COLUMN`, and every foreign-key column is indexed.
+
+Table and column names are lowercased and transliterated to ASCII: `æ`→`ae`, `ø`→`oe`, `å`→`aa`, and anything else outside `[a-z0-9_]` becomes `_`, so `Dyrkbar jord.Høyde` becomes `dyrkbar_jord.hoeyde`. Names longer than PostgreSQL's 63-byte limit are shortened with a hash suffix rather than truncated, so they cannot collide. Code values and descriptions keep their original spelling.
+
+From Python, `postgis.build_postgis_ddl(feature_types, ...)` returns the script and `postgis.write_postgis_ddl(feature_types, path, ...)` writes it. Both also take `default_srid` (default 25833, used when a feature type carries no storage CRS), `allow_z`, `owner` (the schema's `AUTHORIZATION`) and `read_role` (granted `SELECT` on the schema's tables).
 
 ## Template
 

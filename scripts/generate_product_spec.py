@@ -30,7 +30,12 @@ from md.product_specification import (  # noqa: E402
 from catalogue_overrides import apply_overrides, load_overrides  # noqa: E402
 from geopackage.feature_types import load_feature_types_from_geopackage  # noqa: E402
 from odcs.writer import write_odcs  # noqa: E402
-from geopackage.writer import _fetch_geonorge_codelist, write_geopackage  # noqa: E402
+from postgis.writer import write_postgis_ddl  # noqa: E402
+from geopackage.writer import (  # noqa: E402
+    _fetch_geonorge_codelist,
+    _memoize_resolver,
+    write_geopackage,
+)
 from ogc_api.feature_types import load_feature_types  # noqa: E402
 from puml.feature_types import (  # noqa: E402
     group_feature_types_by_package,
@@ -250,6 +255,8 @@ def _build_scope_catalogues(
     geopackage_password: str | None = None,
     write_gpkg: bool = False,
     write_odcs: bool = False,
+    write_postgis: bool = False,
+    postgis_schema: str | None = None,
 ) -> str:
     if not scopes:
         return ""
@@ -303,11 +310,15 @@ def _build_scope_catalogues(
             create_png=True,
             write_gpkg=write_gpkg,
             write_odcs_output=write_odcs,
+            write_postgis=write_postgis,
+            postgis_schema=postgis_schema,
         )
         if assets.get("geopackage_path"):
             print(f"[paths] scope_geopackage={assets['geopackage_path']}")
         if assets.get("odcs_path"):
             print(f"[paths] scope_odcs={assets['odcs_path']}")
+        if assets.get("postgis_path"):
+            print(f"[paths] scope_postgis={assets['postgis_path']}")
 
         scope_includes: list[IncludeResource] = []
         diagrams_markdown = _build_diagrams_markdown(assets, scope_name)
@@ -374,6 +385,8 @@ def _build_feature_catalogue_assets(
     create_png: bool = False,
     write_gpkg: bool = False,
     write_odcs_output: bool = False,
+    write_postgis: bool = False,
+    postgis_schema: str | None = None,
 ) -> dict[str, Any]:
     suffix = f"{prefix}_" if prefix else ""
     base_name = f"{slug}_{suffix}feature_catalogue"
@@ -385,6 +398,9 @@ def _build_feature_catalogue_assets(
     # (structure only) with the Schema and Related Tables extensions. Named by the
     # scope alone ({scope}.gpkg) so it matches the ShapeChange XSD/JSON deliverables
     # for the same scope -- a single, consistent per-datakilde naming convention.
+    # One cache for both writers, so each external code list is fetched once.
+    codelist_resolver = _memoize_resolver(_fetch_geonorge_codelist)
+
     geopackage_path: Path | None = None
     if write_gpkg and feature_types:
         gpkg_base = f"{slug}_{prefix}" if prefix else slug
@@ -395,7 +411,20 @@ def _build_feature_catalogue_assets(
             feature_types,
             geopackage_path,
             identifier=product_title or slug,
-            codelist_resolver=_fetch_geonorge_codelist,
+            codelist_resolver=codelist_resolver,
+        )
+
+    # Optional PostGIS output: a DDL script ({scope}.postgis.sql) that creates an
+    # empty PostGIS schema for the data model, named like the GeoPackage.
+    postgis_path: Path | None = None
+    if write_postgis and feature_types:
+        postgis_base = f"{slug}_{prefix}" if prefix else slug
+        postgis_path = spec_dir / f"{postgis_base}.postgis.sql"
+        write_postgis_ddl(
+            feature_types,
+            postgis_path,
+            schema=postgis_schema,
+            codelist_resolver=codelist_resolver,
         )
 
     # Optional ODCS (Open Data Contract Standard v3.1.0) output: a machine-readable
@@ -485,6 +514,7 @@ def _build_feature_catalogue_assets(
         "overview_uml_path": overview_uml_path,
         "geopackage_path": geopackage_path,
         "odcs_path": odcs_path,
+        "postgis_path": postgis_path,
     }
 
 
@@ -602,6 +632,8 @@ def generate_product_specification(
     geopackage_password: str | None = None,
     geopackage_output: bool = False,
     odcs_output: bool = False,
+    postgis_output: bool = False,
+    postgis_schema: str | None = None,
     feature_type_filter: Sequence[str] | None = None,
     scopes: Sequence[Mapping[str, Any]] | None = None,
     render_spec_markdown: bool = True,
@@ -660,6 +692,8 @@ def generate_product_specification(
             product_title=product_title,
             write_gpkg=geopackage_output,
             write_odcs_output=odcs_output,
+            write_postgis=postgis_output,
+            postgis_schema=postgis_schema,
         )
 
     xmi_assets = None
@@ -672,6 +706,8 @@ def generate_product_specification(
             product_title=product_title,
             write_gpkg=geopackage_output,
             write_odcs_output=odcs_output,
+            write_postgis=postgis_output,
+            postgis_schema=postgis_schema,
         )
 
     includes: list[IncludeResource] = [
@@ -722,6 +758,8 @@ def generate_product_specification(
         geopackage_password=geopackage_password,
         write_gpkg=geopackage_output,
         write_odcs=odcs_output,
+        write_postgis=postgis_output,
+        postgis_schema=postgis_schema,
     )
     if scope_links:
         scope_links_path = spec_dir / "scope_catalogues.md"
@@ -745,11 +783,13 @@ def generate_product_specification(
         "feature_catalogue_markdown": ogc_assets["markdown_path"] if ogc_assets else None,
         "feature_catalogue_uml": ogc_assets["uml_path"] if ogc_assets else None,
         "feature_catalogue_geopackage": ogc_assets["geopackage_path"] if ogc_assets else None,
+        "feature_catalogue_postgis": ogc_assets["postgis_path"] if ogc_assets else None,
         "spec_markdown": spec_markdown_path,
         "xmi_feature_catalogue_json": xmi_assets["json_path"] if xmi_assets else None,
         "xmi_feature_catalogue_markdown": xmi_assets["markdown_path"] if xmi_assets else None,
         "xmi_feature_catalogue_uml": xmi_assets["uml_path"] if xmi_assets else None,
         "xmi_feature_catalogue_geopackage": xmi_assets["geopackage_path"] if xmi_assets else None,
+        "xmi_feature_catalogue_postgis": xmi_assets["postgis_path"] if xmi_assets else None,
     }
 
     return result
@@ -843,6 +883,21 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--postgis-output",
+        action="store_true",
+        help=(
+            "Also write a PostGIS DDL script (.postgis.sql) that creates an empty "
+            "PostGIS schema for the data model alongside the feature catalogue."
+        ),
+    )
+    parser.add_argument(
+        "--postgis-schema",
+        help=(
+            "Database schema for the PostGIS DDL script. Omit to create the tables "
+            "in the search path (normally 'public')."
+        ),
+    )
+    parser.add_argument(
         "--skip-spec-markdown",
         action="store_true",
         help="Skip rendering the final product specification Markdown document.",
@@ -905,6 +960,8 @@ def main(argv: list[str] | None = None) -> int:
             geopackage_password=args.geopackage_password,
             geopackage_output=args.geopackage_output,
             odcs_output=args.odcs_output,
+            postgis_output=args.postgis_output,
+            postgis_schema=args.postgis_schema,
             feature_type_filter=feature_type_filter,
             scopes=scopes,
             render_spec_markdown=not args.skip_spec_markdown,
@@ -963,6 +1020,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[paths] feature_catalogue_uml={paths.get('feature_catalogue_uml') or ''}")
     print(f"[paths] feature_catalogue_geopackage={paths.get('feature_catalogue_geopackage') or ''}")
     print(f"[paths] xmi_feature_catalogue_geopackage={paths.get('xmi_feature_catalogue_geopackage') or ''}")
+    print(f"[paths] feature_catalogue_postgis={paths.get('feature_catalogue_postgis') or ''}")
+    print(f"[paths] xmi_feature_catalogue_postgis={paths.get('xmi_feature_catalogue_postgis') or ''}")
     print(f"[paths] xmi_feature_catalogue_json={paths.get('xmi_feature_catalogue_json') or ''}")
     print(f"[paths] xmi_feature_catalogue_markdown={paths.get('xmi_feature_catalogue_markdown') or ''}")
     print(f"[paths] xmi_feature_catalogue_uml={paths.get('xmi_feature_catalogue_uml') or ''}")

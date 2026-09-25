@@ -1,0 +1,465 @@
+"""Tests for the PostGIS writer (data model -> DDL script).
+
+There is no PostgreSQL server in the test environment, so these check the table
+model the writer builds and the statements it renders, not their execution.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from postgis.writer import (  # noqa: E402
+    build_postgis_ddl,
+    build_postgis_model,
+    pg_name,
+    write_postgis_ddl,
+)
+from xmi.feature_catalog import load_feature_types_from_xmi  # noqa: E402
+
+_CRS = "http://www.opengis.net/def/crs/EPSG/0/25832"
+
+
+def _feature(name: str, *attributes: dict, **extra) -> dict:
+    return {"name": name, "attributes": list(attributes), **extra}
+
+
+def _attr(name: str, type_: str = "CharacterString", cardinality: str = "0..1", **extra) -> dict:
+    return {"name": name, "type": type_, "cardinality": cardinality, **extra}
+
+
+def _columns(model, table: str) -> dict:
+    found = model.table(table)
+    assert found is not None, f"no table {table!r}"
+    return {column.name: column for column in found.columns}
+
+
+def _fks(model, table: str) -> dict:
+    return {fk.column: fk for fk in model.foreign_keys if fk.table == table}
+
+
+class NamingTests(unittest.TestCase):
+    def test_lowercase_and_transliterated(self) -> None:
+        self.assertEqual(pg_name("Dyrkbar jord"), "dyrkbar_jord")
+        self.assertEqual(pg_name("Høyde"), "hoeyde")
+        self.assertEqual(pg_name("Målemetode"), "maalemetode")
+        self.assertEqual(pg_name("ÆØÅ"), "aeoeaa")
+        self.assertEqual(pg_name("identifikasjon_lokalId"), "identifikasjon_lokalid")
+        self.assertEqual(pg_name("Kode-liste.v2"), "kode_liste_v2")
+
+    def test_other_diacritics_are_stripped(self) -> None:
+        self.assertEqual(pg_name("Café Ärlig"), "cafe_arlig")
+
+    def test_long_names_fit_and_stay_distinct(self) -> None:
+        first = pg_name("a" * 80 + "_first")
+        second = pg_name("a" * 80 + "_second")
+        self.assertLessEqual(len(first), 63)
+        self.assertLessEqual(len(second), 63)
+        self.assertNotEqual(first, second)
+        self.assertEqual(first, pg_name("a" * 80 + "_first"))
+
+    def test_sanitised_collisions_get_a_suffix(self) -> None:
+        model = build_postgis_model(
+            [_feature("Punkt", _attr("Høyde", "Real"), _attr("hoeyde", "Real"))]
+        )
+        self.assertIn("hoeyde", _columns(model, "punkt"))
+        self.assertIn("hoeyde_2", _columns(model, "punkt"))
+
+    def test_reserved_words_are_quoted(self) -> None:
+        ddl = build_postgis_ddl([_feature("Order", _attr("user"))])
+        self.assertIn('CREATE TABLE "order" (', ddl)
+        self.assertIn('"user" text', ddl)
+
+
+class FeatureTableTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.feature_types = [
+            {
+                "name": "Fellesegenskaper",
+                "abstract": True,
+                "attributes": [
+                    {
+                        "name": "identifikasjon",
+                        "type": "Identifikasjon",
+                        "cardinality": "1",
+                        "attributes": [
+                            _attr("lokalId", cardinality="1"),
+                            _attr("versjonId"),
+                        ],
+                    },
+                    {
+                        "name": "kvalitet",
+                        "type": "Posisjonskvalitet",
+                        "cardinality": "0..1",
+                        "attributes": [_attr("målemetode", cardinality="1")],
+                    },
+                ],
+            },
+            _feature(
+                "Bygning",
+                _attr("bygningsnummer", "Integer", "1", description="Nummer i matrikkelen"),
+                _attr("omriss", "GM_Surface", "0..1"),
+                _attr("representasjonspunkt", "GM_Point", "1"),
+                _attr("tatt i bruk", "Date"),
+                relationships={"inheritance": ["Fellesegenskaper"], "associations": []},
+                description="En bygning",
+            ),
+            _feature(
+                "Grense",
+                _attr("lokalId", "Integer", "1"),
+                geometry={"type": "geometry-line", "storageCrs": _CRS},
+            ),
+        ]
+        self.model = build_postgis_model(self.feature_types)
+        self.ddl = build_postgis_ddl(self.feature_types)
+
+    def test_abstract_types_get_no_table(self) -> None:
+        self.assertIsNone(self.model.table("fellesegenskaper"))
+
+    def test_synthetic_primary_key_and_object_type(self) -> None:
+        columns = _columns(self.model, "bygning")
+        self.assertTrue(columns["objid"].primary_key)
+        self.assertTrue(columns["objid"].identity)
+        self.assertEqual(columns["objtype"].default, "'Bygning'")
+        self.assertIn(
+            '"objid" integer GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY', self.ddl
+        )
+
+    def test_object_type_column_can_be_turned_off(self) -> None:
+        model = build_postgis_model(self.feature_types, object_type_column=False)
+        self.assertNotIn("objtype", _columns(model, "bygning"))
+
+    def test_inherited_data_types_are_flattened(self) -> None:
+        columns = _columns(self.model, "bygning")
+        self.assertIn("identifikasjon_lokalid", columns)
+        self.assertIn("identifikasjon_versjonid", columns)
+        self.assertIn("kvalitet_maalemetode", columns)
+        self.assertEqual(list(columns)[:3], ["objid", "objtype", "identifikasjon_lokalid"])
+
+    def test_not_null_follows_every_level(self) -> None:
+        columns = _columns(self.model, "bygning")
+        self.assertTrue(columns["identifikasjon_lokalid"].not_null)
+        self.assertFalse(columns["identifikasjon_versjonid"].not_null)
+        # Mandatory inside an optional data type: the column must allow NULL.
+        self.assertFalse(columns["kvalitet_maalemetode"].not_null)
+        self.assertTrue(columns["bygningsnummer"].not_null)
+
+    def test_column_types(self) -> None:
+        columns = _columns(self.model, "bygning")
+        self.assertEqual(columns["bygningsnummer"].sql_type, "integer")
+        self.assertEqual(columns["tatt_i_bruk"].sql_type, "date")
+        self.assertEqual(columns["identifikasjon_lokalid"].sql_type, "text")
+
+    def test_several_geometries_stay_in_one_table(self) -> None:
+        columns = _columns(self.model, "bygning")
+        self.assertEqual(columns["omriss"].sql_type, "geometry(MultiPolygon, 25833)")
+        self.assertEqual(columns["representasjonspunkt"].sql_type, "geometry(Point, 25833)")
+        self.assertIsNone(self.model.table("bygning_flate"))
+        self.assertIn('CREATE INDEX "bygning_omriss_gist"', self.ddl)
+        self.assertIn('CREATE INDEX "bygning_representasjonspunkt_gist"', self.ddl)
+
+    def test_geometry_dict_uses_its_storage_crs(self) -> None:
+        columns = _columns(self.model, "grense")
+        self.assertEqual(columns["geometry"].sql_type, "geometry(LineString, 25832)")
+
+    def test_z_values(self) -> None:
+        model = build_postgis_model(self.feature_types, allow_z=True, default_srid=5972)
+        self.assertEqual(
+            _columns(model, "bygning")["representasjonspunkt"].sql_type,
+            "geometry(PointZ, 5972)",
+        )
+
+    def test_comments(self) -> None:
+        self.assertIn("COMMENT ON TABLE \"bygning\" IS 'En bygning';", self.ddl)
+        self.assertIn(
+            "COMMENT ON COLUMN \"bygning\".\"bygningsnummer\" IS 'Nummer i matrikkelen';",
+            self.ddl,
+        )
+
+
+class RepeatingAttributeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.model = build_postgis_model(
+            [
+                _feature(
+                    "Kommune",
+                    _attr("kommunenummer", cardinality="1"),
+                    _attr("tidligereNavn", cardinality="0..*"),
+                    {
+                        "name": "navn",
+                        "type": "AdministrativEnhetNavn",
+                        "cardinality": "1..*",
+                        "attributes": [
+                            _attr("navn", cardinality="1"),
+                            _attr("rekkefølge", "Integer"),
+                        ],
+                    },
+                )
+            ]
+        )
+
+    def test_repeating_attributes_leave_the_owner(self) -> None:
+        columns = _columns(self.model, "kommune")
+        self.assertNotIn("tidligerenavn", columns)
+        self.assertNotIn("navn_navn", columns)
+
+    def test_simple_values_get_a_child_table(self) -> None:
+        columns = _columns(self.model, "kommune_tidligerenavn")
+        self.assertEqual(list(columns), ["objid", "kommune_fk", "tidligerenavn"])
+        self.assertTrue(columns["tidligerenavn"].not_null)
+
+    def test_complex_values_get_one_column_per_field(self) -> None:
+        columns = _columns(self.model, "kommune_navn")
+        self.assertEqual(list(columns), ["objid", "kommune_fk", "navn", "rekkefoelge"])
+
+    def test_children_reference_the_owner_and_cascade(self) -> None:
+        fk = _fks(self.model, "kommune_navn")["kommune_fk"]
+        self.assertEqual((fk.ref_table, fk.ref_column), ("kommune", "objid"))
+        self.assertEqual(fk.on_delete, "CASCADE")
+        self.assertTrue(_columns(self.model, "kommune_navn")["kommune_fk"].not_null)
+
+
+class CodeListTests(unittest.TestCase):
+    _VALUES = [{"value": "1001", "label": "Boligbebyggelse"}, {"value": "1002", "label": "Kjøpesenter's"}]
+
+    def _model(self, *attributes, **options):
+        return build_postgis_model([_feature("Område", *attributes)], **options)
+
+    def test_listed_values_become_a_lookup_table(self) -> None:
+        model = self._model(
+            _attr("formål", "Arealformål", valueDomain={"listedValues": self._VALUES})
+        )
+        lookup = model.table("arealformaal")
+        self.assertIsNotNone(lookup)
+        self.assertEqual(lookup.kind, "codelist")
+        self.assertEqual([c.name for c in lookup.columns], ["identifier", "description"])
+        self.assertEqual(lookup.rows[0], ("1001", "Boligbebyggelse"))
+        fk = _fks(model, "omraade")["formaal"]
+        self.assertEqual((fk.ref_table, fk.ref_column), ("arealformaal", "identifier"))
+
+    def test_attributes_of_the_same_code_list_share_the_table(self) -> None:
+        domain = {"listedValues": self._VALUES}
+        model = self._model(
+            _attr("formål", "Arealformål", valueDomain=domain),
+            _attr("tidligereFormål", "Arealformål", valueDomain=domain),
+        )
+        self.assertEqual(sum(t.kind == "codelist" for t in model.tables), 1)
+
+    def test_untyped_code_lists_are_named_after_the_column(self) -> None:
+        model = self._model(_attr("formål", "string", valueDomain={"listedValues": self._VALUES}))
+        self.assertIsNotNone(model.table("omraade_formaal"))
+
+    def test_values_are_escaped(self) -> None:
+        ddl = build_postgis_ddl(
+            [_feature("Område", _attr("formål", "Arealformål", valueDomain={"listedValues": self._VALUES}))]
+        )
+        self.assertIn("('1002', 'Kjøpesenter''s')", ddl)
+
+    def test_enumerations_become_check_constraints(self) -> None:
+        model = self._model(
+            _attr(
+                "status",
+                "Status",
+                valueDomain={
+                    "kind": "enumeration",
+                    "listedValues": [{"value": "gjeldende"}, {"value": "utgått"}],
+                },
+            )
+        )
+        self.assertFalse(any(t.kind == "codelist" for t in model.tables))
+        self.assertEqual(_columns(model, "omraade")["status"].check_values, ["gjeldende", "utgått"])
+        ddl = build_postgis_ddl(
+            [_feature("Område", _attr("status", "Status", valueDomain={"kind": "enumeration", "listedValues": [{"value": "gjeldende"}]}))]
+        )
+        self.assertIn(
+            'CONSTRAINT "omraade_status_check" CHECK ("status" IN (\'gjeldende\'))', ddl
+        )
+
+    def test_unresolved_register_url_stays_text_with_comment(self) -> None:
+        url = "https://register.geonorge.no/sosi-kodelister/kommunenummer"
+        model = self._model(
+            _attr("kommune", "Kommunenummer", description="Kommunen", valueDomain={"codeList": url}),
+            codelist_resolver=lambda _url: None,
+        )
+        column = _columns(model, "omraade")["kommune"]
+        self.assertEqual(column.sql_type, "text")
+        self.assertEqual(column.comment, f"Kommunen\n\nKodeliste: {url}")
+        self.assertEqual(_fks(model, "omraade"), {})
+
+    def test_resolver_materialises_the_register(self) -> None:
+        url = "https://register.geonorge.no/sosi-kodelister/kommunenummer"
+        calls: list[str] = []
+
+        def resolver(value: str):
+            calls.append(value)
+            return [{"value": "0301", "label": "Oslo"}]
+
+        model = self._model(
+            _attr("kommune", "Kommunenummer", valueDomain={"codeList": url}),
+            _attr("nabokommune", "Kommunenummer", valueDomain={"codeList": url}),
+            codelist_resolver=resolver,
+        )
+        self.assertEqual(model.table("kommunenummer").rows, [("0301", "Oslo")])
+        self.assertIn("kommune", _fks(model, "omraade"))
+        self.assertIn("nabokommune", _fks(model, "omraade"))
+        self.assertEqual(calls, [url])  # fetched once
+
+
+class AssociationTests(unittest.TestCase):
+    def _model(self, association: dict, *extra):
+        return build_postgis_model(
+            [
+                _feature(
+                    "Bygning",
+                    _attr("nummer"),
+                    relationships={"inheritance": [], "associations": [association]},
+                ),
+                _feature("Eiendom", _attr("matrikkelnummer")),
+                *extra,
+            ]
+        )
+
+    def test_single_valued_target_is_a_foreign_key_on_the_source(self) -> None:
+        model = self._model({"target": "Eiendom", "role": "liggerPå", "cardinality": "0..1"})
+        fk = _fks(model, "bygning")["liggerpaa_fk"]
+        self.assertEqual((fk.ref_table, fk.ref_column), ("eiendom", "objid"))
+        self.assertEqual(fk.on_delete, "NO ACTION")
+
+    def test_single_valued_source_is_a_foreign_key_on_the_target(self) -> None:
+        model = self._model(
+            {
+                "target": "Eiendom",
+                "role": "eiendom",
+                "cardinality": "0..*",
+                "sourceRole": "bygning",
+                "sourceCardinality": "1",
+            }
+        )
+        self.assertEqual(_fks(model, "eiendom")["bygning_fk"].ref_table, "bygning")
+        self.assertEqual(_fks(model, "bygning"), {})
+
+    def test_many_to_many_is_a_join_table(self) -> None:
+        model = self._model(
+            {"target": "Eiendom", "role": "eiendom", "cardinality": "1..*", "sourceCardinality": "0..*"}
+        )
+        join = model.table("bygning_eiendom")
+        self.assertEqual(join.kind, "association")
+        self.assertEqual(list(_columns(model, "bygning_eiendom")), ["objid", "bygning_fk", "eiendom_fk"])
+        self.assertEqual(join.unique, [["bygning_fk", "eiendom_fk"]])
+
+    def test_unknown_near_end_falls_back_to_a_join_table(self) -> None:
+        model = self._model({"target": "Eiendom", "role": "eiendom", "cardinality": "0..*"})
+        self.assertIsNotNone(model.table("bygning_eiendom"))
+
+    def test_two_way_association_is_realised_once(self) -> None:
+        forward = {"target": "Eiendom", "role": "eiendom", "cardinality": "0..1", "sourceRole": "bygning", "sourceCardinality": "0..*"}
+        backward = {"target": "Bygning", "role": "bygning", "cardinality": "0..*", "sourceRole": "eiendom", "sourceCardinality": "0..1"}
+        model = build_postgis_model(
+            [
+                _feature("Bygning", relationships={"inheritance": [], "associations": [forward]}),
+                _feature("Eiendom", relationships={"inheritance": [], "associations": [backward]}),
+            ]
+        )
+        self.assertEqual(len(model.foreign_keys), 1)
+
+    def test_abstract_target_references_every_concrete_subtype(self) -> None:
+        model = build_postgis_model(
+            [
+                _feature("Bygning", relationships={"inheritance": [], "associations": [
+                    {"target": "Grunn", "role": "står på", "cardinality": "0..1"}
+                ]}),
+                {"name": "Grunn", "abstract": True, "attributes": []},
+                _feature("Eiendom", relationships={"inheritance": ["Grunn"], "associations": []}),
+                _feature("Festegrunn", relationships={"inheritance": ["Grunn"], "associations": []}),
+            ]
+        )
+        fks = _fks(model, "bygning")
+        self.assertEqual(fks["staar_paa_eiendom_fk"].ref_table, "eiendom")
+        self.assertEqual(fks["staar_paa_festegrunn_fk"].ref_table, "festegrunn")
+
+    def test_external_targets_are_skipped(self) -> None:
+        model = self._model({"target": "Arealplan", "role": "plan", "cardinality": "0..1"})
+        self.assertEqual(model.foreign_keys, [])
+
+
+class RenderingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.feature_types = [
+            _feature(
+                "Bygning",
+                _attr("formål", "Formål", valueDomain={"listedValues": [{"value": "a"}]}),
+                _attr("omriss", "Flate"),
+                relationships={"inheritance": [], "associations": [
+                    {"target": "Eiendom", "role": "eiendom", "cardinality": "0..1"}
+                ]},
+            ),
+            _feature("Eiendom"),
+        ]
+
+    def test_schema_owner_and_grants(self) -> None:
+        ddl = build_postgis_ddl(
+            self.feature_types, schema="Bygg og eiendom", owner="admin", read_role="leser"
+        )
+        self.assertIn('CREATE SCHEMA IF NOT EXISTS "bygg_og_eiendom" AUTHORIZATION "admin";', ddl)
+        self.assertIn('CREATE TABLE "bygg_og_eiendom"."bygning" (', ddl)
+        self.assertIn('REFERENCES "bygg_og_eiendom"."eiendom" ("objid")', ddl)
+        self.assertIn('GRANT USAGE ON SCHEMA "bygg_og_eiendom" TO "leser";', ddl)
+        self.assertIn('GRANT SELECT ON ALL TABLES IN SCHEMA "bygg_og_eiendom" TO "leser";', ddl)
+
+    def test_without_schema_tables_are_unqualified(self) -> None:
+        ddl = build_postgis_ddl(self.feature_types)
+        self.assertNotIn("CREATE SCHEMA", ddl)
+        self.assertIn('CREATE TABLE "bygning" (', ddl)
+
+    def test_statement_order(self) -> None:
+        ddl = build_postgis_ddl(self.feature_types)
+        self.assertTrue(ddl.lstrip("- \n").count("BEGIN;") == 1 and ddl.rstrip().endswith("COMMIT;"))
+        positions = [
+            ddl.index("CREATE EXTENSION IF NOT EXISTS postgis;"),
+            ddl.index('CREATE TABLE "formaal"'),
+            ddl.index('CREATE TABLE "bygning"'),
+            ddl.index("ALTER TABLE"),
+            ddl.index("CREATE INDEX"),
+        ]
+        self.assertEqual(positions, sorted(positions))
+        last_create = max(m.start() for m in re.finditer("CREATE TABLE", ddl))
+        self.assertLess(last_create, ddl.index("ALTER TABLE"))
+
+    def test_foreign_key_columns_are_indexed(self) -> None:
+        ddl = build_postgis_ddl(self.feature_types)
+        self.assertIn('CREATE INDEX "bygning_eiendom_fk_idx" ON "bygning" ("eiendom_fk");', ddl)
+        self.assertIn('CREATE INDEX "bygning_omriss_gist" ON "bygning" USING GIST ("omriss");', ddl)
+
+    def test_write_to_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_postgis_ddl(self.feature_types, Path(tmp) / "sub" / "model.postgis.sql")
+            self.assertEqual(path.read_text(encoding="utf-8"), build_postgis_ddl(self.feature_types))
+
+
+class XmiAssociationEndTests(unittest.TestCase):
+    def test_near_end_role_and_multiplicity_are_recorded(self) -> None:
+        fixture = Path(__file__).parent / "fixtures" / "external_references.xmi"
+        text = fixture.read_text(encoding="utf-8").replace(
+            '<UML:AssociationEnd type="STUB_EXT" isNavigable="false" aggregation="shared" />',
+            '<UML:AssociationEnd type="STUB_EXT" name="arealplan" isNavigable="false" '
+            'aggregation="shared" multiplicity="1" />',
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "model.xmi"
+            path.write_text(text, encoding="utf-8")
+            feature_types = load_feature_types_from_xmi(path)
+        entry = next(ft for ft in feature_types if ft["name"] == "Arealplan")
+        association = entry["relationships"]["associations"][0]
+        self.assertEqual(association["sourceRole"], "arealplan")
+        self.assertEqual(association["sourceCardinality"], "1")
+
+
+if __name__ == "__main__":
+    unittest.main()
