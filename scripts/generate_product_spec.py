@@ -260,6 +260,7 @@ def _build_scope_catalogues(
     write_odcs: bool = False,
     write_postgis: bool = False,
     postgis_schema: str | None = None,
+    psdata: Any = None,
 ) -> str:
     if not scopes:
         return ""
@@ -323,6 +324,7 @@ def _build_scope_catalogues(
             write_odcs_output=write_odcs,
             write_postgis=write_postgis,
             postgis_schema=postgis_schema,
+            psdata=psdata,
         )
         if assets.get("geopackage_path"):
             print(f"[paths] scope_geopackage={assets['geopackage_path']}")
@@ -398,6 +400,7 @@ def _build_feature_catalogue_assets(
     write_odcs_output: bool = False,
     write_postgis: bool = False,
     postgis_schema: str | None = None,
+    psdata: Any = None,
 ) -> dict[str, Any]:
     suffix = f"{prefix}_" if prefix else ""
     base_name = f"{slug}_{suffix}feature_catalogue"
@@ -445,7 +448,12 @@ def _build_feature_catalogue_assets(
     if write_odcs_output and feature_types:
         odcs_base = f"{slug}_{prefix}" if prefix else slug
         odcs_path = spec_dir / f"{odcs_base}.odcs.yaml"
-        write_odcs(feature_types, odcs_path, identifier=product_title or slug)
+        write_odcs(
+            feature_types,
+            odcs_path,
+            identifier=product_title or slug,
+            psdata=psdata,
+        )
 
     markdown_path = spec_dir / f"{base_name}.md"
     if feature_types:
@@ -706,6 +714,7 @@ def generate_product_specification(
             write_odcs_output=odcs_output,
             write_postgis=postgis_output,
             postgis_schema=postgis_schema,
+            psdata=psdata,
         )
 
     xmi_assets = None
@@ -720,6 +729,7 @@ def generate_product_specification(
             write_odcs_output=odcs_output,
             write_postgis=postgis_output,
             postgis_schema=postgis_schema,
+            psdata=psdata,
         )
 
     includes: list[IncludeResource] = [
@@ -772,6 +782,7 @@ def generate_product_specification(
         write_odcs=odcs_output,
         write_postgis=postgis_output,
         postgis_schema=postgis_schema,
+        psdata=psdata,
     )
     if scope_links:
         scope_links_path = spec_dir / "scope_catalogues.md"

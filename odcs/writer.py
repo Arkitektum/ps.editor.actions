@@ -15,6 +15,21 @@ documented in ``ps.editor.web/docs/odcs-mapping.md``:
 
 ODCS v3.1.0 has no native enum, geometry or CRS, so those go into ``customProperties``
 (strict validation rejects ad-hoc top-level keys).
+
+The psdata document describes the product around that schema, and is mapped onto
+the contract's top level:
+
+* purpose              -> ``description.purpose``
+* lisens/begrensninger -> ``description.usage``/``.limitations``, ``price``, ``tags``
+* nøkkelord + tema     -> ``tags``
+* leveranser           -> ``servers`` (``type: api`` med endepunktet som ``location``)
+* uniqueId, metadata-
+  lenke, produktark,
+  tegneregler          -> ``authoritativeDefinitions``
+* kontakter            -> ``team`` og ``support``
+* oppdateringsfrekvens -> ``slaProperties``
+* målestokk, språk,
+  representasjonstype  -> ``customProperties``
 """
 from __future__ import annotations
 
@@ -287,6 +302,365 @@ def _schema_object(
     return obj
 
 
+# ---------------------------------------------------------------------------
+# psdata -> contract metadata
+#
+# The product specification already fetches the dataset metadata from Geonorge
+# and keeps it in the psdata document. Everything below carries those values
+# into the contract, so the contract describes the product and not only its
+# schema. No value is invented: a missing source simply leaves the field out.
+# ---------------------------------------------------------------------------
+
+# Access constraints that mean the data is free to obtain. Used only to decide
+# whether a zero price can be stated; anything unrecognised leaves price unset.
+_OPEN_ACCESS = {"åpne data", "apne data", "open data", "no limitations", "ingen"}
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _strings(value: Any) -> list[str]:
+    """``value`` as a list of non-empty strings, whether it holds one or many."""
+    if isinstance(value, (list, tuple)):
+        return [text for item in value if (text := _text(item))]
+    text = _text(value)
+    return [text] if text else []
+
+
+def _unique(values: list[str]) -> list[str]:
+    """Order-preserving, case-insensitive deduplication."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        key = value.casefold()
+        if key not in seen:
+            seen.add(key)
+            result.append(value)
+    return result
+
+
+def _constraint_values(constraints: Any) -> dict[str, str]:
+    """Flatten the psdata restriction block into the values we map.
+
+    ``identificationSection.restriction`` groups them the way ISO 19115 does:
+    ``resourceConstraints``, ``legalConstraints`` and ``securityConstraints``.
+    """
+    if not isinstance(constraints, dict):
+        return {}
+    values: dict[str, str] = {}
+    for group in ("resourceConstraints", "legalConstraints", "securityConstraints"):
+        block = constraints.get(group)
+        if isinstance(block, dict):
+            for key, value in block.items():
+                text = _text(value)
+                if text:
+                    values[key] = text
+    return values
+
+
+def _contract_terms(constraints: Any) -> dict[str, Any]:
+    """Map the licence and constraint values onto ODCS v3.1.0 fields.
+
+    The values are already fetched for the product specification, so carrying
+    them into the contract costs nothing. ODCS has no licence field, so the raw
+    values are kept in ``customProperties`` alongside the prose summaries -- a
+    reader gets the summary, a machine gets the exact value.
+    """
+    values = _constraint_values(constraints)
+    if not values:
+        return {}
+
+    terms: dict[str, Any] = {}
+
+    description: dict[str, str] = {}
+    usage = values.get("useLimitations")
+    if usage:
+        description["usage"] = usage
+    limitations = [
+        values[key]
+        for key in ("accessConstraints", "useConstraints", "classification")
+        if values.get(key)
+    ]
+    if limitations:
+        description["limitations"] = ". ".join(limitations)
+    if description:
+        terms["description"] = description
+
+    tags = [
+        values[key]
+        for key in ("accessConstraints", "classification")
+        if values.get(key)
+    ]
+    if tags:
+        terms["tags"] = tags
+
+    # Stating a price is an inference, so it is only made when the access
+    # constraint says plainly that the data is open.
+    access = values.get("accessConstraints", "").strip().casefold()
+    if access in _OPEN_ACCESS:
+        terms["price"] = {"priceAmount": 0, "priceUnit": "dataset"}
+
+    custom = [
+        {"property": key, "value": values[key]}
+        for key in (
+            "license",
+            "licenseUrl",
+            "accessConstraints",
+            "useConstraints",
+            "useLimitations",
+            "classification",
+        )
+        if values.get(key)
+    ]
+    if custom:
+        terms["customProperties"] = custom
+
+    return terms
+
+
+def _server_name(label: str, qualifiers: list[str], taken: set[str]) -> str:
+    """A stable, unique identifier for a delivery channel.
+
+    Several deliveries share a channel name -- Geonorge publishes one Atom feed
+    per format -- so the format qualifies the name before a counter has to.
+    """
+    base = _slugify(label) or "leveranse"
+    for candidate in [base] + [f"{base}-{_slugify(q)}" for q in qualifiers if _slugify(q)]:
+        if candidate not in taken:
+            taken.add(candidate)
+            return candidate
+    counter = 2
+    while f"{base}-{counter}" in taken:
+        counter += 1
+    taken.add(f"{base}-{counter}")
+    return f"{base}-{counter}"
+
+
+def _contract_servers(deliveries: Any) -> list[dict[str, Any]]:
+    """``deliverySection`` -> ODCS ``servers``.
+
+    ODCS only knows typed servers. A Geonorge delivery is always an HTTP
+    endpoint -- a download API, a WMS, an Atom feed -- so ``api`` with the
+    endpoint as ``location`` is the closest honest fit. Deliveries without an
+    endpoint (a file handed over by other means) have nothing to point at and
+    are left out.
+    """
+    servers: list[dict[str, Any]] = []
+    taken: set[str] = set()
+    seen_locations: set[str] = set()
+    for entry in deliveries if isinstance(deliveries, list) else []:
+        delivery = _mapping(_mapping(entry).get("delivery"))
+        medium = _mapping(delivery.get("deliveryMedium"))
+        endpoint = _text(_mapping(medium.get("deliveryService")).get("serviceEndpoint"))
+        if not endpoint.lower().startswith(("http://", "https://")):
+            continue
+        if endpoint in seen_locations:
+            continue
+        seen_locations.add(endpoint)
+
+        label = _text(medium.get("deliveryMediumName"))
+        formats = _unique(
+            [
+                _text(fmt.get("formatName"))
+                for fmt in (delivery.get("deliveryFormat") or [])
+                if isinstance(fmt, dict) and _text(fmt.get("formatName"))
+            ]
+        )
+        server: dict[str, Any] = {
+            "server": _server_name(label or endpoint, formats, taken),
+            "type": "api",
+            "location": endpoint,
+        }
+        parts = [part for part in (label, ", ".join(formats)) if part]
+        if parts:
+            server["description"] = " - ".join(parts)
+        servers.append(server)
+    return servers
+
+
+def _contract_definitions(psdata: dict[str, Any], model_uri: str | None) -> list[dict[str, str]]:
+    """The links psdata carries, as ODCS ``authoritativeDefinitions``.
+
+    ODCS names five standard ``type`` values; ``businessDefinition`` covers the
+    links that say what the product *is*, ``implementation`` the ones that say
+    how it is rendered. The ``description`` keeps them apart for a reader.
+    """
+    identification = _mapping(psdata.get("identificationSection"))
+    metadata_identifier = _mapping(
+        _mapping(psdata.get("metadataSection")).get("metadataIdentifier")
+    )
+
+    candidates: list[tuple[str, str, str]] = []
+    if model_uri:
+        candidates.append((model_uri, "semanticModel", "Datamodell"))
+    candidates.append((_text(identification.get("uniqueId")), "businessDefinition", "Produktets identifikator"))
+    candidates.append((_text(metadata_identifier.get("metadataLinkage")), "businessDefinition", "Metadata i Kartkatalogen"))
+    for reference in psdata.get("additionalReferences") or []:
+        if isinstance(reference, dict):
+            candidates.append(
+                (_text(reference.get("href")), "businessDefinition", _text(reference.get("title")))
+            )
+    portrayal = _mapping(psdata.get("portrayal"))
+    candidates.append(
+        (_text(portrayal.get("linkage")), "implementation", _text(portrayal.get("name")))
+    )
+
+    definitions: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for url, kind, description in candidates:
+        # ``uniqueId`` falls back to a bare UUID when the metadata has no
+        # namespace, and that is not something a reader can follow.
+        if not url.lower().startswith(("http://", "https://")) or url in seen:
+            continue
+        seen.add(url)
+        definition = {"url": url, "type": kind}
+        if description:
+            definition["description"] = description
+        definitions.append(definition)
+    return definitions
+
+
+def _contract_team(contacts: Any) -> dict[str, Any]:
+    """``identificationSection.contact`` -> the ODCS ``team`` object.
+
+    ``username`` is required, and the e-mail address is the only identifier
+    Geonorge gives, so a contact without one cannot become a member. The same
+    address usually appears under several roles (owner, pointOfContact,
+    publisher); that is one member holding several roles, not several members.
+    """
+    members: dict[str, dict[str, Any]] = {}
+    roles: dict[str, list[str]] = {}
+    for contact in contacts if isinstance(contacts, list) else []:
+        if not isinstance(contact, dict):
+            continue
+        email = _text(contact.get("electronicMailAddress"))
+        if not email:
+            continue
+        key = email.casefold()
+        if key not in members:
+            member: dict[str, Any] = {"username": email}
+            name = _text(contact.get("individualName"))
+            organization = _text(contact.get("organizationName"))
+            if name or organization:
+                member["name"] = name or organization
+            if organization and organization != member.get("name"):
+                member["description"] = organization
+            members[key] = member
+            roles[key] = []
+        role = _text(contact.get("role"))
+        if role and role not in roles[key]:
+            roles[key].append(role)
+
+    for key, member in members.items():
+        if roles[key]:
+            member["role"] = ", ".join(roles[key])
+    return {"members": list(members.values())} if members else {}
+
+
+def _contract_support(contacts: Any) -> list[dict[str, Any]]:
+    """The first contact that can be reached, as an ODCS support channel."""
+    for contact in contacts if isinstance(contacts, list) else []:
+        if not isinstance(contact, dict):
+            continue
+        email = _text(contact.get("electronicMailAddress"))
+        if not email:
+            continue
+        organization = _text(contact.get("organizationName"))
+        item: dict[str, Any] = {
+            "channel": organization or email,
+            "tool": "email",
+            "url": f"mailto:{email}",
+            "scope": "issues",
+        }
+        if organization:
+            item["description"] = f"Kontaktpunkt hos {organization}"
+        return [item]
+    return []
+
+
+def _contract_sla(maintenance: dict[str, Any]) -> list[dict[str, Any]]:
+    """``maintenanceSection`` -> ODCS ``slaProperties``.
+
+    The update frequency is the one service level Geonorge states, and it is
+    stated in words ("Årlig"), not as a duration, so it is passed through as-is.
+    """
+    frequency = _text(maintenance.get("maintenanceAndUpdateFrequency"))
+    if not frequency:
+        return []
+    item: dict[str, Any] = {
+        "property": "frequency",
+        "value": frequency,
+        "driver": "operational",
+    }
+    statement = _text(maintenance.get("maintenanceAndUpdateStatement"))
+    if statement:
+        item["description"] = statement
+    return [item]
+
+
+def _contract_metadata(psdata: Any, model_uri: str | None) -> dict[str, Any]:
+    """Everything the psdata document contributes to the contract's top level."""
+    psdata = _mapping(psdata)
+    identification = _mapping(psdata.get("identificationSection"))
+    maintenance = _mapping(psdata.get("maintenanceSection"))
+    terms = _contract_terms(identification.get("restriction"))
+
+    meta: dict[str, Any] = {}
+
+    description = dict(terms.get("description") or {})
+    purpose = _text(_mapping(identification.get("purpose")).get("summary"))
+    if purpose:
+        description["purpose"] = purpose
+    if description:
+        meta["description"] = description
+
+    tags = _unique(
+        _strings(identification.get("topicCategory"))
+        + _strings(identification.get("keyword"))
+        + list(terms.get("tags") or [])
+    )
+    if tags:
+        meta["tags"] = tags
+
+    if terms.get("price"):
+        meta["price"] = terms["price"]
+
+    definitions = _contract_definitions(psdata, model_uri)
+    if definitions:
+        meta["authoritativeDefinitions"] = definitions
+
+    servers = _contract_servers(psdata.get("deliverySection"))
+    if servers:
+        meta["servers"] = servers
+
+    team = _contract_team(identification.get("contact"))
+    if team:
+        meta["team"] = team
+
+    support = _contract_support(identification.get("contact"))
+    if support:
+        meta["support"] = support
+
+    sla = _contract_sla(maintenance)
+    if sla:
+        meta["slaProperties"] = sla
+
+    # Values ODCS has no field for, but that a consumer of the data needs.
+    extras = [
+        ("equivalentScale", _text(_mapping(identification.get("spatialResolution")).get("equivalentScale"))),
+        ("spatialRepresentationType", _text(identification.get("spatialRepresentationType"))),
+        ("language", _text(identification.get("language")) or _text(psdata.get("language"))),
+        ("maintenanceAndUpdateStatement", _text(maintenance.get("maintenanceAndUpdateStatement"))),
+    ]
+    custom = list(terms.get("customProperties") or [])
+    custom += [{"property": key, "value": value} for key, value in extras if value]
+    if custom:
+        meta["customProperties"] = custom
+
+    return meta
+
+
 def build_odcs(
     feature_types: list[dict[str, Any]],
     *,
@@ -298,8 +672,17 @@ def build_odcs(
     tenant: str | None = None,
     model_uri: str | None = None,
     servers: list[dict[str, Any]] | None = None,
+    psdata: Any = None,
 ) -> dict[str, Any]:
-    """Build the ODCS v3.1.0 contract as a dict."""
+    """Build the ODCS v3.1.0 contract as a dict.
+
+    ``psdata`` is the product-specification document built from the Geonorge
+    metadata. The values it already holds -- purpose, keywords, licence,
+    contacts, deliveries, update frequency -- are mapped onto the ODCS fields
+    that carry the same meaning, so the contract is not schema-only.
+
+    ``servers`` overrides the servers derived from ``psdata.deliverySection``.
+    """
     by_name = {
         ft["name"]: ft
         for ft in feature_types
@@ -328,12 +711,25 @@ def build_odcs(
         doc["domain"] = domain
     if tenant:
         doc["tenant"] = tenant
-    if model_uri:
-        doc["description"] = {
-            "authoritativeDefinitions": [{"url": model_uri, "type": "semanticModel"}]
-        }
-    if servers:
-        doc["servers"] = servers
+
+    meta = _contract_metadata(psdata, model_uri)
+    # Ordered the way ODCS documents are usually read: what the product is,
+    # then what it costs and who stands behind it, then where to get it.
+    for key in (
+        "tags",
+        "price",
+        "description",
+        "authoritativeDefinitions",
+        "team",
+        "support",
+        "slaProperties",
+        "customProperties",
+    ):
+        if meta.get(key):
+            doc[key] = meta[key]
+
+    if servers or meta.get("servers"):
+        doc["servers"] = servers or meta["servers"]
     if schema:
         doc["schema"] = schema
     return doc
@@ -351,6 +747,7 @@ def write_odcs(
     tenant: str | None = None,
     model_uri: str | None = None,
     servers: list[dict[str, Any]] | None = None,
+    psdata: Any = None,
 ) -> Path:
     """Write an ODCS v3.1.0 data contract (YAML) for ``feature_types`` to ``path``."""
     doc = build_odcs(
@@ -363,6 +760,7 @@ def write_odcs(
         tenant=tenant,
         model_uri=model_uri,
         servers=servers,
+        psdata=psdata,
     )
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
