@@ -837,6 +837,7 @@ def generate_product_specification(
         write_odcs=odcs_output,
         write_postgis=postgis_output,
         postgis_schema=postgis_schema,
+        psdata=psdata,
     )
     if scope_links:
         scope_links_path = spec_dir / "scope_catalogues.md"
