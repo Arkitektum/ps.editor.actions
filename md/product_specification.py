@@ -96,6 +96,7 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "value": "Verdi",
     "equivalentScale": "Ekvivalent målestokk",
     "geographicElement": "Geografisk utstrekning",
+    "geographicDescription": "Geografisk område",
     "westBoundLongitude": "Vest",
     "eastBoundLongitude": "Øst",
     "southBoundLatitude": "Sør",

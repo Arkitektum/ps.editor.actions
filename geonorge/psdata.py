@@ -29,6 +29,14 @@ KEYWORD_FIELDS: tuple[str, ...] = (
     "KeywordsAdministrativeUnits",
 )
 
+# Place keywords describe where the data applies, not what it is about. They are
+# moved to the extent rather than listed among the subject keywords. Geonorge
+# marks them two ways: a dedicated field, and "Type": "place" on each entry --
+# the gmd:MD_KeywordTypeCode/codeListValue from the ISO metadata.
+PLACE_KEYWORD_FIELDS: frozenset[str] = frozenset({"KeywordsPlace"})
+PLACE_KEYWORD_TYPE = "place"
+
+
 CONTACT_FIELDS: tuple[str, ...] = (
     "ContactOwner",
     "ContactMetadata",
@@ -390,9 +398,14 @@ def _build_identification_extent(
             }
         )
 
+    # ISO 19115 lets an extent carry a geographic *description* alongside the
+    # bounding box; a place keyword is exactly such a geographic identifier.
+    places = _collect_place_keywords(metadata)
+
     extent = _compact_mapping(
         {
             "geographicElement": geographic,
+            "geographicDescription": places or None,
             "temporalElement": temporal,
         }
     )
@@ -968,12 +981,53 @@ def _extract_epsg_code(url: Any) -> str | None:
     return text
 
 
+def _is_place_keyword(field: str, entry: Any) -> bool:
+    """True for a keyword that names a place rather than a subject."""
+    if field in PLACE_KEYWORD_FIELDS:
+        return True
+    if isinstance(entry, Mapping):
+        return str(entry.get("Type") or "").strip().casefold() == PLACE_KEYWORD_TYPE
+    return False
+
+
+def _collect_place_keywords(metadata: Mapping[str, Any]) -> list[str]:
+    """Place names from the keywords, for the geographic extent."""
+    places: list[str] = []
+    seen: set[str] = set()
+    for field in KEYWORD_FIELDS:
+        for entry in _iter_keyword_entries(metadata.get(field)):
+            if not _is_place_keyword(field, entry):
+                continue
+            for keyword in _iter_keyword_values(entry):
+                lowered = keyword.casefold()
+                if lowered not in seen:
+                    seen.add(lowered)
+                    places.append(keyword)
+    return places
+
+
+def _iter_keyword_entries(value: Any) -> Iterable[Any]:
+    """Yield each keyword entry, so its type can be inspected before flattening."""
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        yield from value
+        return
+    if value is not None:
+        yield value
+
+
 def _collect_keywords(metadata: Mapping[str, Any]) -> list[str]:
     keywords: list[str] = []
     seen: set[str] = set()
 
     for field in KEYWORD_FIELDS:
         value = metadata.get(field)
+        if field in PLACE_KEYWORD_FIELDS:
+            continue
+        value = [
+            entry
+            for entry in _iter_keyword_entries(value)
+            if not _is_place_keyword(field, entry)
+        ]
         for keyword in _iter_keyword_values(value):
             lowered = keyword.casefold()
             if lowered not in seen:
