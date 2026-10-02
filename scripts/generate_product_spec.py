@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -243,6 +244,54 @@ def _normalize_scope_generator(value: str | None) -> str:
     return ""
 
 
+# PostGIS-skjemaet for en produktspesifikasjon ligger i repoet, relativt til roten.
+_POSTGIS_SCHEMA_REPO_PATH = "inputs/{slug}/postgis.schema.sql"
+
+
+def _repo_root() -> Path:
+    """Root of the checked-out repository: GITHUB_WORKSPACE in Actions, else cwd."""
+    workspace = os.environ.get("GITHUB_WORKSPACE", "").strip()
+    return Path(workspace) if workspace else Path.cwd()
+
+
+def _repo_file_url(relative_path: str) -> str:
+    """Link to a file in the repository on GitHub, or the bare path outside Actions."""
+    repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if not repository:
+        return relative_path
+    server = os.environ.get("GITHUB_SERVER_URL", "").strip().rstrip("/") or "https://github.com"
+    ref = os.environ.get("GITHUB_SHA", "").strip() or "HEAD"
+    return f"{server}/{repository}/blob/{ref}/{relative_path}"
+
+
+def _resolve_postgis_schema_source(product_slug: str | None, scope_name: str) -> tuple[Path, str]:
+    """Locate a product specification's PostGIS schema in the repository.
+
+    Returns the local path to read and the URL to show as the source.
+    """
+    if not product_slug:
+        raise ValueError(
+            f"Scope '{scope_name}' has no source, and the PostGIS schema cannot be "
+            "located in the repository without a product specification slug."
+        )
+    relative = _POSTGIS_SCHEMA_REPO_PATH.format(slug=product_slug)
+    path = _repo_root() / relative
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Scope '{scope_name}': PostGIS schema '{relative}' not found in the repository ({path})."
+        )
+    return path, _repo_file_url(relative)
+
+
+def _scope_source(scope: Mapping[str, Any]) -> str:
+    """A scope's data model path or URL: "source", falling back to the older "url"."""
+    for key in ("source", "url"):
+        value = scope.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def _build_scope_catalogues(
     *,
     context: Mapping[str, Any],
@@ -261,6 +310,7 @@ def _build_scope_catalogues(
     write_postgis: bool = False,
     postgis_schema: str | None = None,
     psdata: Any = None,
+    product_slug: str | None = None,
 ) -> str:
     if not scopes:
         return ""
@@ -270,36 +320,41 @@ def _build_scope_catalogues(
         name = scope.get("name")
         scope_name = name.strip() if isinstance(name, str) and name.strip() else f"Scope {index}"
         description = scope.get("description")
-        url = scope.get("url")
+        # "source" is a path or URL to the data model; "url" is its older name.
+        source = _scope_source(scope)
         generator = _normalize_scope_generator(scope.get("generator"))
-        if not isinstance(url, str) or not url.strip():
-            raise ValueError(f"Scope '{scope_name}' is missing a valid url.")
         if not generator:
             raise ValueError(
                 f"Scope '{scope_name}' has unsupported generator '{scope.get('generator')}'."
             )
+        if not source and generator != "postgis":
+            raise ValueError(f"Scope '{scope_name}' is missing a source (path or URL).")
 
         if generator == "xmi":
             feature_types = load_feature_types_from_xmi(
-                url,
+                source,
                 username=xmi_username or "sosi",
                 password=xmi_password or "sosi",
             )
         elif generator == "postgis":
-            # A DDL script (.sql), read rather than executed. "schema" picks one
-            # database schema when the script defines several.
+            # A DDL script (.sql), read rather than executed. Without a source it is
+            # taken from the repository, inputs/<slug>/postgis.schema.sql. "schema"
+            # picks one database schema when the script defines several.
+            schema_path: str | Path = source
+            if not source:
+                schema_path, source = _resolve_postgis_schema_source(product_slug, scope_name)
             schema_name = scope.get("schema")
             feature_types = load_feature_types_from_postgis(
-                url,
+                schema_path,
                 schema=schema_name.strip() if isinstance(schema_name, str) and schema_name.strip() else None,
             )
         elif generator == "geopackage":
             feature_types = load_feature_types_from_geopackage(
-                url, username=geopackage_username, password=geopackage_password
+                source, username=geopackage_username, password=geopackage_password
             )
         else:
             feature_types = load_feature_types(
-                url, username=ogc_username, password=ogc_password
+                source, username=ogc_username, password=ogc_password
             )
 
         feature_types = _filter_feature_types(feature_types, feature_type_filter)
@@ -348,7 +403,7 @@ def _build_scope_catalogues(
         if diagrams_markdown:
             scope_includes.append(IncludeResource(uml_placeholder, diagrams_markdown))
 
-        kilde_markdown = _format_source_reference(url, generator)
+        kilde_markdown = _format_source_reference(source, generator)
         if kilde_markdown:
             scope_includes.append(IncludeResource("incl_kilde", kilde_markdown))
 
@@ -782,7 +837,6 @@ def generate_product_specification(
         write_odcs=odcs_output,
         write_postgis=postgis_output,
         postgis_schema=postgis_schema,
-        psdata=psdata,
     )
     if scope_links:
         scope_links_path = spec_dir / "scope_catalogues.md"
