@@ -40,11 +40,14 @@ class XmiFeatureCatalogTests(unittest.TestCase):
         status = attributes["STATUS"]
         self.assertEqual(status["cardinality"], "0..*")
         listed_values = status["valueDomain"]["listedValues"]
+        # A SOSI code is three things: the <<code>> tagged value is what an
+        # instance carries, the UML name is its title, and the description
+        # explains it. All three are kept apart so ShapeChange can encode them.
         self.assertEqual(
             listed_values,
             [
-                {"value": "active", "label": "Active state"},
-                {"value": "retired", "label": "Retired state"},
+                {"value": "active", "label": "Active state", "title": "ACTIVE"},
+                {"value": "retired", "label": "Retired state", "title": "RETIRED"},
             ],
         )
 

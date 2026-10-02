@@ -197,6 +197,47 @@ class SosiProfileTests(unittest.TestCase):
         self.assertIsNone(encoding_rule.get("extends"))
         self.assertNotIn("rule-json-cls-name-as-anchor", self._rule_names(encoding_rule))
 
+    def test_json_annotations_are_declared(self) -> None:
+        # rule-json-all-documentation only switches annotations on; without this
+        # block the JSON Schema comes out with no descriptions at all. The XML
+        # Schema target's documentationTemplate has no effect here.
+        json_target = _build().find(f"{_q('targets')}/{_q('Target')}")
+        assert json_target is not None
+        path = "/".join(
+            _q(tag)
+            for tag in (
+                "advancedProcessConfigurations",
+                "JsonSchemaAnnotations",
+                "annotations",
+                "SimpleAnnotation",
+            )
+        )
+        annotations = {
+            element.get("annotation"): element.get("descriptorOrTaggedValue")
+            for element in json_target.findall(path)
+        }
+        self.assertEqual(annotations["description"], "documentation")
+        self.assertEqual(annotations["title"], "alias")
+        # ShapeChange writes no codes for an open <<codeList>>, so the registry
+        # URI is what lets a consumer look them up.
+        self.assertEqual(annotations["codelist"], "TV:codeList")
+
+    def test_annotations_come_before_the_target_parameters(self) -> None:
+        # ShapeChange's configuration schema fixes the order.
+        json_target = _build().find(f"{_q('targets')}/{_q('Target')}")
+        assert json_target is not None
+        tags = [child.tag for child in json_target]
+        self.assertEqual(tags[0], _q("advancedProcessConfigurations"))
+
+    def test_enum_values_carry_their_documentation(self) -> None:
+        json_target = _build().find(f"{_q('targets')}/{_q('Target')}")
+        assert json_target is not None
+        encoding_rule = self._encoding_rule(json_target)
+        assert encoding_rule is not None
+        self.assertIn(
+            "rule-json-cls-documentation-enumDescription", self._rule_names(encoding_rule)
+        )
+
     def test_built_in_json_rule_is_not_redefined(self) -> None:
         json_target = _build(json_encoding_rule="defaultGeoJson").find(
             f"{_q('targets')}/{_q('Target')}"

@@ -17,6 +17,7 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 from shapechange.sosi import (
+    SOSI_JSON_ANNOTATIONS,
     SOSI_JSON_ENCODING_RULE,
     SOSI_JSON_MAP_ENTRIES,
     SOSI_TAGGED_VALUES,
@@ -140,6 +141,29 @@ def _xml_namespaces(
         element.set("ns", namespace)
         if location:
             element.set("location", location)
+
+
+def _json_schema_annotations(
+    parent: ET.Element, annotations: Sequence[tuple[str, str]]
+) -> None:
+    """Declare which descriptors the JSON Schema target writes as annotations.
+
+    ``rule-json-all-documentation`` only switches annotations on -- it does not
+    say what to emit. Without this block the JSON Schema comes out with no
+    descriptions at all, no matter what ``documentationTemplate`` says: that
+    parameter belongs to the XML Schema target. The element has to come first;
+    ShapeChange's configuration schema puts ``advancedProcessConfigurations``
+    ahead of the target parameters.
+    """
+    if not annotations:
+        return
+    advanced = _sub(parent, "advancedProcessConfigurations")
+    container = _sub(_sub(advanced, "JsonSchemaAnnotations"), "annotations")
+    for annotation, descriptor in annotations:
+        element = _sub(container, "SimpleAnnotation")
+        element.set("annotation", annotation)
+        element.set("descriptorOrTaggedValue", descriptor)
+        element.set("noValueBehavior", "ignore")
 
 
 def _json_map_entries(
@@ -302,6 +326,7 @@ def build_config(
         json_target.set("class", json_schema_target_class)
         json_target.set("mode", "enabled")
         json_target.set("inputs", "INPUT")
+        _json_schema_annotations(json_target, SOSI_JSON_ANNOTATIONS)
         _target_parameter(json_target, "outputDirectory", str(json_directory))
         _target_parameter(json_target, "sortedOutput", "true")
         _target_parameter(json_target, "jsonSchemaVersion", json_schema_version)
@@ -309,9 +334,6 @@ def build_config(
             _target_parameter(json_target, "jsonBaseUri", json_base_uri)
         _target_parameter(json_target, "entityTypeName", entity_type_name)
         _target_parameter(json_target, "defaultEncodingRule", json_encoding_rule)
-        # Samme som XSD: hent definisjonene fra 'documentation'-deskriptoren.
-        _target_parameter(json_target, "documentationTemplate", "[[documentation]]")
-        _target_parameter(json_target, "documentationNoValue", "")
         json_rules = custom_json_rules(json_encoding_rule)
         if json_rules:
             # Deliberately no "extends": both built-in JSON rules pull in

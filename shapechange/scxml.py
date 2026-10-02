@@ -105,14 +105,29 @@ def _normalize_cardinality(raw: Any) -> str | None:
     return f"{lower}..{upper}"
 
 
-def _add_documentation(parent: ET.Element, documentation: str) -> None:
-    documentation = _text(documentation)
-    if not documentation:
+def _add_descriptors(parent: ET.Element, **descriptors: str) -> None:
+    """Write the given descriptors into the element's single ``<descriptors>``.
+
+    The SCXML schema allows one ``<descriptors>`` per model element, so alias
+    and documentation have to share it. Targets read these by name: the JSON
+    Schema target is configured to take ``title`` from ``alias`` and
+    ``description`` from ``documentation``.
+    """
+    wanted = [(name, _text(value)) for name, value in descriptors.items()]
+    wanted = [(name, value) for name, value in wanted if value]
+    if not wanted:
         return
-    descriptors = _sub(parent, "descriptors")
-    descriptor = _sub(descriptors, "documentation")
-    values = _sub(descriptor, "descriptorValues")
-    _sub(values, "DescriptorValue", documentation)
+    container = parent.find(f"{{{SCXML_NS}}}descriptors")
+    if container is None:
+        container = _sub(parent, "descriptors")
+    for name, value in wanted:
+        descriptor = _sub(container, name)
+        values = _sub(descriptor, "descriptorValues")
+        _sub(values, "DescriptorValue", value)
+
+
+def _add_documentation(parent: ET.Element, documentation: str) -> None:
+    _add_descriptors(parent, documentation=documentation)
 
 
 def _add_stereotype(parent: ET.Element, stereotype: str) -> None:
@@ -431,12 +446,18 @@ def _write_code(parent: ET.Element, code: Mapping[str, Any], *, property_id: str
                 sequence_number: int) -> None:
     value = _text(code.get("value"))
     label = _text(code.get("label"))
+    title = _text(code.get("title"))
     element = _sub(parent, "Property")
     if value:
         _sub(element, "name", value)
     _sub(element, "id", property_id)
-    if label and label != value:
-        _add_documentation(element, label)
+    # A code has up to three parts: the value (the name, which is what the
+    # encoded instance carries), a human-readable title and a description.
+    _add_descriptors(
+        element,
+        alias=title if title != value else "",
+        documentation=label if label != value else "",
+    )
     _sub(element, "sequenceNumber", str(sequence_number))
 
 

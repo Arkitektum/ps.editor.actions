@@ -492,14 +492,17 @@ def _build_code_lists(classes: Mapping[str, _UmlClass]) -> dict[str, dict[str, A
     for class_info in classes.values():
         values: list[dict[str, str]] = []
         for attribute in class_info.attributes:
-            value = attribute.tags.get("code") or attribute.name
+            code = attribute.tags.get("code")
+            value = code or attribute.name
             label = _clean_text(attribute.tags.get("description")) or value
-            values.append(
-                {
-                    "value": value,
-                    "label": label,
-                }
-            )
+            entry_value = {"value": value, "label": label}
+            # A SOSI code carries three things: the value (the <<code>> tagged
+            # value), the UML name as its human-readable title, and the
+            # description. Without a <<code>> the name IS the value, so there is
+            # no separate title to keep.
+            if code and attribute.name and attribute.name != value:
+                entry_value["title"] = attribute.name
+            values.append(entry_value)
         definition = _clean_text(class_info.tagged_values.get("documentation"))
         entry: dict[str, Any] = {}
         # Keep the stereotype: ShapeChange encodes <<codeList>> and <<enumeration>>

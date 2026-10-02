@@ -200,30 +200,40 @@ def _merge_listed_values(
     merged: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
 
+    def _merged_entry(entry: Mapping[str, Any]) -> dict[str, str]:
+        merged_entry = {
+            "value": str(entry.get("value", "")).strip(),
+            "label": str(entry.get("label", "")).strip(),
+        }
+        # The code's human-readable title, when the model keeps it apart from
+        # the value. The ShapeChange writer turns it into an SCXML alias.
+        title = str(entry.get("title", "")).strip()
+        if title:
+            merged_entry["title"] = title
+        return merged_entry
+
     if isinstance(existing, Sequence) and not isinstance(existing, (str, bytes)):
         for entry in existing:
             if not isinstance(entry, Mapping):
                 continue
-            value = str(entry.get("value", "")).strip()
-            label = str(entry.get("label", "")).strip()
-            key = (value, label)
+            merged_entry = _merged_entry(entry)
+            key = (merged_entry["value"], merged_entry["label"])
             if key in seen:
                 continue
             seen.add(key)
-            merged.append({"value": value, "label": label})
+            merged.append(merged_entry)
 
     for entry in incoming:
         if not isinstance(entry, Mapping):
             continue
-        value = str(entry.get("value", "")).strip()
-        label = str(entry.get("label", "")).strip()
-        if not value and not label:
+        merged_entry = _merged_entry(entry)
+        key = (merged_entry["value"], merged_entry["label"])
+        if not key[0] and not key[1]:
             continue
-        key = (value, label)
         if key in seen:
             continue
         seen.add(key)
-        merged.append({"value": value, "label": label})
+        merged.append(merged_entry)
 
     return merged
 

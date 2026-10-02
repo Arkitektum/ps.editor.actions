@@ -501,6 +501,60 @@ class ScxmlInvariantTests(unittest.TestCase):
         self.assertEqual(prop.findtext(_q("cardinality")), "0..1")
 
 
+class CodeDescriptorTests(unittest.TestCase):
+    """A code carries a value, a title and a description, and the three are kept
+    apart: the JSON Schema target reads ``title`` from the alias descriptor and
+    ``description`` from the documentation descriptor."""
+
+    def _codes(self, listed_values: list[dict]) -> dict[str, ET.Element]:
+        root = _build(
+            [
+                {
+                    "name": "X",
+                    "attributes": [
+                        {
+                            "name": "status",
+                            "type": "Status",
+                            "cardinality": "1",
+                            "valueDomain": {
+                                "kind": "enumeration",
+                                "listedValues": listed_values,
+                            },
+                        }
+                    ],
+                }
+            ]
+        )
+        return _properties(_classes(root)["Status"])
+
+    def _descriptor(self, code: ET.Element, name: str) -> str | None:
+        return code.findtext(
+            f"{_q('descriptors')}/{_q(name)}/{_q('descriptorValues')}/{_q('DescriptorValue')}"
+        )
+
+    def test_title_and_description_land_in_separate_descriptors(self) -> None:
+        codes = self._codes(
+            [{"value": "1", "title": "Bolig", "label": "Bygning til boligformål."}]
+        )
+        code = codes["1"]
+        self.assertEqual(self._descriptor(code, "alias"), "Bolig")
+        self.assertEqual(self._descriptor(code, "documentation"), "Bygning til boligformål.")
+
+    def test_both_descriptors_share_one_descriptors_element(self) -> None:
+        # The SCXML schema allows only one <descriptors> per model element.
+        codes = self._codes([{"value": "1", "title": "Bolig", "label": "En bolig."}])
+        self.assertEqual(len(codes["1"].findall(_q("descriptors"))), 1)
+
+    def test_a_title_equal_to_the_value_is_not_repeated(self) -> None:
+        codes = self._codes([{"value": "Bolig", "title": "Bolig", "label": "En bolig."}])
+        self.assertIsNone(self._descriptor(codes["Bolig"], "alias"))
+
+    def test_a_code_without_a_title_still_works(self) -> None:
+        codes = self._codes([{"value": "1", "label": "En bolig."}])
+        self.assertIsNone(self._descriptor(codes["1"], "alias"))
+        self.assertEqual(self._descriptor(codes["1"], "documentation"), "En bolig.")
+
+
 class ScxmlWriteTests(unittest.TestCase):
     def test_write_scxml_creates_a_parseable_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

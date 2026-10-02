@@ -24,6 +24,7 @@ __all__ = [
     "SOSI_JSON_ENCODING_RULE",
     "SOSI_JSON_RULES",
     "SOSI_JSON_MAP_ENTRIES",
+    "SOSI_JSON_ANNOTATIONS",
     "SOSI_TAGGED_VALUES",
     "sosi_map_entries_path",
     "custom_xsd_rules",
@@ -72,6 +73,25 @@ SOSI_JSON_RULES: tuple[str, ...] = (
     "rule-json-cls-union-propertyCount",
     "rule-json-cls-valueTypeOptions",
     "rule-json-all-documentation",
+    # Without this an enumeration is a bare list of values; with it each code
+    # also carries its title and description under "enumDescription".
+    "rule-json-cls-documentation-enumDescription",
+)
+
+# What the JSON Schema target writes as annotations, as (annotation, descriptor).
+# rule-json-all-documentation enables annotations but does not say what to emit,
+# so this is what actually puts definitions in the JSON Schema. The XML Schema
+# target has no equivalent -- it uses the documentationTemplate parameter.
+#
+# ShapeChange never writes the codes of a <<codeList>> into a JSON Schema -- a
+# code list is open, so there is no enum to write (only an <<enumeration>> gets
+# its values, through rule-json-cls-documentation-enumDescription). Kartverket's
+# configuration solves that by carrying the registry URI across as an annotation,
+# which is what lets a consumer look the codes up. We do the same.
+SOSI_JSON_ANNOTATIONS: tuple[tuple[str, str], ...] = (
+    ("description", "documentation"),
+    ("title", "alias"),
+    ("codelist", "TV:codeList"),
 )
 
 # Kartverket maps the SOSI geometry type names to GeoJSON schemas in the JSON target.
