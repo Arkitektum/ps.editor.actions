@@ -391,10 +391,11 @@ From Python, `postgis.build_postgis_ddl(feature_types, ...)` returns the script 
 ```yaml
 scopes:
   - name: database
-    url: produktspesifikasjon/adm/adm.postgis.sql
     generator: postgis
     schema: administrative_enheter   # optional: one schema out of several
 ```
+
+Without a `source`, the script is read from the repository at `inputs/<product-slug>/postgis.schema.sql`, relative to the repository root (`GITHUB_WORKSPACE` in Actions, otherwise the working directory), where `<product-slug>` is the product specification's slug (`product-slug`/`--slug`, or derived from the title). The scope's source link then points at the file on GitHub. A missing file is an error. Give a `source` (a path or http(s) URL) to read a script from somewhere else.
 
 **Model metadata.** Lowercased names and flattened columns lose information: `lokalId` becomes `lokalid`, `identifikasjon.lokalId` becomes the column `identifikasjon_lokalid`, and abstract supertypes have no table. So the writer also records the model as a last line in each table and column comment:
 
@@ -443,16 +444,16 @@ To split the specification into multiple scopes, pass a YAML/JSON payload (or a 
 ```yaml
 scopes:
   - name: datafangst
-    url: https://sosi.geonorge.no/svn/SOSI/SOSI Del 3/Kommunal- og moderniseringsdepartementet/Arealplan/Arealplan 5.0/PlanleggingIgangsatt.xml
+    source: https://sosi.geonorge.no/svn/SOSI/SOSI Del 3/Kommunal- og moderniseringsdepartementet/Arealplan/Arealplan 5.0/PlanleggingIgangsatt.xml
     generator: xmi
     description: Datamodellen brukes for å legge ved gml filer for planområdet som brukes i tjenesten for varsel om planoppstart.
   - name: innsynstjeneste
-    url: https://plandata.ft-test.dibk.no/services/planleggingigangsatt/collections
+    source: https://plandata.ft-test.dibk.no/services/planleggingigangsatt/collections
     generator: ogc_feature_api
     description: Tjeneste for innsyn i planområder som er varslet for planlegging igangsatt.
 ```
 
-`generator` is one of `xmi`, `ogc_feature_api`, `geopackage` and `postgis` (a `.sql` script — see [Reading a PostGIS schema back](#reading-a-postgis-schema-back)).
+`source` is a path (relative to the working directory) or an http(s) URL to the data model; `url` is still accepted as an older name for it. `generator` is one of `xmi`, `ogc_feature_api`, `geopackage` and `postgis` (a `.sql` script — see [Reading a PostGIS schema back](#reading-a-postgis-schema-back)).
 
 Each scope writes its catalogue to `<spec-directory>/<scope-name>/objektkatalog.md`, and the main specification links to them.
 
