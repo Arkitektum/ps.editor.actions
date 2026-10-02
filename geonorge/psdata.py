@@ -554,6 +554,26 @@ def _extract_portrayal(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
     return portrayal or None
 
 
+# Geonorge's download API needs the dataset UUID. Without it the bare endpoint
+# redirects to an error page, so the link in the document leads nowhere.
+_DOWNLOAD_CAPABILITIES_PATH = "/api/capabilities/"
+
+
+def _complete_download_url(url: str, uuid: str) -> str:
+    """Append the dataset UUID to a bare Geonorge capabilities URL."""
+    text = (url or "").strip()
+    if not text:
+        return text
+    base, separator, tail = text.partition(_DOWNLOAD_CAPABILITIES_PATH)
+    if not separator:
+        return text
+    if tail.strip("/"):
+        return text  # already identifies a dataset
+    if not uuid:
+        return text
+    return f"{base}{_DOWNLOAD_CAPABILITIES_PATH}{uuid}"
+
+
 # ---------------------------------------------------------------------------
 # deliverySection
 # ---------------------------------------------------------------------------
@@ -572,14 +592,19 @@ def _extract_deliveries(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | N
         deliveries.append(entry)
 
     units_of_distribution = _normalize_string(metadata.get("UnitsOfDistribution"))
+    uuid = _normalize_string(metadata.get("Uuid"))
 
     # Prefer DistributionsFormats (rich, grouped by protocol+format)
     dist_formats = metadata.get("DistributionsFormats")
     if isinstance(dist_formats, Sequence) and not isinstance(dist_formats, (str, bytes)) and dist_formats:
-        _build_deliveries_from_distributions_formats(dist_formats, units_of_distribution, add_delivery)
+        _build_deliveries_from_distributions_formats(
+            dist_formats, units_of_distribution, add_delivery, uuid
+        )
     else:
         # Fallback to top-level distribution fields
-        _build_deliveries_from_top_level(metadata, units_of_distribution, add_delivery)
+        _build_deliveries_from_top_level(
+            metadata, units_of_distribution, add_delivery, uuid
+        )
 
     # Nested Distributions (services like WMS, WFS etc.)
     nested = metadata.get("Distributions")
@@ -619,7 +644,7 @@ def _extract_deliveries(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | N
                                         "deliveryMediumName": item_title,
                                         "deliveryService": _compact_mapping(
                                             {
-                                                "serviceEndpoint": access_href,
+                                                "serviceEndpoint": _complete_download_url(access_href, uuid),
                                                 "serviceProperty": _compact_mapping(
                                                     {
                                                         "type": item_title,
@@ -645,6 +670,7 @@ def _build_deliveries_from_distributions_formats(
     dist_formats: Sequence[Any],
     units_of_distribution: str,
     add_delivery: Callable[[dict[str, Any] | None], None],
+    uuid: str = "",
 ) -> None:
     """Build delivery entries from the rich DistributionsFormats array.
 
@@ -688,7 +714,7 @@ def _build_deliveries_from_distributions_formats(
                                 "deliveryMediumName": protocol_name,
                                 "deliveryService": _compact_mapping(
                                     {
-                                        "serviceEndpoint": url,
+                                        "serviceEndpoint": _complete_download_url(url, uuid),
                                         "serviceProperty": _compact_mapping(
                                             {
                                                 "type": protocol_name,
@@ -711,6 +737,7 @@ def _build_deliveries_from_top_level(
     metadata: Mapping[str, Any],
     units_of_distribution: str,
     add_delivery: Callable[[dict[str, Any] | None], None],
+    uuid: str = "",
 ) -> None:
     """Fallback: build delivery entries from top-level distribution fields."""
     protocol = _normalize_string(metadata.get("DistributionProtocol"))
@@ -747,7 +774,9 @@ def _build_deliveries_from_top_level(
                                 "deliveryMediumName": detail_name or protocol or "",
                                 "deliveryService": _compact_mapping(
                                     {
-                                        "serviceEndpoint": distribution_url or download_url,
+                                        "serviceEndpoint": _complete_download_url(
+                                            distribution_url or download_url, uuid
+                                        ),
                                         "serviceProperty": _compact_mapping(
                                             {
                                                 "type": detail_name or protocol,
