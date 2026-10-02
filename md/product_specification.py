@@ -129,7 +129,7 @@ _LABEL_TRANSLATIONS: dict[str, str] = {
     "maintenanceAndUpdateStatement": "Status",
     "dataCaptureAndProductionSection": "Datafangst",
     "DataAcquisitionAndProcessing": "Datainnsamling og prosessering",
-    "processStep": "Prosesstrinn",
+    "dataCaptureStatement": "Datafangstbeskrivelse",
     "portrayal": "Presentasjon",
     "linkage": "Lenke",
     "deliverySection": "Leveranse",
@@ -222,12 +222,49 @@ def build_context(psdata: Mapping[str, Any], *, updated: str | None = None) -> d
             quality["report"] = formatted
             context["dataQualitySection"] = quality
 
+    capture_section = context.get("dataCaptureAndProductionSection")
+    if isinstance(capture_section, Mapping):
+        formatted = _format_data_capture_section(capture_section)
+        if formatted:
+            context["dataCaptureAndProductionSection"] = formatted
+
     additional_refs = context.get("additionalReferences")
     if isinstance(additional_refs, (list, Sequence)) and not isinstance(additional_refs, (str, bytes)):
         formatted = _format_additional_references(additional_refs)
         context["additionalReferences"] = formatted
 
     return context
+
+
+def _format_data_capture_section(section: Mapping[str, Any]) -> str:
+    """Render the data capture section as prose.
+
+    It holds a single free-text lineage statement. The generic renderer would wrap
+    it in a bold heading and a bullet, which is two layers of structure around one
+    paragraph. Anything else in the section still falls through to the generic
+    rendering, so nothing is dropped if the shape grows.
+    """
+    remaining = dict(section)
+    acquisition = remaining.get("DataAcquisitionAndProcessing")
+
+    statement = ""
+    if isinstance(acquisition, Mapping):
+        acquisition = dict(acquisition)
+        statement = str(acquisition.pop("dataCaptureStatement", "") or "").strip()
+        if acquisition:
+            remaining["DataAcquisitionAndProcessing"] = acquisition
+        else:
+            remaining.pop("DataAcquisitionAndProcessing", None)
+
+    blocks: list[str] = []
+    if statement:
+        blocks.append(statement)
+    if remaining:
+        rendered = _stringify(remaining).strip()
+        if rendered:
+            blocks.append(rendered)
+
+    return "\n\n".join(blocks)
 
 
 def _format_data_quality_report(report: Any) -> str:

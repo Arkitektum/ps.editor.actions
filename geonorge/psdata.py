@@ -523,15 +523,15 @@ def _extract_quality(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 def _build_data_capture_section(metadata: Mapping[str, Any]) -> dict[str, Any] | None:
-    process_steps = _build_process_steps(metadata)
-    if not process_steps:
+    statement = _build_data_capture_statement(metadata)
+    if not statement:
         return None
 
     return _compact_mapping(
         {
             "DataAcquisitionAndProcessing": _compact_mapping(
                 {
-                    "processStep": process_steps,
+                    "dataCaptureStatement": statement,
                 }
             ),
         }
@@ -835,58 +835,49 @@ def _build_metadata_section(metadata_id: str, metadata: Mapping[str, Any]) -> di
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-def _build_process_steps(metadata: Mapping[str, Any]) -> list[dict[str, Any]] | None:
+def _build_data_capture_statement(metadata: Mapping[str, Any]) -> str | None:
+    """The lineage statement describing how the data was captured.
+
+    Geonorge's ``ProcessHistory`` is free text -- ISO 19115
+    ``LI_Lineage/statement`` -- not a list of discrete process steps. Mapping it
+    to ``processStep`` dressed a narrative up as structure it does not have.
+
+    Mappings and sequences are still tolerated: the API has returned a plain
+    string in every dataset checked, but the shape is not guaranteed.
+    """
     raw = metadata.get("ProcessHistory")
     if raw is None:
         return None
 
-    steps: list[dict[str, Any]] = []
+    parts: list[str] = []
 
-    def add_step(description: str, date_value: Any = None) -> None:
-        desc = _normalize_string(description)
-        if not desc:
+    def add(value: Any) -> None:
+        text = _normalize_string(value)
+        if text and text not in parts:
+            parts.append(text)
+
+    def add_entry(entry: Any) -> None:
+        if isinstance(entry, str):
+            add(entry)
             return
-        step = _compact_mapping(
-            {
-                "description": desc,
-                "date": _parse_date(date_value),
-            }
-        )
-        if step:
-            steps.append(step)
-
-    if isinstance(raw, str):
-        add_step(raw)
-        return steps or None
-
-    if isinstance(raw, Mapping):
-        description = _select_first_string(
-            raw.get("Description"),
-            raw.get("ProcessStep"),
-            raw.get("ProcessDescription"),
-            raw.get("Text"),
-            raw.get("Value"),
-        )
-        add_step(description, raw.get("Date") or raw.get("ProcessDate"))
-        return steps or None
-
-    if isinstance(raw, Sequence):
-        for item in raw:
-            if isinstance(item, str):
-                add_step(item)
-                continue
-            if isinstance(item, Mapping):
-                description = _select_first_string(
-                    item.get("Description"),
-                    item.get("ProcessStep"),
-                    item.get("ProcessDescription"),
-                    item.get("Text"),
-                    item.get("Value"),
+        if isinstance(entry, Mapping):
+            add(
+                _select_first_string(
+                    entry.get("Description"),
+                    entry.get("ProcessStep"),
+                    entry.get("ProcessDescription"),
+                    entry.get("Text"),
+                    entry.get("Value"),
                 )
-                add_step(description, item.get("Date") or item.get("ProcessDate"))
-        return steps or None
+            )
 
-    return None
+    if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)):
+        for entry in raw:
+            add_entry(entry)
+    else:
+        add_entry(raw)
+
+    return "\n\n".join(parts) or None
 
 
 def _extract_spatial_extent(
