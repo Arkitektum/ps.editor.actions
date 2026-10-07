@@ -106,6 +106,28 @@ class GeoPackageWriterTests(unittest.TestCase):
         ids = {r[0] for r in self.conn.execute("SELECT srs_id FROM gpkg_spatial_ref_sys")}
         self.assertTrue({-1, 0, 4326, 25833}.issubset(ids))
 
+    def test_norwegian_srs_rows_preregistered(self) -> None:
+        rows = {
+            r["srs_id"]: r
+            for r in self.conn.execute(
+                "SELECT srs_id, organization, organization_coordsys_id, definition, "
+                "description FROM gpkg_spatial_ref_sys"
+            )
+        }
+        expected = {
+            25832, 25833, 25835, 5972, 5973, 5975,
+            3857, 3575, 4326, 3035, 4258, 5942,
+        }
+        self.assertTrue(expected.issubset(rows))
+        for code in expected:
+            row = rows[code]
+            self.assertEqual(row["organization"], "EPSG")
+            self.assertEqual(row["organization_coordsys_id"], code)
+            self.assertIn(f'AUTHORITY["EPSG","{code}"]]', row["definition"])
+            self.assertTrue(row["description"])
+        self.assertTrue(rows[5973]["definition"].startswith("COMPD_CS["))
+        self.assertIn("NN2000", rows[5973]["description"])
+
     def test_feature_tables_registered(self) -> None:
         contents = {
             r["table_name"]: r["data_type"]

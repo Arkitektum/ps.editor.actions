@@ -29,6 +29,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from geopackage.crs import NORWEGIAN_SRS
 from geopackage.realisation import split_multi_geometry_types
 
 # Resolves an external code-list URL to ``[{"value","label"}]`` rows, or None when
@@ -122,14 +123,6 @@ def _is_multivalued(cardinality: Any) -> bool:
     if upper in {"*", "n", "-1", "unbounded"}:
         return True
     return upper.isdigit() and int(upper) > 1
-
-_WGS84_WKT = (
-    'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,'
-    'AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,'
-    'AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,'
-    'AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]'
-)
-
 
 def _q(identifier: str) -> str:
     """Quote a SQL identifier, escaping embedded double quotes."""
@@ -304,14 +297,20 @@ def _init_base(connection: sqlite3.Connection) -> None:
     connection.execute(f"PRAGMA application_id = {_APPLICATION_ID}")
     connection.execute(f"PRAGMA user_version = {_USER_VERSION}")
     connection.executescript(_BASE_DDL)
+    # The two undefined SRSs are required by the spec. The Norwegian CRSs are
+    # registered up front so a producer can write the same model in any of them
+    # without having to add the gpkg_spatial_ref_sys row themselves.
     connection.executemany(
         "INSERT INTO gpkg_spatial_ref_sys "
-        "(srs_name, srs_id, organization, organization_coordsys_id, definition) "
-        "VALUES (?,?,?,?,?)",
+        "(srs_name, srs_id, organization, organization_coordsys_id, definition, description) "
+        "VALUES (?,?,?,?,?,?)",
         [
-            ("Undefined cartesian SRS", -1, "NONE", -1, "undefined"),
-            ("Undefined geographic SRS", 0, "NONE", 0, "undefined"),
-            ("WGS 84 geodetic", 4326, "EPSG", 4326, _WGS84_WKT),
+            ("Undefined cartesian SRS", -1, "NONE", -1, "undefined", None),
+            ("Undefined geographic SRS", 0, "NONE", 0, "undefined", None),
+            *(
+                (name, code, "EPSG", code, wkt, description)
+                for code, name, description, wkt in NORWEGIAN_SRS
+            ),
         ],
     )
     # Register the Schema extension (two metadata tables).
