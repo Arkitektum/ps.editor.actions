@@ -93,6 +93,7 @@ def _collect_neighbor_includes(
 # repoet. (glob-mønster relativt til spec-katalogen, visningsnavn, format.)
 _DELIVERABLE_PATTERNS: list[tuple[str, str, str]] = [
     ("**/*.gpkg", "GeoPackage", "GPKG"),
+    ("**/*.postgis.sql", "PostGIS-skript", "SQL"),
     ("**/schema/xsd/**/*.xsd", "GML/XSD-skjema", "XSD"),
     ("**/schema/jsonschema/**/*.json", "JSON Schema", "JSON Schema"),
 ]
@@ -116,7 +117,7 @@ def _output_delivery_entry(name: str, url: str, fmt: str) -> dict[str, Any]:
 def _build_output_file_deliveries(
     spec_dir: Path, repo_root: Path, raw_base: str
 ) -> list[dict[str, Any]]:
-    """Scan the spec directory for generated deliverable files (GeoPackage + schema)
+    """Scan the spec directory for generated deliverable files (GeoPackage, PostGIS + schema)
     and turn each into a deliverySection entry linking to the file in the repo."""
     base = raw_base.rstrip("/")
     entries: list[dict[str, Any]] = []

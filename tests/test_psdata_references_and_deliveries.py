@@ -58,6 +58,7 @@ class OutputDeliveryTests(unittest.TestCase):
         spec = root / "produktspesifikasjon" / "slug" / "ny-datakilde"
         spec.mkdir(parents=True, exist_ok=True)
         (spec / "ny-datakilde.gpkg").write_bytes(b"x")
+        (spec / "ny-datakilde.postgis.sql").write_text("BEGIN;", encoding="utf-8")
         xsd = spec / "schema" / "xsd" / "INPUT"
         xsd.mkdir(parents=True, exist_ok=True)
         (xsd / "Model.xsd").write_text("x", encoding="utf-8")
@@ -66,7 +67,7 @@ class OutputDeliveryTests(unittest.TestCase):
         (js / "Model.json").write_text("{}", encoding="utf-8")
         return spec
 
-    def test_scans_gpkg_and_schema_with_raw_links(self) -> None:
+    def test_scans_gpkg_postgis_and_schema_with_raw_links(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             spec = self._spec_tree(root)
@@ -78,12 +79,17 @@ class OutputDeliveryTests(unittest.TestCase):
                 for e in entries
             ]
             formats = [e["delivery"]["deliveryFormat"][0]["formatName"] for e in entries]
-            self.assertEqual(len(entries), 3)
+            self.assertEqual(len(entries), 4)
             self.assertIn(
                 "https://raw.githubusercontent.com/o/r/main/produktspesifikasjon/slug/ny-datakilde/ny-datakilde.gpkg",
                 urls,
             )
+            self.assertIn(
+                "https://raw.githubusercontent.com/o/r/main/produktspesifikasjon/slug/ny-datakilde/ny-datakilde.postgis.sql",
+                urls,
+            )
             self.assertIn("GPKG", formats)
+            self.assertIn("SQL", formats)
             self.assertIn("XSD", formats)
             self.assertIn("JSON Schema", formats)
 
@@ -100,9 +106,9 @@ class OutputDeliveryTests(unittest.TestCase):
                 psdata_path, spec, root, "https://raw.githubusercontent.com/o/r/main"
             )
             deliveries = json.loads(psdata_path.read_text(encoding="utf-8"))["deliverySection"]
-            # Existing metadata delivery kept + 3 generated files appended.
+            # Existing metadata delivery kept + 4 generated files appended.
             self.assertEqual(deliveries[0], existing)
-            self.assertEqual(len(deliveries), 4)
+            self.assertEqual(len(deliveries), 5)
 
 
 class ChapterAutofillTests(unittest.TestCase):
