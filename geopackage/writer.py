@@ -26,6 +26,7 @@ import sqlite3
 import unicodedata
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -448,6 +449,95 @@ def _collect_columns(
 # --------------------------------------------------------------------------- #
 
 
+def _table_geometry(
+    ft: dict[str, Any], columns: list[dict[str, Any]], default_crs: int
+) -> tuple[str | None, str | None, int]:
+    """The table's geometry column, its GeoPackage type and its SRS id.
+
+    The explicit geometry dict wins, else the first GM_* attribute; the column is
+    ``None`` when the type has no geometry.
+    """
+    geom_type = _geometry_type_name(ft)
+    if geom_type:
+        geometry = ft.get("geometry") or {}
+        code = _epsg_code(geometry.get("storageCrs")) or _epsg_code(geometry.get("crs"))
+        return _geometry_column_name(ft), geom_type, code or default_crs
+    for column in columns:
+        if column["is_geometry"]:
+            return column["name"], column["gm_type"], default_crs
+    return None, None, default_crs
+
+
+def _realise(
+    feature_types: list[dict[str, Any]], split_multi_geometry: bool
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """The feature types as they become tables, and the name lookup for inheritance."""
+    # Inheritance is resolved against the modelled names, so the lookup is built
+    # before the split renames anything.
+    modelled_by_name = {
+        ft["name"]: ft
+        for ft in feature_types
+        if isinstance(ft, dict) and isinstance(ft.get("name"), str)
+    }
+    if split_multi_geometry:
+        feature_types = split_multi_geometry_types(feature_types)
+    # Navneoppslag for arv (inkluderer abstrakte supertyper). Supertyper
+    # refereres med det modellerte navnet, så oppslaget må inneholde begge:
+    # de modellerte navnene og de realiserte.
+    by_name = dict(modelled_by_name)
+    by_name.update(
+        {
+            ft["name"]: ft
+            for ft in feature_types
+            if isinstance(ft, dict) and isinstance(ft.get("name"), str)
+        }
+    )
+    return [ft for ft in feature_types if isinstance(ft, dict)], by_name
+
+
+@dataclass(frozen=True)
+class FeatureTable:
+    """A feature type's table in the GeoPackage, as :func:`write_geopackage` writes it."""
+
+    name: str
+    feature_type: dict[str, Any]
+    geometry_column: str | None
+    geometry_type: str | None
+    srs_id: int | None
+
+
+def realised_feature_tables(
+    feature_types: list[dict[str, Any]],
+    *,
+    default_crs: int = 25833,
+    split_multi_geometry: bool = True,
+) -> list[FeatureTable]:
+    """The feature tables :func:`write_geopackage` creates, without writing anything.
+
+    Same options and rules as the writer: abstract types get no table, a class with
+    several geometries is split into one table per geometry, and a type without
+    geometry becomes an aspatial attributes table (``geometry_column`` ``None``).
+    """
+    realised, by_name = _realise(feature_types, split_multi_geometry)
+    tables: list[FeatureTable] = []
+    for ft in realised:
+        name = ft.get("name")
+        if not isinstance(name, str) or not name.strip() or ft.get("abstract") is True:
+            continue
+        columns = _collect_columns(_effective_attributes(ft, by_name), multivalued=[])
+        geom_column, geom_type, srs_id = _table_geometry(ft, columns, default_crs)
+        tables.append(
+            FeatureTable(
+                name=name.strip(),
+                feature_type=ft,
+                geometry_column=geom_column,
+                geometry_type=geom_type,
+                srs_id=srs_id if geom_column else None,
+            )
+        )
+    return tables
+
+
 def _write_feature_type(
     connection: sqlite3.Connection,
     ft: dict[str, Any],
@@ -474,21 +564,7 @@ def _write_feature_type(
         _effective_attributes(ft, by_name), multivalued=multivalued
     )
 
-    # Determine the geometry column: explicit geometry dict, else a GM_* attribute.
-    geom_type = _geometry_type_name(ft)
-    geom_column = _geometry_column_name(ft) if geom_type else None
-    srs_id = default_crs
-    if geom_type:
-        code = _epsg_code((ft.get("geometry") or {}).get("storageCrs")) or _epsg_code(
-            (ft.get("geometry") or {}).get("crs")
-        )
-        srs_id = code or default_crs
-    else:
-        for column in columns:
-            if column["is_geometry"]:
-                geom_column = column["name"]
-                geom_type = column["gm_type"]
-                break
+    geom_column, geom_type, srs_id = _table_geometry(ft, columns, default_crs)
     # En feature-tabell har ÉN geometrikolonne. Ekskluder alle geometri-attributter
     # (ikke bare den valgte) — SOSI-typer har ofte både f.eks. Flate og Punkt.
     data_columns = [c for c in columns if not c["is_geometry"] and c["name"] != geom_column]
@@ -983,15 +1059,7 @@ def write_geopackage(
 
     resolver = _memoize_resolver(codelist_resolver) if codelist_resolver else None
 
-    # Inheritance is resolved against the modelled names, so the lookup is built
-    # before the split renames anything.
-    modelled_by_name = {
-        ft["name"]: ft
-        for ft in feature_types
-        if isinstance(ft, dict) and isinstance(ft.get("name"), str)
-    }
-    if split_multi_geometry:
-        feature_types = split_multi_geometry_types(feature_types)
+    feature_types, by_name = _realise(feature_types, split_multi_geometry)
 
     connection = sqlite3.connect(str(path))
     try:
@@ -1000,33 +1068,21 @@ def write_geopackage(
         schema_used = {"used": False}
         constraint_names: set[str] = set()
         rte_used = {"used": False}
-        # Navneoppslag for arv (inkluderer abstrakte supertyper). Supertyper
-        # refereres med det modellerte navnet, så oppslaget må inneholde begge:
-        # de modellerte navnene og de realiserte.
-        by_name = dict(modelled_by_name)
-        by_name.update(
-            {
-                ft["name"]: ft
-                for ft in feature_types
-                if isinstance(ft, dict) and isinstance(ft.get("name"), str)
-            }
-        )
         tables: set[str] = set()
         for ft in feature_types:
-            if isinstance(ft, dict):
-                table = _write_feature_type(
-                    connection,
-                    ft,
-                    default_crs=default_crs,
-                    srs_seen=srs_seen,
-                    schema_used=schema_used,
-                    constraint_names=constraint_names,
-                    rte_used=rte_used,
-                    by_name=by_name,
-                    codelist_resolver=resolver,
-                )
-                if table:
-                    tables.add(table)
+            table = _write_feature_type(
+                connection,
+                ft,
+                default_crs=default_crs,
+                srs_seen=srs_seen,
+                schema_used=schema_used,
+                constraint_names=constraint_names,
+                rte_used=rte_used,
+                by_name=by_name,
+                codelist_resolver=resolver,
+            )
+            if table:
+                tables.add(table)
         _write_relations(connection, feature_types, tables, rte_used)
         connection.commit()
     finally:

@@ -70,6 +70,8 @@ Inputs:
 - `xmi-username` / `xmi-password` (default `sosi`/`sosi`): Credentials used to download the XMI catalogue.
 - `postgis-output` (default `false`): Also write a PostGIS DDL script of the data model — see [PostGIS schema](#postgis-schema).
 - `postgis-schema`: Database schema the script creates the tables in. Omit to use the search path (normally `public`).
+- `pygeoapi-postgis-output` (default `false`): Also write a pygeoapi configuration that serves the PostGIS tables with the PostgreSQL provider — see [pygeoapi configuration for PostGIS](#pygeoapi-configuration-for-postgis).
+- `pygeoapi-gpkg-output` (default `false`): Also write a pygeoapi configuration that serves the GeoPackage tables with the SQLiteGPKG provider — see [pygeoapi configuration for GeoPackage](#pygeoapi-configuration-for-geopackage).
 
 Outputs:
 
@@ -82,6 +84,8 @@ Outputs:
 - `xmi-feature-catalogue-markdown`: Path to the XMI feature catalogue Markdown table when generated.
 - `xmi-feature-catalogue-uml`: Path to the XMI feature catalogue PlantUML diagram when generated.
 - `feature-catalogue-postgis`: Path to the PostGIS DDL script (`<slug>.postgis.sql`) when `postgis-output` is set.
+- `feature-catalogue-pygeoapi-postgis`: Path to the PostGIS pygeoapi configuration (`<slug>.pygeoapi-postgis.yml`) when `pygeoapi-postgis-output` is set.
+- `feature-catalogue-pygeoapi-gpkg`: Path to the GeoPackage pygeoapi configuration (`<slug>.pygeoapi-gpkg.yml`) when `pygeoapi-gpkg-output` is set.
 - `spec-markdown`: Reserved path for the final product specification Markdown (always `<spec-directory>/index.md`). The file is created by the assemble action.
 
 ### Assemble specification (`arkitektum/ps.editor.actions/assemble@main`)
@@ -410,6 +414,66 @@ The line holds the attribute's own keys (name, type, multiplicity, tagged values
 **Other scripts.** Without the `@ps` lines — `pg_dump --schema-only` output, full dumps (their `COPY` data fills the code lists), scripts from the Gistools PostGIS generator — the reader applies the writer's conventions in reverse: `identifier`/`description` tables are code lists, a table with one required foreign key that cascades from an owner (or is named `<owner>_…`) holds a repeating attribute, two foreign keys unique together form a many-to-many association, any other foreign key to a feature table is an association, `CHECK (col IN …)` is an enumeration, and `objtype`'s default gives the class name. Geometry comes from `geometry(Type, srid)`, `AddGeometryColumn`, or `enforce_srid` checks. Names then stay as the database has them, and flattened columns stay flat.
 
 The parser splits statements on `;` outside strings, quoted names, comments and dollar-quoted function bodies, and skips statements it does not need (functions, indexes, grants, `SET`). A recognised statement that does not parse raises an error naming it.
+
+## pygeoapi configuration for PostGIS
+
+With `pygeoapi-postgis-output: true` (or `--pygeoapi-postgis-output` locally) the prepare action also writes `<slug>.pygeoapi-postgis.yml`: a [pygeoapi](https://pygeoapi.io) configuration that publishes the tables of the [PostGIS schema](#postgis-schema) as OGC API - Features collections. It is generated from the same table model as `<slug>.postgis.sql`, so it is usually written together with `postgis-output`, and it uses `postgis-schema` as its `search_path` (default `public`).
+
+Every realisable feature type — every concrete class, i.e. every class with a feature table in the PostGIS script — becomes a `resources` entry with one `PostgreSQLProvider`:
+
+| Field | Value |
+|---|---|
+| resource key | the class name, latinised, lowercase kebab-case: `AdministrativEnhet` → `administrativ-enhet`, `Dyrkbar jord` → `dyrkbar-jord`, `ÅpenGrunn` → `aapen-grunn` |
+| `title` / `description` | the class name (or `title`) and its description |
+| `keywords` | the class's `keywords`, else its title |
+| `extents.spatial.bbox` | the dataset's extent from psdata (`identificationSection.extent.geographicElement`), in CRS84 |
+| `data.dbname` | the slug, sanitised like the table names |
+| `data.search_path` | `postgis-schema`, else `public` |
+| `table` / `id_field` | the feature table and its primary key `objid` |
+| `geom_field` / `storage_crs` | the class's geometry column and its SRID. With several geometries the one the class declares as its geometry is used — PostgreSQLProvider serves one. A class without geometry gets neither, nor a `crs` list. |
+| `crs` | CRS84 and the common Norwegian/European CRSs (EPSG 25832/25833/25835, 5972/5973/5975, 3857, 3575, 4326, 3035, 4258, 5942), plus the storage CRS if it is not among them |
+
+The service metadata comes from psdata: `identification` from the title, abstract, keywords, access constraints and metadata link; `license` from the licence and its URL; `provider` from the contact with role `owner`; `contact` from the contact with role `pointOfContact`.
+
+Values only whoever runs the service knows — database `host`, `port`, `user` and `password`, and the provider's and contact's `url` — are written as `"<REPLACE_ME>"`. So is any psdata value that is missing, rather than a guess. Fill them in before starting pygeoapi; pygeoapi also expands `${ENV_VAR}` references, so the password can stay out of the file:
+
+```yaml
+      data:
+        host: ${POSTGRES_HOST}
+        port: 5432
+        dbname: dyrkbar_jord
+        user: ${POSTGRES_USER}
+        password: ${POSTGRES_PASSWORD}
+```
+
+From Python, `pygeoapi_config.build_pygeoapi_postgis_config(feature_types, psdata=..., dbname=..., schema=...)` returns the configuration as a dict and `pygeoapi_config.write_pygeoapi_postgis_config(feature_types, path, ...)` writes it. Pass the same `default_srid`/`allow_z` as to the PostGIS writer if you changed them there. The package is called `pygeoapi_config` so it does not shadow the `pygeoapi` package itself.
+
+## pygeoapi configuration for GeoPackage
+
+With `pygeoapi-gpkg-output: true` (or `--pygeoapi-gpkg-output` locally) the prepare action also writes `<slug>.pygeoapi-gpkg.yml`: the same configuration — server, service metadata, collection titles, descriptions, keywords, extents and CRSs — as [for PostGIS](#pygeoapi-configuration-for-postgis), but every collection is served by pygeoapi's `SQLiteGPKG` provider from the GeoPackage instead of from PostgreSQL:
+
+```yaml
+    providers:
+    - type: feature
+      name: SQLiteGPKG
+      data: ./<slug>.gpkg
+      id_field: objid
+      table: Bygning
+      crs: [...]
+      storage_crs: http://www.opengis.net/def/crs/EPSG/0/25833
+```
+
+It describes the GeoPackage that `geopackage-output` writes, so the two are usually turned on together, and the collections follow that GeoPackage's tables rather than the PostGIS ones:
+
+- `data` is the GeoPackage's file name, `./<slug>.gpkg`. pygeoapi resolves a relative path from its working directory, not from the configuration file, so adjust it to where the file (with data in it) is deployed.
+- `table` is the feature type's name as it is — GeoPackage tables are not lowercased or transliterated — and `id_field` is the `objid` primary key.
+- A class with several geometries is split into one table per geometry (`Bygning_flate`, `Bygning_punkt`), as in the GeoPackage, and each becomes its own collection (`bygning-flate`, `bygning-punkt`).
+- There is no `geom_field`: SQLiteGPKG finds the geometry column in `gpkg_geometry_columns` itself. It also refuses a table without one, so a feature type without geometry (an aspatial attributes table in the GeoPackage) gets no collection.
+- `storage_crs` is the table's `srs_id`.
+
+SQLiteGPKG needs the SpatiaLite extension (`mod_spatialite`) on the pygeoapi host. It builds its SQL with the table name unquoted, so a table whose name contains a space (`Dyrkbar jord`) cannot be served — rename the table in the GeoPackage and in the configuration. Norwegian letters are fine.
+
+From Python, `pygeoapi_config.build_pygeoapi_gpkg_config(feature_types, psdata=..., data=...)` returns the configuration and `pygeoapi_config.write_pygeoapi_gpkg_config(feature_types, path, ...)` writes it; pass the same `default_crs`/`split_multi_geometry` as to `write_geopackage` if you changed them there. `geopackage.writer.realised_feature_tables(feature_types, ...)` lists the feature tables `write_geopackage` creates, without writing anything.
 
 ## Template
 

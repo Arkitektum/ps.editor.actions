@@ -67,6 +67,14 @@ inputs:
   postgis-schema:
     description: "Optional database schema for the PostGIS DDL script. Omit to create the tables in the search path (normally 'public')."
     required: false
+  pygeoapi-postgis-output:
+    description: "Set to 'true' to also write a pygeoapi configuration (.pygeoapi-postgis.yml) that serves the PostGIS tables of the data model as OGC API - Features collections. Uses postgis-schema as search path."
+    required: false
+    default: "false"
+  pygeoapi-gpkg-output:
+    description: "Set to 'true' to also write a pygeoapi configuration (.pygeoapi-gpkg.yml) that serves the GeoPackage tables of the data model with the SQLiteGPKG provider. Points at the GeoPackage written by geopackage-output."
+    required: false
+    default: "false"
 outputs:
   spec-directory:
     description: Directory containing the generated product specification.
@@ -89,6 +97,12 @@ outputs:
   feature-catalogue-postgis:
     description: Path to the generated PostGIS DDL script (.postgis.sql) of the data model structure.
     value: ${{ steps.generate.outputs.feature-catalogue-postgis }}
+  feature-catalogue-pygeoapi-postgis:
+    description: Path to the generated pygeoapi configuration (.pygeoapi-postgis.yml) for the PostGIS tables.
+    value: ${{ steps.generate.outputs.feature-catalogue-pygeoapi-postgis }}
+  feature-catalogue-pygeoapi-gpkg:
+    description: Path to the generated pygeoapi configuration (.pygeoapi-gpkg.yml) for the GeoPackage tables.
+    value: ${{ steps.generate.outputs.feature-catalogue-pygeoapi-gpkg }}
   xmi-feature-catalogue-json:
     description: Path to the XMI feature catalogue JSON cache.
     value: ${{ steps.generate.outputs.xmi-feature-catalogue-json }}
@@ -178,6 +192,12 @@ runs:
         if [ -n "${{ inputs.postgis-schema }}" ]; then
           ARGS+=("--postgis-schema" "${{ inputs.postgis-schema }}")
         fi
+        if [ "${{ inputs.pygeoapi-postgis-output }}" = "true" ]; then
+          ARGS+=("--pygeoapi-postgis-output")
+        fi
+        if [ "${{ inputs.pygeoapi-gpkg-output }}" = "true" ]; then
+          ARGS+=("--pygeoapi-gpkg-output")
+        fi
         ARGS+=("--skip-spec-markdown")
         python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"
         SPEC_DIR=""
@@ -187,6 +207,8 @@ runs:
         FEATURE_CATALOGUE_UML=""
         FEATURE_CATALOGUE_GPKG=""
         FEATURE_CATALOGUE_POSTGIS=""
+        FEATURE_CATALOGUE_PYGEOAPI_POSTGIS=""
+        FEATURE_CATALOGUE_PYGEOAPI_GPKG=""
         XMI_FEATURE_CATALOGUE_JSON=""
         XMI_FEATURE_CATALOGUE_MD=""
         XMI_FEATURE_CATALOGUE_UML=""
@@ -214,6 +236,12 @@ runs:
             "[paths] feature_catalogue_postgis="*)
               FEATURE_CATALOGUE_POSTGIS="${line#\[paths\] feature_catalogue_postgis=}"
               ;;
+            "[paths] feature_catalogue_pygeoapi_postgis="*)
+              FEATURE_CATALOGUE_PYGEOAPI_POSTGIS="${line#\[paths\] feature_catalogue_pygeoapi_postgis=}"
+              ;;
+            "[paths] feature_catalogue_pygeoapi_gpkg="*)
+              FEATURE_CATALOGUE_PYGEOAPI_GPKG="${line#\[paths\] feature_catalogue_pygeoapi_gpkg=}"
+              ;;
             "[paths] xmi_feature_catalogue_json="*)
               XMI_FEATURE_CATALOGUE_JSON="${line#\[paths\] xmi_feature_catalogue_json=}"
               ;;
@@ -236,6 +264,8 @@ runs:
           echo "feature-catalogue-uml=$FEATURE_CATALOGUE_UML"
           echo "feature-catalogue-geopackage=$FEATURE_CATALOGUE_GPKG"
           echo "feature-catalogue-postgis=$FEATURE_CATALOGUE_POSTGIS"
+          echo "feature-catalogue-pygeoapi-postgis=$FEATURE_CATALOGUE_PYGEOAPI_POSTGIS"
+          echo "feature-catalogue-pygeoapi-gpkg=$FEATURE_CATALOGUE_PYGEOAPI_GPKG"
           echo "xmi-feature-catalogue-json=$XMI_FEATURE_CATALOGUE_JSON"
           echo "xmi-feature-catalogue-markdown=$XMI_FEATURE_CATALOGUE_MD"
           echo "xmi-feature-catalogue-uml=$XMI_FEATURE_CATALOGUE_UML"

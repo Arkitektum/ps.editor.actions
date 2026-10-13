@@ -255,6 +255,8 @@ class Table:
 class PostgisModel:
     tables: list[Table] = field(default_factory=list)
     foreign_keys: list[ForeignKey] = field(default_factory=list)
+    # Feature type name -> the name of its feature table, for every concrete type.
+    table_for_type: dict[str, str] = field(default_factory=dict)
 
     def table(self, name: str) -> Table | None:
         return next((table for table in self.tables if table.name == name), None)
@@ -382,6 +384,7 @@ class _ModelBuilder:
         if self.model_metadata:
             self._record_tableless_types(concrete, feature_tables)
         self.model.tables.sort(key=lambda table: _KIND_ORDER[table.kind])
+        self.model.table_for_type = dict(self.table_for_type)
         return self.model
 
     def _geometry_type(self, kind: str, srid: int) -> str:
