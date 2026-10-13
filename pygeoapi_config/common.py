@@ -1,7 +1,7 @@
 """Shared parts of the pygeoapi configuration emitters.
 
 :mod:`pygeoapi_config.postgis` serves the data model's PostGIS tables with
-``PostgreSQLProvider``, :mod:`pygeoapi_config.gpkg` its GeoPackage tables with
+the ``PostgreSQL`` provider, :mod:`pygeoapi_config.gpkg` its GeoPackage tables with
 ``SQLiteGPKG``. Everything but the provider is the same and lives here.
 
 The psdata document describes the service around the collections:

@@ -1,4 +1,4 @@
-"""Tests for the pygeoapi configuration writer for PostGIS (PostgreSQLProvider)."""
+"""Tests for the pygeoapi configuration writer for PostGIS (PostgreSQL provider)."""
 
 from __future__ import annotations
 
@@ -126,7 +126,7 @@ class ResourceTests(unittest.TestCase):
     def test_provider_points_at_the_postgis_table(self) -> None:
         provider = _provider(self.config, "bygning")
         self.assertEqual(provider["type"], "feature")
-        self.assertEqual(provider["name"], "PostgreSQLProvider")
+        self.assertEqual(provider["name"], "PostgreSQL")
         self.assertEqual(provider["table"], "bygning")
         self.assertEqual(provider["id_field"], "objid")
         self.assertEqual(provider["geom_field"], "geometry")

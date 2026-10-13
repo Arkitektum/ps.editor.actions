@@ -4,7 +4,7 @@ PostGIS tables as OGC API - Features collections.
 The configuration is the counterpart of the PostGIS DDL script: every realisable
 feature type -- the concrete ones, which get a feature table in
 :mod:`postgis.writer` -- becomes a ``resources`` entry served by pygeoapi's
-``PostgreSQLProvider``. Table, id column, geometry column and storage CRS are
+``PostgreSQL`` provider. Table, id column, geometry column and storage CRS are
 read from the same table model the DDL script is rendered from, so the
 configuration points at exactly the tables and columns that script creates.
 
@@ -42,7 +42,7 @@ def _postgresql_provider(
 ) -> dict[str, Any]:
     provider: dict[str, Any] = {
         "type": "feature",
-        "name": "PostgreSQLProvider",
+        "name": "PostgreSQL",
         "data": {
             "host": PLACEHOLDER,
             "port": PLACEHOLDER,
@@ -55,7 +55,7 @@ def _postgresql_provider(
         "table": table.name,
     }
 
-    # PostgreSQLProvider takes one geometry column. A class with several
+    # The PostgreSQL provider takes one geometry column. A class with several
     # geometries keeps them all in its table; the first is the one the feature
     # type declares as its geometry, so that is the one published.
     geometry = next((column for column in table.columns if column.geometry), None)

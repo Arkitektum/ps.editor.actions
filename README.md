@@ -419,7 +419,7 @@ The parser splits statements on `;` outside strings, quoted names, comments and 
 
 With `pygeoapi-postgis-output: true` (or `--pygeoapi-postgis-output` locally) the prepare action also writes `<slug>.pygeoapi-postgis.yml`: a [pygeoapi](https://pygeoapi.io) configuration that publishes the tables of the [PostGIS schema](#postgis-schema) as OGC API - Features collections. It is generated from the same table model as `<slug>.postgis.sql`, so it is usually written together with `postgis-output`, and it uses `postgis-schema` as its `search_path` (default `public`).
 
-Every realisable feature type — every concrete class, i.e. every class with a feature table in the PostGIS script — becomes a `resources` entry with one `PostgreSQLProvider`:
+Every realisable feature type — every concrete class, i.e. every class with a feature table in the PostGIS script — becomes a `resources` entry with one `PostgreSQL` provider:
 
 | Field | Value |
 |---|---|
@@ -430,7 +430,7 @@ Every realisable feature type — every concrete class, i.e. every class with a 
 | `data.dbname` | the slug, sanitised like the table names |
 | `data.search_path` | `postgis-schema`, else `public` |
 | `table` / `id_field` | the feature table and its primary key `objid` |
-| `geom_field` / `storage_crs` | the class's geometry column and its SRID. With several geometries the one the class declares as its geometry is used — PostgreSQLProvider serves one. A class without geometry gets neither, nor a `crs` list. |
+| `geom_field` / `storage_crs` | the class's geometry column and its SRID. With several geometries the one the class declares as its geometry is used — the PostgreSQL provider serves one. A class without geometry gets neither, nor a `crs` list. |
 | `crs` | CRS84 and the common Norwegian/European CRSs (EPSG 25832/25833/25835, 5972/5973/5975, 3857, 3575, 4326, 3035, 4258, 5942), plus the storage CRS if it is not among them |
 
 The service metadata comes from psdata: `identification` from the title, abstract, keywords, access constraints and metadata link; `license` from the licence and its URL; `provider` from the contact with role `owner`; `contact` from the contact with role `pointOfContact`.
