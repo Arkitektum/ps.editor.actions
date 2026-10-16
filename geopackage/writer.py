@@ -59,7 +59,7 @@ _GPKG_GEOM = {
     "geometry-multipoint": "MULTIPOINT",
     "geometry-line": "LINESTRING",
     "geometry-multiline": "MULTILINESTRING",
-    "geometry-polygon": "MULTIPOLYGON",
+    "geometry-polygon": "POLYGON",
     "geometry-multipolygon": "MULTIPOLYGON",
     "geometry": "GEOMETRY",
 }
@@ -77,7 +77,7 @@ _SOSI_GEOM = {
     "sirkel": "LINESTRING",
     "sirkelbue": "LINESTRING",
     "sammensattkurve": "LINESTRING",
-    "flate": "MULTIPOLYGON",
+    "flate": "POLYGON",
     "trekant": "MULTIPOLYGON",
     "sammensattflate": "MULTIPOLYGON",
 }
@@ -89,8 +89,8 @@ _GM_GEOM = {
     "gm_curve": "LINESTRING",
     "gm_linestring": "LINESTRING",
     "gm_multicurve": "MULTILINESTRING",
-    "gm_surface": "MULTIPOLYGON",
-    "gm_polygon": "MULTIPOLYGON",
+    "gm_surface": "POLYGON",
+    "gm_polygon": "POLYGON",
     "gm_multisurface": "MULTIPOLYGON",
     "gm_object": "GEOMETRY",
     "gm_primitive": "GEOMETRY",

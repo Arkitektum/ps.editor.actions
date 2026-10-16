@@ -250,7 +250,7 @@ class StructureOnlyTests(unittest.TestCase):
 
     def test_several_geometries_become_attributes(self) -> None:
         attributes = _attributes(self.types["Bygning"])
-        self.assertEqual(attributes["omriss"]["type"], "GM_MultiSurface")
+        self.assertEqual(attributes["omriss"]["type"], "GM_Surface")
         self.assertEqual(attributes["punkt"]["type"], "GM_Point")
         self.assertNotIn("geometry", self.types["Bygning"])
 
