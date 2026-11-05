@@ -63,7 +63,12 @@ LDPROXY_TARGET_CLASS = (
     "de.interactive_instruments.shapechange.core.target.ldproxy2.Ldproxy2Target"
 )
 # Key ldproxy2 encoding rules (extends the universal '*' rule set).
-_LDPROXY_RULES = ("rule-ldp2-all-associativeTablesWithSeparatePkField",)
+# rule-ldp2-all-documentation writes label/description per type and property into
+# the provider configuration, from the labelTemplate/descriptionTemplate parameters.
+_LDPROXY_RULES = (
+    "rule-ldp2-all-associativeTablesWithSeparatePkField",
+    "rule-ldp2-all-documentation",
+)
 # Flattener transformation run in front of the ldproxy target so single-valued complex
 # datatypes become columns (identifikasjon_lokalId, kvalitet_målemetode) instead of
 # separate join tables. This matches both the GeoPackage writer and the Gistools PostGIS
@@ -362,8 +367,10 @@ def build_config(
         if ldproxy_native_timezone:
             _target_parameter(ldp_target, "nativeTimeZone", ldproxy_native_timezone)
         _target_parameter(ldp_target, "defaultEncodingRule", "ldproxy2")
-        _target_parameter(ldp_target, "documentationTemplate", "[[documentation]]")
-        _target_parameter(ldp_target, "documentationNoValue", "")
+        # Ldproxy2Target leser descriptionTemplate/descriptorNoValue, ikke XSD-targetets
+        # documentationTemplate. Default er '[[definition]]', som er tom i vår modell.
+        _target_parameter(ldp_target, "descriptionTemplate", "[[documentation]]")
+        _target_parameter(ldp_target, "descriptorNoValue", "")
         _encoding_rules(ldp_target, "ldproxy2", _LDPROXY_RULES, extends="*")
         # Kun ldproxy-map-entriene: de mapper til ldproxy sitt verditype-domene
         # (STRING/GEOMETRY/…). SQL-DDL-map-entriene (MULTIPOINT/POINT/…) er IKKE gyldige

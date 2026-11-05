@@ -344,6 +344,22 @@ class LdproxyTargetTests(unittest.TestCase):
         self.assertEqual(params["primaryKeyColumn"], "objid")
         self.assertEqual(params["srid"], "25833")
 
+    def test_ldproxy_target_writes_documentation(self) -> None:
+        # Without rule-ldp2-all-documentation the provider has no label or
+        # description per property, and Ldproxy2Target only reads the
+        # descriptionTemplate/descriptorNoValue parameters.
+        target = self._ldproxy_target()
+        rules = [
+            rule.get("name")
+            for rule in target.iter(_q("rule"))
+        ]
+        self.assertIn("rule-ldp2-all-documentation", rules)
+        params = _parameters(target, "targetParameter")
+        self.assertEqual(params["descriptionTemplate"], "[[documentation]]")
+        self.assertEqual(params["descriptorNoValue"], "")
+        self.assertNotIn("documentationTemplate", params)
+        self.assertNotIn("documentationNoValue", params)
+
     def test_ldproxy_target_omits_sql_ddl_map_entries(self) -> None:
         # StandardSqlMapEntries-PostgreSQL.xml carries SQL-DDL target types
         # (MULTIPOINT/POINT/...) that Ldproxy2Target rejects during semantic
