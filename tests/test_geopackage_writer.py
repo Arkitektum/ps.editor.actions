@@ -141,7 +141,7 @@ class GeoPackageWriterTests(unittest.TestCase):
                 "SELECT table_name, geometry_type_name FROM gpkg_geometry_columns"
             )
         }
-        self.assertEqual(geom.get("Dyrkbar jord"), "MULTIPOLYGON")
+        self.assertEqual(geom.get("Dyrkbar jord"), "POLYGON")
         self.assertEqual(geom.get("Grense"), "LINESTRING")
 
     def test_schema_extension_codelist(self) -> None:
@@ -363,7 +363,7 @@ class SosiGeometryTests(unittest.TestCase):
         contents = {r["table_name"]: r["data_type"] for r in conn.execute("SELECT table_name, data_type FROM gpkg_contents")}
         self.assertEqual(contents, {"Punktobjekt": "features", "Linjeobjekt": "features", "Flateobjekt": "features"})
         geom = {r["table_name"]: r["geometry_type_name"] for r in conn.execute("SELECT table_name, geometry_type_name FROM gpkg_geometry_columns")}
-        self.assertEqual(geom, {"Punktobjekt": "POINT", "Linjeobjekt": "LINESTRING", "Flateobjekt": "MULTIPOLYGON"})
+        self.assertEqual(geom, {"Punktobjekt": "POINT", "Linjeobjekt": "LINESTRING", "Flateobjekt": "POLYGON"})
 
     _MULTI_GEOMETRY = [
         {
@@ -397,8 +397,23 @@ class SosiGeometryTests(unittest.TestCase):
                 "FROM gpkg_geometry_columns"
             )
         }
-        self.assertEqual(geometries["Havneanlegg_flate"], ("område", "MULTIPOLYGON"))
+        self.assertEqual(geometries["Havneanlegg_flate"], ("område", "POLYGON"))
         self.assertEqual(geometries["Havneanlegg_punkt"], ("posisjon", "POINT"))
+
+    def test_surface_is_polygon_and_multisurface_is_multipolygon(self) -> None:
+        conn = self._write(
+            [
+                {"name": "Enkeltflate", "attributes": [{"name": "område", "type": "GM_Surface", "cardinality": "1"}]},
+                {"name": "Polygonflate", "attributes": [{"name": "område", "type": "GM_Polygon", "cardinality": "1"}]},
+                {"name": "Sosiflate", "attributes": [{"name": "område", "type": "Flate", "cardinality": "1"}]},
+                {"name": "Flerflate", "attributes": [{"name": "område", "type": "GM_MultiSurface", "cardinality": "1"}]},
+            ]
+        )
+        geom = {r["table_name"]: r["geometry_type_name"] for r in conn.execute("SELECT table_name, geometry_type_name FROM gpkg_geometry_columns")}
+        self.assertEqual(
+            geom,
+            {"Enkeltflate": "POLYGON", "Polygonflate": "POLYGON", "Sosiflate": "POLYGON", "Flerflate": "MULTIPOLYGON"},
+        )
 
     def test_non_geometry_attributes_are_carried_to_every_part(self) -> None:
         conn = self._write(self._MULTI_GEOMETRY)

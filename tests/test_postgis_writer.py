@@ -159,11 +159,19 @@ class FeatureTableTests(unittest.TestCase):
 
     def test_several_geometries_stay_in_one_table(self) -> None:
         columns = _columns(self.model, "bygning")
-        self.assertEqual(columns["omriss"].sql_type, "geometry(MultiPolygon, 25833)")
+        self.assertEqual(columns["omriss"].sql_type, "geometry(Polygon, 25833)")
         self.assertEqual(columns["representasjonspunkt"].sql_type, "geometry(Point, 25833)")
         self.assertIsNone(self.model.table("bygning_flate"))
         self.assertIn('CREATE INDEX "bygning_omriss_gist"', self.ddl)
         self.assertIn('CREATE INDEX "bygning_representasjonspunkt_gist"', self.ddl)
+
+    def test_surface_is_polygon_and_multisurface_is_multipolygon(self) -> None:
+        model = build_postgis_model(
+            [_feature("Sone", _attr("enkelt", "GM_Surface", "1"), _attr("flere", "GM_MultiSurface", "1"))]
+        )
+        columns = _columns(model, "sone")
+        self.assertEqual(columns["enkelt"].sql_type, "geometry(Polygon, 25833)")
+        self.assertEqual(columns["flere"].sql_type, "geometry(MultiPolygon, 25833)")
 
     def test_geometry_dict_uses_its_storage_crs(self) -> None:
         columns = _columns(self.model, "grense")
