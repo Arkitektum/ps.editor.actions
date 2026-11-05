@@ -262,7 +262,9 @@ def build_config(
     _parameter(input_element, "appSchemaNameRegex", f"^{_quote_regex(app_schema_name)}$")
     _parameter(input_element, "publicOnly", "true")
     _parameter(input_element, "checkingConstraints", "disabled")
-    _parameter(input_element, "sortedSchemaOutput", "true")
+    # Ingen sortering: egenskaper (xs:sequence) skal følge modellens rekkefølge
+    # (sequenceNumber), slik dagens ShapeChange-plugin gjør. Alfabetisk sortering
+    # ville endret rekkefølgen i XSD-en og brutt validering av eksisterende datasett.
     _parameter(input_element, "addTaggedValues", "*")
     # rule-xsd-all-tagged-values only emits the tags listed here as sc:taggedValue
     # appinfo, which is how SOSI_navn reaches the XSD.
@@ -306,7 +308,6 @@ def build_config(
         xsd_target.set("mode", "enabled")
         xsd_target.set("inputs", "INPUT")
         _target_parameter(xsd_target, "outputDirectory", str(xsd_directory))
-        _target_parameter(xsd_target, "sortedOutput", "true")
         _target_parameter(xsd_target, "defaultEncodingRule", xsd_encoding_rule)
         # Bruk 'documentation'-deskriptoren (som SCXML-eksporten skriver) i XSD-annotasjoner.
         # ShapeChange sin default er '[[definition]]', som er tom i vår modell -> ingen definisjoner.
@@ -333,7 +334,6 @@ def build_config(
         json_target.set("inputs", "INPUT")
         _json_schema_annotations(json_target, SOSI_JSON_ANNOTATIONS)
         _target_parameter(json_target, "outputDirectory", str(json_directory))
-        _target_parameter(json_target, "sortedOutput", "true")
         _target_parameter(json_target, "jsonSchemaVersion", json_schema_version)
         if json_base_uri:
             _target_parameter(json_target, "jsonBaseUri", json_base_uri)
