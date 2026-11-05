@@ -9,6 +9,10 @@
               references the URL above as its last xi:include)
     fetched: 2026-08-17
 
+  Licence: this file is taken from a GPL-3.0 licensed repository and remains
+  under GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html). It is excluded
+  from the MIT licence that covers the rest of this repository.
+
   Vendored rather than xi:include'd from the live URL because that URL is served
   over plain HTTP, is pinned to a /3.0/ path with no /4.0/ counterpart, and would
   make every CI run depend on a Kartverket web server being reachable.

@@ -575,3 +575,7 @@ Path("feature_catalogue.json").write_text(json.dumps(feature_types, indent=2, en
 ```
 
 The helper understands both local files and remote URLs. When downloading from `sosi.geonorge.no` the default `sosi`/`sosi` credentials are supplied automatically, but you can override them via the `username` and `password` arguments if needed. When the XMI path is used, generated artefacts follow the `<slug>_xmi_feature_catalogue.*` naming scheme to make side-by-side comparisons with OGC sources easier.
+
+## License
+
+This repository is licensed under the MIT License, see [LICENSE](LICENSE). Exception: `shapechange/data/StandardMapEntries_sosi.xml` is taken from [kartverket/ShapeChange-Add-In](https://github.com/kartverket/ShapeChange-Add-In) and remains under [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html).
