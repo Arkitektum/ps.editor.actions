@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<XMI xmi.version="1.1" xmlns:UML="omg.org/UML1.3">
+  <XMI.content>
+    <UML:Model name="Felles">
+      <UML:Namespace.ownedElement>
+        <UML:Package xmi.id="PKG_Trafikkmengde" name="Felles">
+          <UML:Namespace.ownedElement>
+        <UML:Class xmi.id="FT_FELL" name="Fellesegenskaper" isAbstract="true">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="FeatureType" />
+          </UML:ModelElement.stereotype>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="A4" name="datauttaksdato">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="type" value="DateTime" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+            <UML:Attribute xmi.id="A5" name="opphav">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="type" value="CharacterString" />
+                <UML:TaggedValue tag="lowerBound" value="0" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+        <UML:Class xmi.id="FT_VEG" name="Veglenke" isAbstract="true">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="FeatureType" />
+          </UML:ModelElement.stereotype>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="A3" name="vegnummer">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="type" value="Integer" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+        <UML:Generalization subtype="FT_VEG" supertype="FT_FELL" xmi.id="GEN2" />
+          </UML:Namespace.ownedElement>
+        </UML:Package>
+      </UML:Namespace.ownedElement>
+    </UML:Model>
+  </XMI.content>
+</XMI>
