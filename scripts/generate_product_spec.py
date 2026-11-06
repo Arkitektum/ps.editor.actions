@@ -243,7 +243,37 @@ def _normalize_scope_generator(value: str | None) -> str:
         return "geopackage"
     if normalized in {"postgis", "postgresql", "sql"}:
         return "postgis"
+    if normalized in {"custom", "feature_types", "featuretypes", "model"}:
+        return "custom"
     return ""
+
+
+def _load_feature_types_from_file(source: str, scope_name: str) -> list[dict[str, Any]]:
+    """Read an edited data model (feature_types.json) from a repo-local file.
+
+    The web editor commits the model to inputs/<slug>/<scope>.feature_types.json and the
+    scope's url points at it. The file is the authoritative source for a "custom" scope —
+    no external fetch. Encoding falls back utf-8 -> cp1252 -> latin-1.
+    """
+    candidate = Path(source)
+    path = candidate if candidate.is_file() else _repo_root() / source
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Scope '{scope_name}': data model '{source}' not found in the repository ({path})."
+        )
+    raw = path.read_bytes()
+    for encoding in ("utf-8", "cp1252", "latin-1"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    data = json.loads(text)
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Scope '{scope_name}': data model '{source}' must be a JSON array of object types."
+        )
+    return data
 
 
 # PostGIS-skjemaet for en produktspesifikasjon ligger i repoet, relativt til roten.
@@ -356,6 +386,10 @@ def _build_scope_catalogues(
             feature_types = load_feature_types_from_geopackage(
                 source, username=geopackage_username, password=geopackage_password
             )
+        elif generator == "custom":
+            # En redigert datamodell lastet opp fra web-editoren. Fila ER modellen —
+            # ingen ekstern henting, ingen overlay (JSON-en er autoritativ).
+            feature_types = _load_feature_types_from_file(source, scope_name)
         else:
             feature_types = load_feature_types(
                 source, username=ogc_username, password=ogc_password
@@ -367,11 +401,14 @@ def _build_scope_catalogues(
         # Brukerredigeringer (f.eks. manglende beskrivelser) ligger i en egen,
         # committet overlay-fil og flettes oppå den friskt hentede katalogen — før
         # ALLE leveranser (json/gpkg/md/uml) bygges — så de overlever regenerering.
-        overrides = load_overrides(
-            scope_dir / f"{scope_slug}_feature_catalogue.overrides.json"
-        )
-        if overrides:
-            feature_types = apply_overrides(feature_types, overrides)
+        # "custom" redigeres i sin helhet i web-editoren, så beskrivelses-overlayen
+        # gjelder ikke der (JSON-fila er allerede autoritativ).
+        if generator != "custom":
+            overrides = load_overrides(
+                scope_dir / f"{scope_slug}_feature_catalogue.overrides.json"
+            )
+            if overrides:
+                feature_types = apply_overrides(feature_types, overrides)
         scope_title = f"{product_title} - {scope_name}".strip(" -")
         assets = _build_feature_catalogue_assets(
             feature_types,

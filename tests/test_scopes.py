@@ -1,6 +1,7 @@
 """Tests for repeating scope sections when scopes are provided."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -203,6 +204,52 @@ class ScopeRenderingTests(unittest.TestCase):
         self.assertEqual(product_spec._scope_source({"url": "b.sql"}), "b.sql")
         self.assertEqual(product_spec._scope_source({"source": " ", "url": "b.sql"}), "b.sql")
         self.assertEqual(product_spec._scope_source({}), "")
+
+    def test_custom_scope_reads_feature_types_from_repo_file(self) -> None:
+        """A 'custom' scope reads the edited feature_types.json from the repo and uses
+        it directly — no external loader, and the description overlay is skipped."""
+        model = [{"name": "Bygning", "description": "En bygning", "attributes": []}]
+        with tempfile.TemporaryDirectory() as workspace:
+            model_path = Path(workspace) / "inputs" / "arealplan" / "egen.feature_types.json"
+            model_path.parent.mkdir(parents=True)
+            model_path.write_text(json.dumps(model, ensure_ascii=False), encoding="utf-8")
+            context = build_context({"identification": {"title": "Test"}}, updated="2025-12-03")
+            assets = {
+                "json_path": Path("c.json"),
+                "markdown_path": Path("c.md"),
+                "markdown_content": "CUSTOM_TABLE",
+                "uml_path": Path("c.puml"),
+                "uml_content": "CUSTOM_UML",
+            }
+            captured: dict[str, object] = {}
+
+            def fake_assets(feature_types: object, **_kwargs: object) -> dict:
+                captured["feature_types"] = feature_types
+                return assets
+
+            with patch.dict("os.environ", {"GITHUB_WORKSPACE": workspace}, clear=False), patch.object(
+                product_spec, "_build_feature_catalogue_assets", side_effect=fake_assets
+            ), patch.object(product_spec, "load_overrides") as load_ovr, patch.object(
+                product_spec, "_write_text_file"
+            ):
+                product_spec._build_scope_catalogues(
+                    context=context,
+                    scopes=[
+                        {
+                            "name": "Egen",
+                            "url": "inputs/arealplan/egen.feature_types.json",
+                            "generator": "custom",
+                        }
+                    ],
+                    spec_dir=Path("output"),
+                    product_title="Test",
+                    feature_type_filter=None,
+                    xmi_username=None,
+                    xmi_password=None,
+                    product_slug="arealplan",
+                )
+        self.assertEqual(captured["feature_types"], model)
+        load_ovr.assert_not_called()
 
     def test_postgis_source_label(self) -> None:
         self.assertEqual(
