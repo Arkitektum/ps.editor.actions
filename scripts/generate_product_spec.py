@@ -33,6 +33,8 @@ from geopackage.feature_types import load_feature_types_from_geopackage  # noqa:
 from odcs.writer import write_odcs  # noqa: E402
 from postgis.feature_types import load_feature_types_from_postgis  # noqa: E402
 from postgis.writer import write_postgis_ddl  # noqa: E402
+from geoserver_config.gpkg import write_geoserver_gpkg_config  # noqa: E402
+from geoserver_config.postgis import write_geoserver_postgis_config  # noqa: E402
 from pygeoapi_config.gpkg import write_pygeoapi_gpkg_config  # noqa: E402
 from pygeoapi_config.postgis import write_pygeoapi_postgis_config  # noqa: E402
 from geopackage.writer import (  # noqa: E402
@@ -343,6 +345,8 @@ def _build_scope_catalogues(
     postgis_schema: str | None = None,
     write_pygeoapi_postgis: bool = False,
     write_pygeoapi_gpkg: bool = False,
+    write_geoserver_postgis: bool = False,
+    write_geoserver_gpkg: bool = False,
     psdata: Any = None,
     product_slug: str | None = None,
 ) -> str:
@@ -422,6 +426,8 @@ def _build_scope_catalogues(
             postgis_schema=postgis_schema,
             write_pygeoapi_postgis=write_pygeoapi_postgis,
             write_pygeoapi_gpkg=write_pygeoapi_gpkg,
+            write_geoserver_postgis=write_geoserver_postgis,
+            write_geoserver_gpkg=write_geoserver_gpkg,
             psdata=psdata,
         )
         if assets.get("geopackage_path"):
@@ -434,6 +440,10 @@ def _build_scope_catalogues(
             print(f"[paths] scope_pygeoapi_postgis={assets['pygeoapi_postgis_path']}")
         if assets.get("pygeoapi_gpkg_path"):
             print(f"[paths] scope_pygeoapi_gpkg={assets['pygeoapi_gpkg_path']}")
+        if assets.get("geoserver_postgis_path"):
+            print(f"[paths] scope_geoserver_postgis={assets['geoserver_postgis_path']}")
+        if assets.get("geoserver_gpkg_path"):
+            print(f"[paths] scope_geoserver_gpkg={assets['geoserver_gpkg_path']}")
 
         scope_includes: list[IncludeResource] = []
         diagrams_markdown = _build_diagrams_markdown(assets, scope_name)
@@ -504,6 +514,8 @@ def _build_feature_catalogue_assets(
     postgis_schema: str | None = None,
     write_pygeoapi_postgis: bool = False,
     write_pygeoapi_gpkg: bool = False,
+    write_geoserver_postgis: bool = False,
+    write_geoserver_gpkg: bool = False,
     psdata: Any = None,
 ) -> dict[str, Any]:
     suffix = f"{prefix}_" if prefix else ""
@@ -571,6 +583,34 @@ def _build_feature_catalogue_assets(
             pygeoapi_gpkg_path,
             psdata=psdata,
             data=f"./{pygeoapi_gpkg_base}.gpkg",
+        )
+
+    # Optional GeoServer output: setup scripts ({scope}.geoserver-postgis.sh /
+    # {scope}.geoserver-gpkg.sh) that publish the same tables through GeoServer's
+    # REST API. One workspace per scope, named like the files, so layer names of
+    # different scopes cannot collide.
+    geoserver_base = f"{slug}_{prefix}" if prefix else slug
+    geoserver_postgis_path: Path | None = None
+    if write_geoserver_postgis and feature_types:
+        geoserver_postgis_path = spec_dir / f"{geoserver_base}.geoserver-postgis.sh"
+        write_geoserver_postgis_config(
+            feature_types,
+            geoserver_postgis_path,
+            psdata=psdata,
+            workspace=geoserver_base,
+            dbname=slug,
+            schema=postgis_schema,
+        )
+
+    geoserver_gpkg_path: Path | None = None
+    if write_geoserver_gpkg and feature_types:
+        geoserver_gpkg_path = spec_dir / f"{geoserver_base}.geoserver-gpkg.sh"
+        write_geoserver_gpkg_config(
+            feature_types,
+            geoserver_gpkg_path,
+            psdata=psdata,
+            workspace=geoserver_base,
+            geopackage=f"{geoserver_base}.gpkg",
         )
 
     # Optional ODCS (Open Data Contract Standard v3.1.0) output: a machine-readable
@@ -668,6 +708,8 @@ def _build_feature_catalogue_assets(
         "postgis_path": postgis_path,
         "pygeoapi_postgis_path": pygeoapi_postgis_path,
         "pygeoapi_gpkg_path": pygeoapi_gpkg_path,
+        "geoserver_postgis_path": geoserver_postgis_path,
+        "geoserver_gpkg_path": geoserver_gpkg_path,
     }
 
 
@@ -790,6 +832,8 @@ def generate_product_specification(
     postgis_schema: str | None = None,
     pygeoapi_postgis_output: bool = False,
     pygeoapi_gpkg_output: bool = False,
+    geoserver_postgis_output: bool = False,
+    geoserver_gpkg_output: bool = False,
     feature_type_filter: Sequence[str] | None = None,
     scopes: Sequence[Mapping[str, Any]] | None = None,
     render_spec_markdown: bool = True,
@@ -852,6 +896,8 @@ def generate_product_specification(
             postgis_schema=postgis_schema,
             write_pygeoapi_postgis=pygeoapi_postgis_output,
             write_pygeoapi_gpkg=pygeoapi_gpkg_output,
+            write_geoserver_postgis=geoserver_postgis_output,
+            write_geoserver_gpkg=geoserver_gpkg_output,
             psdata=psdata,
         )
 
@@ -869,6 +915,8 @@ def generate_product_specification(
             postgis_schema=postgis_schema,
             write_pygeoapi_postgis=pygeoapi_postgis_output,
             write_pygeoapi_gpkg=pygeoapi_gpkg_output,
+            write_geoserver_postgis=geoserver_postgis_output,
+            write_geoserver_gpkg=geoserver_gpkg_output,
             psdata=psdata,
         )
 
@@ -924,6 +972,8 @@ def generate_product_specification(
         postgis_schema=postgis_schema,
         write_pygeoapi_postgis=pygeoapi_postgis_output,
         write_pygeoapi_gpkg=pygeoapi_gpkg_output,
+        write_geoserver_postgis=geoserver_postgis_output,
+        write_geoserver_gpkg=geoserver_gpkg_output,
         psdata=psdata,
     )
     if scope_links:
@@ -951,6 +1001,8 @@ def generate_product_specification(
         "feature_catalogue_postgis": ogc_assets["postgis_path"] if ogc_assets else None,
         "feature_catalogue_pygeoapi_postgis": ogc_assets["pygeoapi_postgis_path"] if ogc_assets else None,
         "feature_catalogue_pygeoapi_gpkg": ogc_assets["pygeoapi_gpkg_path"] if ogc_assets else None,
+        "feature_catalogue_geoserver_postgis": ogc_assets["geoserver_postgis_path"] if ogc_assets else None,
+        "feature_catalogue_geoserver_gpkg": ogc_assets["geoserver_gpkg_path"] if ogc_assets else None,
         "spec_markdown": spec_markdown_path,
         "xmi_feature_catalogue_json": xmi_assets["json_path"] if xmi_assets else None,
         "xmi_feature_catalogue_markdown": xmi_assets["markdown_path"] if xmi_assets else None,
@@ -959,6 +1011,8 @@ def generate_product_specification(
         "xmi_feature_catalogue_postgis": xmi_assets["postgis_path"] if xmi_assets else None,
         "xmi_feature_catalogue_pygeoapi_postgis": xmi_assets["pygeoapi_postgis_path"] if xmi_assets else None,
         "xmi_feature_catalogue_pygeoapi_gpkg": xmi_assets["pygeoapi_gpkg_path"] if xmi_assets else None,
+        "xmi_feature_catalogue_geoserver_postgis": xmi_assets["geoserver_postgis_path"] if xmi_assets else None,
+        "xmi_feature_catalogue_geoserver_gpkg": xmi_assets["geoserver_gpkg_path"] if xmi_assets else None,
     }
 
     return result
@@ -1083,6 +1137,22 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--geoserver-postgis-output",
+        action="store_true",
+        help=(
+            "Also write a GeoServer setup script (.geoserver-postgis.sh) that publishes the "
+            "PostGIS tables of the data model as OGC API - Features collections."
+        ),
+    )
+    parser.add_argument(
+        "--geoserver-gpkg-output",
+        action="store_true",
+        help=(
+            "Also write a GeoServer setup script (.geoserver-gpkg.sh) that uploads the "
+            "GeoPackage and publishes its tables as OGC API - Features collections."
+        ),
+    )
+    parser.add_argument(
         "--skip-spec-markdown",
         action="store_true",
         help="Skip rendering the final product specification Markdown document.",
@@ -1149,6 +1219,8 @@ def main(argv: list[str] | None = None) -> int:
             postgis_schema=args.postgis_schema,
             pygeoapi_postgis_output=args.pygeoapi_postgis_output,
             pygeoapi_gpkg_output=args.pygeoapi_gpkg_output,
+            geoserver_postgis_output=args.geoserver_postgis_output,
+            geoserver_gpkg_output=args.geoserver_gpkg_output,
             feature_type_filter=feature_type_filter,
             scopes=scopes,
             render_spec_markdown=not args.skip_spec_markdown,
@@ -1213,6 +1285,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[paths] xmi_feature_catalogue_pygeoapi_postgis={paths.get('xmi_feature_catalogue_pygeoapi_postgis') or ''}")
     print(f"[paths] feature_catalogue_pygeoapi_gpkg={paths.get('feature_catalogue_pygeoapi_gpkg') or ''}")
     print(f"[paths] xmi_feature_catalogue_pygeoapi_gpkg={paths.get('xmi_feature_catalogue_pygeoapi_gpkg') or ''}")
+    print(f"[paths] feature_catalogue_geoserver_postgis={paths.get('feature_catalogue_geoserver_postgis') or ''}")
+    print(f"[paths] xmi_feature_catalogue_geoserver_postgis={paths.get('xmi_feature_catalogue_geoserver_postgis') or ''}")
+    print(f"[paths] feature_catalogue_geoserver_gpkg={paths.get('feature_catalogue_geoserver_gpkg') or ''}")
+    print(f"[paths] xmi_feature_catalogue_geoserver_gpkg={paths.get('xmi_feature_catalogue_geoserver_gpkg') or ''}")
     print(f"[paths] xmi_feature_catalogue_json={paths.get('xmi_feature_catalogue_json') or ''}")
     print(f"[paths] xmi_feature_catalogue_markdown={paths.get('xmi_feature_catalogue_markdown') or ''}")
     print(f"[paths] xmi_feature_catalogue_uml={paths.get('xmi_feature_catalogue_uml') or ''}")

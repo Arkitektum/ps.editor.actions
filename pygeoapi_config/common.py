@@ -4,7 +4,8 @@
 the ``PostgreSQL`` provider, :mod:`pygeoapi_config.gpkg` its GeoPackage tables with
 ``SQLiteGPKG``. Everything but the provider is the same and lives here.
 
-The psdata document describes the service around the collections:
+The psdata values are read by :mod:`service_metadata`; here they are placed in
+pygeoapi's structure:
 
 * tittel, sammendrag, nøkkelord  -> ``metadata.identification``
 * tilgangsrestriksjoner          -> ``identification.terms_of_service``
@@ -21,64 +22,44 @@ one: the file is a starting point that does not run until those are filled in.
 """
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import yaml
 
-from postgis.writer import pg_name
+from service_metadata import (
+    DEFAULT_SRID,
+    OFFERED_EPSG_CODES,
+    PLACEHOLDER,
+    contact,
+    dataset_bbox,
+    feature_keywords,
+    keywords,
+    resource_name,
+    string,
+    text,
+    unique_key,
+)
 
-# Marks a value the end user has to fill in before the configuration is usable.
-PLACEHOLDER = "<REPLACE_ME>"
+__all__ = [
+    "CRS84",
+    "DEFAULT_SRID",
+    "OFFERED_EPSG_CODES",
+    "PLACEHOLDER",
+    "collection",
+    "crs_settings",
+    "dataset_bbox",
+    "document",
+    "render_pygeoapi_config",
+    "resource_name",
+    "unique_key",
+]
 
 CRS84 = "http://www.opengis.net/def/crs/OGC/1.3/CRS84"
 _EPSG_URI = "http://www.opengis.net/def/crs/EPSG/0/{code}"
 
-# The CRSs every collection offers, after CRS84: the UTM zones and NN2000 heights
-# used in Norway, web mapping, the Arctic polar projection and the European ones.
-OFFERED_EPSG_CODES: tuple[int, ...] = (
-    25832,
-    25833,
-    25835,
-    5972,
-    5973,
-    5975,
-    3857,
-    3575,
-    4326,
-    3035,
-    4258,
-    5942,
-)
-
-DEFAULT_SRID = 25833
-
-
-def _text(value: Any) -> str:
-    return value.strip() if isinstance(value, str) else ""
-
-
-def _mapping(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
 
 def _crs_uri(code: int) -> str:
     return _EPSG_URI.format(code=code)
-
-
-def resource_name(name: str) -> str:
-    """Collection id for a feature type: latinised, lowercase kebab-case.
-
-    ``"Dyrkbar jord"`` -> ``dyrkbar-jord``, ``"AdministrativEnhet"`` ->
-    ``administrativ-enhet``, ``"ÅpenGrunn"`` -> ``aapen-grunn``. Word boundaries
-    inside a CamelCase name are kept; the transliteration is the one the PostGIS
-    table names use (``æ``→``ae``, ``ø``→``oe``, ``å``→``aa``).
-    """
-    text = str(name or "")
-    # "administrativEnhet" -> "administrativ Enhet", "FKBBygning" -> "FKB Bygning".
-    text = re.sub(r"(?<=[a-zæøå0-9])(?=[A-ZÆØÅ])", " ", text)
-    text = re.sub(r"(?<=[A-ZÆØÅ])(?=[A-ZÆØÅ][a-zæøå])", " ", text)
-    return pg_name(text).replace("_", "-")
 
 
 # --------------------------------------------------------------------------- #
@@ -86,82 +67,31 @@ def resource_name(name: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _path(psdata: dict[str, Any], dotted: str) -> Any:
-    """The value at ``dotted`` (``"identificationSection.title"``), or ``None``."""
-    value: Any = psdata
-    for key in dotted.split("."):
-        if not isinstance(value, dict):
-            return None
-        value = value.get(key)
-    return value
-
-
-def _string(psdata: dict[str, Any], dotted: str) -> str:
-    return _text(_path(psdata, dotted)) or PLACEHOLDER
-
-
-def _contact(psdata: dict[str, Any], role: str) -> dict[str, Any]:
-    """The first ``identificationSection.contact`` entry with ``role``."""
-    contacts = _path(psdata, "identificationSection.contact")
-    for contact in contacts if isinstance(contacts, list) else []:
-        if isinstance(contact, dict) and _text(contact.get("role")).casefold() == role.casefold():
-            return contact
-    return {}
-
-
-def _keywords(psdata: dict[str, Any]) -> list[str]:
-    value = _path(psdata, "identificationSection.keyword")
-    items = value if isinstance(value, list) else [value]
-    keywords = [text for item in items if (text := _text(item))]
-    return keywords or [PLACEHOLDER]
-
-
-def _bbox(psdata: dict[str, Any]) -> list[float | str]:
-    """The dataset's geographic extent as ``[west, south, east, north]``.
-
-    psdata holds the coordinates as strings; pygeoapi wants numbers. A missing
-    or unreadable coordinate is left for the user to fill in.
-    """
-    element = _mapping(_path(psdata, "identificationSection.extent.geographicElement"))
-    bbox: list[float | str] = []
-    for key in (
-        "westBoundLongitude",
-        "southBoundLatitude",
-        "eastBoundLongitude",
-        "northBoundLatitude",
-    ):
-        try:
-            bbox.append(float(str(element.get(key)).strip().replace(",", ".")))
-        except (TypeError, ValueError):
-            bbox.append(PLACEHOLDER)
-    return bbox
-
-
-def _metadata(psdata: dict[str, Any]) -> dict[str, Any]:
-    owner = _contact(psdata, "owner")
-    point_of_contact = _contact(psdata, "pointOfContact")
+def _metadata(psdata: Any) -> dict[str, Any]:
+    owner = contact(psdata, "owner")
+    point_of_contact = contact(psdata, "pointOfContact")
     return {
         "identification": {
-            "title": _string(psdata, "identificationSection.title"),
-            "description": _string(psdata, "identificationSection.abstract"),
-            "keywords": _keywords(psdata),
+            "title": string(psdata, "identificationSection.title"),
+            "description": string(psdata, "identificationSection.abstract"),
+            "keywords": keywords(psdata) or [PLACEHOLDER],
             "keywords_type": "theme",
-            "terms_of_service": _string(
+            "terms_of_service": string(
                 psdata, "identificationSection.restriction.legalConstraints.accessConstraints"
             ),
-            "url": _string(psdata, "metadataSection.metadataIdentifier.metadataLinkage"),
+            "url": string(psdata, "metadataSection.metadataIdentifier.metadataLinkage"),
         },
         "license": {
-            "name": _string(psdata, "identificationSection.restriction.legalConstraints.license"),
-            "url": _string(psdata, "identificationSection.restriction.legalConstraints.licenseUrl"),
+            "name": string(psdata, "identificationSection.restriction.legalConstraints.license"),
+            "url": string(psdata, "identificationSection.restriction.legalConstraints.licenseUrl"),
         },
         "provider": {
-            "name": _text(owner.get("organizationName")) or PLACEHOLDER,
+            "name": text(owner.get("organizationName")) or PLACEHOLDER,
             "url": PLACEHOLDER,
         },
         "contact": {
-            "name": _text(point_of_contact.get("organizationName")) or PLACEHOLDER,
-            "email": _text(point_of_contact.get("electronicMailAddress")) or PLACEHOLDER,
+            "name": text(point_of_contact.get("organizationName")) or PLACEHOLDER,
+            "email": text(point_of_contact.get("electronicMailAddress")) or PLACEHOLDER,
             "url": PLACEHOLDER,
         },
     }
@@ -194,14 +124,6 @@ def _server() -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
-def _resource_keywords(ft: dict[str, Any], title: str) -> list[str]:
-    """The feature type's own keywords, else its title: pygeoapi requires one."""
-    value = ft.get("keywords")
-    items = value if isinstance(value, list) else [value]
-    keywords = [text for item in items if (text := _text(item))]
-    return keywords or [title]
-
-
 def crs_settings(srid: int) -> dict[str, Any]:
     """The ``crs`` list and ``storage_crs`` of a provider whose data is in ``srid``."""
     offered = [CRS84] + [_crs_uri(code) for code in OFFERED_EPSG_CODES]
@@ -214,12 +136,13 @@ def collection(
     ft: dict[str, Any], provider: dict[str, Any], *, bbox: list[float | str]
 ) -> dict[str, Any]:
     """A ``resources`` entry for ``ft``, served by ``provider``."""
-    title = _text(ft.get("title")) or _text(ft.get("name"))
+    title = text(ft.get("title")) or text(ft.get("name"))
     return {
         "type": "collection",
         "title": title,
-        "description": _text(ft.get("description")) or PLACEHOLDER,
-        "keywords": _resource_keywords(ft, title),
+        "description": text(ft.get("description")) or PLACEHOLDER,
+        # pygeoapi requires at least one keyword.
+        "keywords": feature_keywords(ft, title),
         "extents": {
             "spatial": {
                 "bbox": list(bbox),
@@ -230,28 +153,14 @@ def collection(
     }
 
 
-def unique_key(name: str, taken: dict[str, Any]) -> str:
-    """The collection id for ``name``, suffixed ``-2``, ``-3``, … when taken."""
-    base = resource_name(name)
-    key, suffix = base, 2
-    while key in taken:
-        key, suffix = f"{base}-{suffix}", suffix + 1
-    return key
-
-
 def document(psdata: Any, resources: dict[str, Any]) -> dict[str, Any]:
     """The whole configuration around ``resources``."""
     return {
         "server": _server(),
         "logging": {"level": "ERROR"},
-        "metadata": _metadata(_mapping(psdata)),
+        "metadata": _metadata(psdata),
         "resources": resources,
     }
-
-
-def dataset_bbox(psdata: Any) -> list[float | str]:
-    """The dataset's extent from psdata, shared by every collection."""
-    return _bbox(_mapping(psdata))
 
 
 class _Dumper(yaml.SafeDumper):

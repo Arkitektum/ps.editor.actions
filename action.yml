@@ -75,6 +75,14 @@ inputs:
     description: "Set to 'true' to also write a pygeoapi configuration (.pygeoapi-gpkg.yml) that serves the GeoPackage tables of the data model with the SQLiteGPKG provider. Points at the GeoPackage written by geopackage-output."
     required: false
     default: "false"
+  geoserver-postgis-output:
+    description: "Set to 'true' to also write a GeoServer setup script (.geoserver-postgis.sh) that publishes the PostGIS tables of the data model as OGC API - Features collections through GeoServer's REST API. Uses postgis-schema as schema."
+    required: false
+    default: "false"
+  geoserver-gpkg-output:
+    description: "Set to 'true' to also write a GeoServer setup script (.geoserver-gpkg.sh) that uploads the GeoPackage written by geopackage-output to GeoServer and publishes its tables as OGC API - Features collections."
+    required: false
+    default: "false"
 outputs:
   spec-directory:
     description: Directory containing the generated product specification.
@@ -103,6 +111,12 @@ outputs:
   feature-catalogue-pygeoapi-gpkg:
     description: Path to the generated pygeoapi configuration (.pygeoapi-gpkg.yml) for the GeoPackage tables.
     value: ${{ steps.generate.outputs.feature-catalogue-pygeoapi-gpkg }}
+  feature-catalogue-geoserver-postgis:
+    description: Path to the generated GeoServer setup script (.geoserver-postgis.sh) for the PostGIS tables.
+    value: ${{ steps.generate.outputs.feature-catalogue-geoserver-postgis }}
+  feature-catalogue-geoserver-gpkg:
+    description: Path to the generated GeoServer setup script (.geoserver-gpkg.sh) for the GeoPackage tables.
+    value: ${{ steps.generate.outputs.feature-catalogue-geoserver-gpkg }}
   xmi-feature-catalogue-json:
     description: Path to the XMI feature catalogue JSON cache.
     value: ${{ steps.generate.outputs.xmi-feature-catalogue-json }}
@@ -198,6 +212,12 @@ runs:
         if [ "${{ inputs.pygeoapi-gpkg-output }}" = "true" ]; then
           ARGS+=("--pygeoapi-gpkg-output")
         fi
+        if [ "${{ inputs.geoserver-postgis-output }}" = "true" ]; then
+          ARGS+=("--geoserver-postgis-output")
+        fi
+        if [ "${{ inputs.geoserver-gpkg-output }}" = "true" ]; then
+          ARGS+=("--geoserver-gpkg-output")
+        fi
         ARGS+=("--skip-spec-markdown")
         python "${{ github.action_path }}/scripts/generate_product_spec.py" "${ARGS[@]}" | tee "$SUMMARY"
         SPEC_DIR=""
@@ -209,6 +229,8 @@ runs:
         FEATURE_CATALOGUE_POSTGIS=""
         FEATURE_CATALOGUE_PYGEOAPI_POSTGIS=""
         FEATURE_CATALOGUE_PYGEOAPI_GPKG=""
+        FEATURE_CATALOGUE_GEOSERVER_POSTGIS=""
+        FEATURE_CATALOGUE_GEOSERVER_GPKG=""
         XMI_FEATURE_CATALOGUE_JSON=""
         XMI_FEATURE_CATALOGUE_MD=""
         XMI_FEATURE_CATALOGUE_UML=""
@@ -242,6 +264,12 @@ runs:
             "[paths] feature_catalogue_pygeoapi_gpkg="*)
               FEATURE_CATALOGUE_PYGEOAPI_GPKG="${line#\[paths\] feature_catalogue_pygeoapi_gpkg=}"
               ;;
+            "[paths] feature_catalogue_geoserver_postgis="*)
+              FEATURE_CATALOGUE_GEOSERVER_POSTGIS="${line#\[paths\] feature_catalogue_geoserver_postgis=}"
+              ;;
+            "[paths] feature_catalogue_geoserver_gpkg="*)
+              FEATURE_CATALOGUE_GEOSERVER_GPKG="${line#\[paths\] feature_catalogue_geoserver_gpkg=}"
+              ;;
             "[paths] xmi_feature_catalogue_json="*)
               XMI_FEATURE_CATALOGUE_JSON="${line#\[paths\] xmi_feature_catalogue_json=}"
               ;;
@@ -266,6 +294,8 @@ runs:
           echo "feature-catalogue-postgis=$FEATURE_CATALOGUE_POSTGIS"
           echo "feature-catalogue-pygeoapi-postgis=$FEATURE_CATALOGUE_PYGEOAPI_POSTGIS"
           echo "feature-catalogue-pygeoapi-gpkg=$FEATURE_CATALOGUE_PYGEOAPI_GPKG"
+          echo "feature-catalogue-geoserver-postgis=$FEATURE_CATALOGUE_GEOSERVER_POSTGIS"
+          echo "feature-catalogue-geoserver-gpkg=$FEATURE_CATALOGUE_GEOSERVER_GPKG"
           echo "xmi-feature-catalogue-json=$XMI_FEATURE_CATALOGUE_JSON"
           echo "xmi-feature-catalogue-markdown=$XMI_FEATURE_CATALOGUE_MD"
           echo "xmi-feature-catalogue-uml=$XMI_FEATURE_CATALOGUE_UML"

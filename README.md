@@ -72,6 +72,8 @@ Inputs:
 - `postgis-schema`: Database schema the script creates the tables in. Omit to use the search path (normally `public`).
 - `pygeoapi-postgis-output` (default `false`): Also write a pygeoapi configuration that serves the PostGIS tables with the PostgreSQL provider — see [pygeoapi configuration for PostGIS](#pygeoapi-configuration-for-postgis).
 - `pygeoapi-gpkg-output` (default `false`): Also write a pygeoapi configuration that serves the GeoPackage tables with the SQLiteGPKG provider — see [pygeoapi configuration for GeoPackage](#pygeoapi-configuration-for-geopackage).
+- `geoserver-postgis-output` (default `false`): Also write a GeoServer setup script that publishes the PostGIS tables — see [GeoServer setup for PostGIS](#geoserver-setup-for-postgis).
+- `geoserver-gpkg-output` (default `false`): Also write a GeoServer setup script that uploads and publishes the GeoPackage — see [GeoServer setup for GeoPackage](#geoserver-setup-for-geopackage).
 
 Outputs:
 
@@ -86,6 +88,8 @@ Outputs:
 - `feature-catalogue-postgis`: Path to the PostGIS DDL script (`<slug>.postgis.sql`) when `postgis-output` is set.
 - `feature-catalogue-pygeoapi-postgis`: Path to the PostGIS pygeoapi configuration (`<slug>.pygeoapi-postgis.yml`) when `pygeoapi-postgis-output` is set.
 - `feature-catalogue-pygeoapi-gpkg`: Path to the GeoPackage pygeoapi configuration (`<slug>.pygeoapi-gpkg.yml`) when `pygeoapi-gpkg-output` is set.
+- `feature-catalogue-geoserver-postgis`: Path to the PostGIS GeoServer setup script (`<slug>.geoserver-postgis.sh`) when `geoserver-postgis-output` is set.
+- `feature-catalogue-geoserver-gpkg`: Path to the GeoPackage GeoServer setup script (`<slug>.geoserver-gpkg.sh`) when `geoserver-gpkg-output` is set.
 - `spec-markdown`: Reserved path for the final product specification Markdown (always `<spec-directory>/index.md`). The file is created by the assemble action.
 
 ### Assemble specification (`arkitektum/ps.editor.actions/assemble@main`)
@@ -474,6 +478,77 @@ It describes the GeoPackage that `geopackage-output` writes, so the two are usua
 SQLiteGPKG needs the SpatiaLite extension (`mod_spatialite`) on the pygeoapi host. It builds its SQL with the table name unquoted, so a table whose name contains a space (`Dyrkbar jord`) cannot be served — rename the table in the GeoPackage and in the configuration. Norwegian letters are fine.
 
 From Python, `pygeoapi_config.build_pygeoapi_gpkg_config(feature_types, psdata=..., data=...)` returns the configuration and `pygeoapi_config.write_pygeoapi_gpkg_config(feature_types, path, ...)` writes it; pass the same `default_crs`/`split_multi_geometry` as to `write_geopackage` if you changed them there. `geopackage.writer.realised_feature_tables(feature_types, ...)` lists the feature tables `write_geopackage` creates, without writing anything.
+
+## GeoServer setup for PostGIS
+
+With `geoserver-postgis-output: true` (or `--geoserver-postgis-output` locally) the prepare action also writes `<slug>.geoserver-postgis.sh`: a bash script that publishes the tables of the [PostGIS schema](#postgis-schema) as OGC API - Features collections in [GeoServer](https://geoserver.org). GeoServer is not configured from a single file, so the script sets it up through the REST API with `curl`: a workspace, its service metadata and contact, a `postgis` data store and one layer per table. Running it again updates what is already there. It is generated from the same table model as `<slug>.postgis.sql`, and the layers are the same as the pygeoapi collections.
+
+GeoServer needs the OGC API - Features extension. Run the script once the tables exist (and, for meaningful extents, contain data):
+
+```bash
+export GEOSERVER_URL=http://localhost:8080/geoserver
+export GEOSERVER_USER=admin GEOSERVER_PASSWORD=...
+export POSTGIS_HOST=db POSTGIS_USER=geoserver POSTGIS_PASSWORD=...
+./dyrkbar-jord.geoserver-postgis.sh
+```
+
+The collections are then at `<GEOSERVER_URL>/<workspace>/ogc/features/v1`. Values only whoever runs the service knows are environment variables; the ones with a default can be left unset:
+
+| Variable | Default | |
+|---|---|---|
+| `GEOSERVER_URL` | `http://localhost:8080/geoserver` | GeoServer's address |
+| `GEOSERVER_USER`, `GEOSERVER_PASSWORD` | | an administrator |
+| `GEOSERVER_WORKSPACE` | the slug, kebab-case (`dyrkbar-jord`; with scopes the scope's, with `xmi-model` `<slug>-xmi`) | the workspace the layers are published in |
+| `GEOSERVER_NAMESPACE_URI` | | the workspace's namespace URI; GeoServer's own default (`http://<workspace>`) is kept when unset |
+| `POSTGIS_HOST` | | the database server as GeoServer reaches it — from inside GeoServer's container, if it runs in one: there `localhost` is the container itself, and a database on the Docker host is usually at the bridge address `172.17.0.1` on Linux |
+| `POSTGIS_PORT` | `5432` | |
+| `POSTGIS_DATABASE` | the slug, sanitised like the table names | |
+| `POSTGIS_SCHEMA` | `postgis-schema`, else `public` | |
+| `POSTGIS_USER`, `POSTGIS_PASSWORD` | | the database user GeoServer reads with |
+
+GeoServer serves OGC API - Features per workspace and takes the service metadata there from the workspace's WFS settings, so psdata goes there:
+
+| psdata | GeoServer |
+|---|---|
+| title, abstract, keywords | WFS `title`, `abstrct`, `keywords` — the OGC API landing page's title and description |
+| access constraints | WFS `accessConstraints` |
+| licence and its URL | WFS `fees` |
+| metadata link | WFS `onlineResource` |
+| contact with role `owner` (else `pointOfContact`) / `pointOfContact`'s e-mail | workspace contact `contactOrganization` / `contactEmail` |
+| geographic extent | every layer's `latLonBoundingBox`; GeoServer derives the native one from it |
+
+Unlike the pygeoapi configuration, a missing psdata value is left out instead of written as `<REPLACE_ME>`, because the script publishes immediately: the title falls back to the workspace name, and a missing extent to the whole world (`-180,-90,180,90`) — a box computed from the freshly created, empty tables would be meaningless. The OpenAPI document keeps GeoServer's global contact; WFS capabilities show the workspace's.
+
+Each layer:
+
+- is named like the pygeoapi collection — the class name, latinised, lowercase kebab-case — with the feature type's title, description and keywords (else its title);
+- reads the class's feature table; GeoServer publishes all its columns, so a class with several geometries keeps them all, the declared one being the default geometry. A class without geometry is published as well;
+- declares the SRID of its geometry column (`projectionPolicy: FORCE_DECLARED`) and offers the same CRSs as pygeoapi (`responseSRS` with `overridingServiceSRS`; CRS84 is always offered);
+- exposes the `objid` primary key as a property (the store's *Expose primary keys*).
+
+From Python, `geoserver_config.build_geoserver_postgis_config(feature_types, psdata=..., workspace=..., dbname=..., schema=...)` returns what the script sets up as a dict, `geoserver_config.render_geoserver_postgis_script(config)` renders it and `geoserver_config.write_geoserver_postgis_config(feature_types, path, ...)` writes the script. Pass the same `default_srid`/`allow_z` as to the PostGIS writer if you changed them there.
+
+## GeoServer setup for GeoPackage
+
+With `geoserver-gpkg-output: true` (or `--geoserver-gpkg-output` locally) the prepare action also writes `<slug>.geoserver-gpkg.sh`: the same workspace, metadata and layer settings as [for PostGIS](#geoserver-setup-for-postgis), but the layers come from a `geopkg` data store reading the GeoPackage that `geopackage-output` writes, so the two are usually turned on together.
+
+By default the script uploads `<slug>.gpkg` from its own directory into GeoServer's data directory (`data/<workspace>/<slug>.gpkg`) through the REST resource API, so GeoServer's file system does not have to be reachable — fill the GeoPackage with data, then run:
+
+```bash
+export GEOSERVER_USER=admin GEOSERVER_PASSWORD=...
+./dyrkbar-jord.geoserver-gpkg.sh
+```
+
+Running it again uploads the file again and resets the store, so GeoServer serves the new content. Besides the `GEOSERVER_*` variables above:
+
+| Variable | |
+|---|---|
+| `GEOPACKAGE_FILE` | another local file to upload instead of `<slug>.gpkg` next to the script |
+| `GEOPACKAGE_SERVER_PATH` | a GeoPackage already on the server, as GeoServer sees it (`/srv/data/x.gpkg`, or `file:data/x.gpkg` relative to the data directory); nothing is uploaded |
+
+The layers follow the GeoPackage's tables, like the [pygeoapi configuration for GeoPackage](#pygeoapi-configuration-for-geopackage): the table names are the feature type names as they are, a class with several geometries is split into one layer per geometry table (`bygning-flate`, `bygning-punkt`), and a feature type without geometry gets no layer — GeoServer's GeoPackage store does not offer attribute tables.
+
+From Python, `geoserver_config.build_geoserver_gpkg_config(feature_types, psdata=..., workspace=..., geopackage=...)`, `render_geoserver_gpkg_script(config)` and `write_geoserver_gpkg_config(feature_types, path, ...)`; pass the same `default_crs`/`split_multi_geometry` as to `write_geopackage` if you changed them there.
 
 ## Template
 
