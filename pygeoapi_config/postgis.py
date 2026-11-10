@@ -10,21 +10,24 @@ configuration points at exactly the tables and columns that script creates.
 
 Every provider also gets a ``field_metadata`` section for our own PostgreSQL
 provider: per column that holds a model attribute, in the model's order, the
-attribute's name, description and -- for enumerations and code lists -- the codes
-it allows::
+attribute's title and description, and either the URI of its external code list
+or the values the model lists for it::
 
     field_metadata:
       identifikasjon_lokalid:
-        name: lokalId
+        title: lokalId
         description: Lokal identifikator av et objekt
       kommunenummer:
-        name: kommunenummer
+        title: kommunenummer
+        codelist: https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/kommunenummer
+      avgrensningstype:
+        title: avgrensningstype
         values:
-        - '4020'
-        - '4023'
+        - Riksgrense
+        - Kommunegrense
 
-The name is the attribute's own, unless another column of the table has the same
-one; then it is the path through the flattened data types
+The title is the attribute's own name, unless another column of the table has the
+same one; then it is the path through the flattened data types
 (``kvalitet.datafangstdato``). Repeating attributes have a table of their own and
 are not served, so they are not listed.
 
@@ -38,7 +41,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from geopackage.writer import CodeListResolver
 from postgis.writer import PRIMARY_KEY_COLUMN, Table, build_postgis_model, pg_name
 from pygeoapi_config.common import (
     DEFAULT_SRID,
@@ -60,19 +62,24 @@ def _filled(value: Any) -> bool:
 
 
 def _field_metadata(table: Table) -> dict[str, Any]:
-    """Name, description and allowed codes of every column holding a model attribute."""
+    """Title, description and code list or values of every column holding a model attribute."""
     columns = [column for column in table.columns if column.attribute is not None]
     leaf_names = Counter(column.attribute_path[-1] for column in columns)
     metadata: dict[str, Any] = {}
     for column in columns:
         path = column.attribute_path
         entry: dict[str, Any] = {
-            "name": path[-1] if leaf_names[path[-1]] == 1 else ".".join(path)
+            "title": path[-1] if leaf_names[path[-1]] == 1 else ".".join(path)
         }
         description = (column.attribute or {}).get("description")
         if isinstance(description, str) and description.strip():
             entry["description"] = description.strip()
-        if column.values:
+        # A code list is named by its register rather than copied: the register is
+        # where it grows. Only values the model lists itself are written out.
+        code_list = (column.code_list or "").rstrip("?")
+        if code_list:
+            entry["codelist"] = code_list
+        elif column.values:
             entry["values"] = list(column.values)
         metadata[column.name] = entry
     return metadata
@@ -120,13 +127,11 @@ def build_pygeoapi_postgis_config(
     schema: str | None = None,
     default_srid: int = DEFAULT_SRID,
     allow_z: bool = False,
-    codelist_resolver: CodeListResolver | None = None,
 ) -> dict[str, Any]:
     """Build the pygeoapi configuration for the PostGIS tables as a dict.
 
-    ``schema``, ``default_srid``/``allow_z`` and ``codelist_resolver`` must match
-    what the PostGIS DDL script was written with, so table and column types --
-    and the codes listed in ``field_metadata`` -- line up. ``dbname`` is the
+    ``schema`` and ``default_srid``/``allow_z`` must match what the PostGIS DDL
+    script was written with, so tables, columns and storage CRSs line up. ``dbname`` is the
     database the script is run in (sanitised like the table names); without one
     it is left for the user to fill in.
     """
@@ -136,7 +141,6 @@ def build_pygeoapi_postgis_config(
         default_srid=default_srid,
         allow_z=allow_z,
         model_metadata=False,
-        codelist_resolver=codelist_resolver,
     )
     tables = {table.name: table for table in model.tables if table.kind == "feature"}
 

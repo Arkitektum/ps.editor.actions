@@ -238,13 +238,13 @@ class FeatureTypeVariantTests(unittest.TestCase):
 
 
 class FieldMetadataTests(unittest.TestCase):
-    def test_columns_in_model_order_with_name_and_description(self) -> None:
+    def test_columns_in_model_order_with_title_and_description(self) -> None:
         field_metadata = _provider(build_pygeoapi_postgis_config(_fixture()), "bygning")["field_metadata"]
         # Inherited attributes first; the repeating ones (status, adresse) have a
         # table of their own, and objid, objtype and the geometry are no attributes.
         self.assertEqual(list(field_metadata), ["identifikasjon", "bygningsnavn", "bygningstype"])
         self.assertEqual(
-            field_metadata["bygningsnavn"], {"name": "bygningsnavn", "description": "Navn på bygningen."}
+            field_metadata["bygningsnavn"], {"title": "bygningsnavn", "description": "Navn på bygningen."}
         )
 
     def test_flattened_data_type_is_named_after_its_leaf(self) -> None:
@@ -269,9 +269,9 @@ class FieldMetadataTests(unittest.TestCase):
         self.assertEqual(
             _provider(config, "kommune")["field_metadata"],
             {
-                "identifikasjon_lokalid": {"name": "lokalId", "description": "Lokal identifikator"},
-                "identifikasjon_navnerom": {"name": "navnerom"},
-                "gyldigfra": {"name": "gyldigFra", "description": "Når objektet oppstod"},
+                "identifikasjon_lokalid": {"title": "lokalId", "description": "Lokal identifikator"},
+                "identifikasjon_navnerom": {"title": "navnerom"},
+                "gyldigfra": {"title": "gyldigFra", "description": "Når objektet oppstod"},
             },
         )
 
@@ -287,13 +287,12 @@ class FieldMetadataTests(unittest.TestCase):
             ]
         )
         field_metadata = _provider(config, "veg")["field_metadata"]
-        self.assertEqual(field_metadata["datafangstdato"]["name"], "datafangstdato")
-        self.assertEqual(field_metadata["kvalitet_datafangstdato"]["name"], "kvalitet.datafangstdato")
-        self.assertEqual(field_metadata["lokalid"]["name"], "lokalId")
+        self.assertEqual(field_metadata["datafangstdato"]["title"], "datafangstdato")
+        self.assertEqual(field_metadata["kvalitet_datafangstdato"]["title"], "kvalitet.datafangstdato")
+        self.assertEqual(field_metadata["lokalid"]["title"], "lokalId")
 
-    def test_values_of_enumerations_and_code_lists(self) -> None:
+    def test_listed_values_of_enumerations_and_code_lists(self) -> None:
         listed = [{"value": "4020", "label": "Midt-Telemark"}, {"value": "4023", "label": "Nome"}]
-        resolved = [{"value": "boenhet"}, {"value": "fritidsbolig"}]
         config = build_pygeoapi_postgis_config(
             [
                 _feature(
@@ -304,19 +303,57 @@ class FieldMetadataTests(unittest.TestCase):
                         "Status",
                         valueDomain={"kind": "enumeration", "listedValues": [{"value": "gjeldende"}]},
                     ),
-                    _attr("bruk", "Bruk", valueDomain={"codeList": "https://example.com/kodeliste/bruk"}),
                 )
-            ],
-            codelist_resolver=lambda url: resolved if url.endswith("/bruk") else None,
+            ]
         )
         field_metadata = _provider(config, "kommune")["field_metadata"]
         self.assertEqual(field_metadata["kommunenummer"]["values"], ["4020", "4023"])
         self.assertEqual(field_metadata["status"]["values"], ["gjeldende"])
-        self.assertEqual(field_metadata["bruk"]["values"], ["boenhet", "fritidsbolig"])
+        self.assertNotIn("codelist", field_metadata["status"])
 
-    def test_unresolved_code_list_has_no_values(self) -> None:
+    def test_external_code_list_is_named_by_its_uri(self) -> None:
         field_metadata = _provider(build_pygeoapi_postgis_config(_fixture()), "bygning")["field_metadata"]
-        self.assertNotIn("values", field_metadata["bygningstype"])
+        self.assertEqual(
+            field_metadata["bygningstype"],
+            {
+                "title": "bygningstype",
+                "codelist": "https://register.geonorge.no/sosi-kodelister/bygningstype",
+            },
+        )
+
+    def test_code_list_uri_wins_over_listed_values(self) -> None:
+        # The register is where a code list grows; a copy of its codes in the
+        # model would go stale in the configuration.
+        config = build_pygeoapi_postgis_config(
+            [
+                _feature(
+                    "Kommune",
+                    _attr(
+                        "kommunenummer",
+                        "Kommunenummer",
+                        valueDomain={
+                            "codeList": "https://example.com/kodeliste/kommunenummer",
+                            "listedValues": [{"value": "0301"}],
+                        },
+                    ),
+                )
+            ]
+        )
+        entry = _provider(config, "kommune")["field_metadata"]["kommunenummer"]
+        self.assertEqual(entry["codelist"], "https://example.com/kodeliste/kommunenummer")
+        self.assertNotIn("values", entry)
+
+    def test_code_list_uri_loses_an_empty_query(self) -> None:
+        config = build_pygeoapi_postgis_config(
+            [
+                _feature(
+                    "Fylke",
+                    _attr("fylkesnummer", valueDomain={"codeList": " https://example.com/kodeliste/fylkesnummer? "}),
+                )
+            ]
+        )
+        entry = _provider(config, "fylke")["field_metadata"]["fylkesnummer"]
+        self.assertEqual(entry["codelist"], "https://example.com/kodeliste/fylkesnummer")
 
     def test_code_values_are_quoted_strings(self) -> None:
         config = build_pygeoapi_postgis_config(

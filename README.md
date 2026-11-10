@@ -432,24 +432,27 @@ Every realisable feature type — every concrete class, i.e. every class with a 
 | `table` / `id_field` | the feature table and its primary key `objid` |
 | `geom_field` / `storage_crs` | the class's geometry column and its SRID. With several geometries the one the class declares as its geometry is used — the PostgreSQL provider serves one. A class without geometry gets neither, nor a `crs` list. |
 | `crs` | CRS84 and the common Norwegian/European CRSs (EPSG 25832/25833/25835, 5972/5973/5975, 3857, 3575, 4326, 3035, 4258, 5942), plus the storage CRS if it is not among them |
-| `field_metadata` | the name, description and allowed codes of every column that holds a model attribute — see below |
+| `field_metadata` | the title, description and code list or values of every column that holds a model attribute — see below |
 
-`field_metadata` is read by our own PostgreSQL provider (pygeoapi's built-in provider ignores it). Its keys are the table's columns, in the order of the attributes in the product specification — inherited attributes first, flattened data types where they stand — and each entry holds the attribute's `name` and `description` and, for enumerations and code lists, the codes it allows as `values`:
+`field_metadata` is read by our own PostgreSQL provider (pygeoapi's built-in provider ignores it). Its keys are the table's columns, in the order of the attributes in the product specification — inherited attributes first, flattened data types where they stand — and each entry holds the attribute's `title` and `description`, plus either `codelist` or `values`:
 
 ```yaml
       field_metadata:
         identifikasjon_lokalid:
-          name: lokalId
+          title: lokalId
           description: Lokal identifikator av et objekt
         kommunenummer:
-          name: kommunenummer
+          title: kommunenummer
           description: Nummerering av kommunen
+          codelist: https://register.geonorge.no/sosi-kodelister/inndelinger/inndelingsbase/kommunenummer
+        avgrensningstype:
+          title: avgrensningstype
           values:
-          - '4020'
-          - '4023'
+          - Riksgrense
+          - Kommunegrense
 ```
 
-`name` is the attribute's own name; when two columns of a table would get the same one (`datafangstdato` and `kvalitet.datafangstdato`), the flattened one gets its path through the data types instead. An empty description is left out. External code lists get their codes from the Geonorge register, like the lookup tables in the PostGIS script; if the register cannot be reached, `values` is left out. Attributes that may repeat live in child tables the provider does not serve, so they are not listed, and neither are `objid`, `objtype`, geometry columns and association foreign keys.
+`title` is the attribute's own name; when two columns of a table would get the same one (`datafangstdato` and `kvalitet.datafangstdato`), the flattened one gets its path through the data types instead. An empty description is left out. An attribute whose value domain is an external code list gets the list's URI as `codelist` (a trailing `?` is dropped) and no codes: the register is where the list is maintained, so the configuration points at it rather than copying it. An enumeration, or a code list whose values the model lists without a register URI, gets those values as `values`. Attributes that may repeat live in child tables the provider does not serve, so they are not listed, and neither are `objid`, `objtype`, geometry columns and association foreign keys.
 
 The service metadata comes from psdata: `identification` from the title, abstract, keywords, access constraints and metadata link; `license` from the licence and its URL; `provider` from the contact with role `owner`; `contact` from the contact with role `pointOfContact`.
 
@@ -464,7 +467,7 @@ Values only whoever runs the service knows — database `host`, `port`, `user` a
         password: ${POSTGRES_PASSWORD}
 ```
 
-From Python, `pygeoapi_config.build_pygeoapi_postgis_config(feature_types, psdata=..., dbname=..., schema=...)` returns the configuration as a dict and `pygeoapi_config.write_pygeoapi_postgis_config(feature_types, path, ...)` writes it. Pass the same `default_srid`/`allow_z` and `codelist_resolver` as to the PostGIS writer, so the tables, columns and `field_metadata` codes match the script. The package is called `pygeoapi_config` so it does not shadow the `pygeoapi` package itself.
+From Python, `pygeoapi_config.build_pygeoapi_postgis_config(feature_types, psdata=..., dbname=..., schema=...)` returns the configuration as a dict and `pygeoapi_config.write_pygeoapi_postgis_config(feature_types, path, ...)` writes it. Pass the same `default_srid`/`allow_z` as to the PostGIS writer, so the tables and columns match the script. The package is called `pygeoapi_config` so it does not shadow the `pygeoapi` package itself.
 
 ## pygeoapi configuration for GeoPackage
 

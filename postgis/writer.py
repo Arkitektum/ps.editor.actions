@@ -213,11 +213,13 @@ class Column:
     # path from that class, one segment per level of flattened data type.
     meta: dict[str, Any] | None = None
     # The model attribute a value column holds and the names on its way there
-    # (``("identifikasjon", "lokalId")``), and the codes its value domain allows.
+    # (``("identifikasjon", "lokalId")``), the codes its value domain allows and
+    # the URI of its external code list.
     # Not rendered; for consumers of the table model such as the pygeoapi writer.
     attribute: dict[str, Any] | None = field(default=None, compare=False, repr=False)
     attribute_path: tuple[str, ...] = field(default=(), compare=False, repr=False)
     values: list[str] | None = field(default=None, compare=False, repr=False)
+    code_list: str | None = field(default=None, compare=False, repr=False)
 
 
 @dataclass
@@ -655,6 +657,7 @@ class _ModelBuilder:
 
         if code_list:
             # Recorded either way: dropping it would lose the link to the register.
+            column.code_list = str(code_list).strip()
             note = f"Kodeliste: {code_list}"
             column.comment = f"{column.comment}\n\n{note}" if column.comment else note
         if not values:
