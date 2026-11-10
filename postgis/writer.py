@@ -212,6 +212,12 @@ class Column:
     # Model metadata: the class that declared the attribute and the attribute's
     # path from that class, one segment per level of flattened data type.
     meta: dict[str, Any] | None = None
+    # The model attribute a value column holds and the names on its way there
+    # (``("identifikasjon", "lokalId")``), and the codes its value domain allows.
+    # Not rendered; for consumers of the table model such as the pygeoapi writer.
+    attribute: dict[str, Any] | None = field(default=None, compare=False, repr=False)
+    attribute_path: tuple[str, ...] = field(default=(), compare=False, repr=False)
+    values: list[str] | None = field(default=None, compare=False, repr=False)
 
 
 @dataclass
@@ -621,8 +627,17 @@ class _ModelBuilder:
                 table.add_column(column)
             return
 
+        names = [*(segment.get("name") for segment in segments), attribute.get("name")]
         column = table.add_column(
-            Column(name, _COLUMN_TYPE.get(low, "text"), not_null=required, comment=description, meta=meta)
+            Column(
+                name,
+                _COLUMN_TYPE.get(low, "text"),
+                not_null=required,
+                comment=description,
+                meta=meta,
+                attribute=attribute,
+                attribute_path=tuple(str(n) for n in names),
+            )
         )
         value_domain = attribute.get("valueDomain")
         if isinstance(value_domain, dict):
@@ -646,6 +661,7 @@ class _ModelBuilder:
             return
 
         column.sql_type = "text"  # codes are compared as text, whatever they look like
+        column.values = [value for value, _ in values]
         if str(value_domain.get("kind") or "").strip().lower() == "enumeration":
             # A closed <<enumeration>> has no register to grow from, so the values
             # belong in the table definition.

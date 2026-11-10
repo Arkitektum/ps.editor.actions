@@ -558,6 +558,7 @@ def _build_feature_catalogue_assets(
             psdata=psdata,
             dbname=slug,
             schema=postgis_schema,
+            codelist_resolver=codelist_resolver,
         )
 
     # Optional pygeoapi output for the GeoPackage ({scope}.pygeoapi-gpkg.yml): the
