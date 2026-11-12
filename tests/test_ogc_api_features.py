@@ -36,18 +36,47 @@ class OgcApiCollectionsUrlFallbackTests(unittest.TestCase):
         base = "https://example.com/arcgis/.../OGCFeatureServer"
         self.assertEqual(
             _collections_url_candidates(base),
-            [base, f"{base}/collections"],
+            [base, f"{base}/collections", f"{base}/collections?f=json"],
         )
 
     def test_candidates_keep_existing_collections(self) -> None:
         url = "https://example.com/collections"
-        self.assertEqual(_collections_url_candidates(url), [url])
+        self.assertEqual(
+            _collections_url_candidates(url),
+            [url, f"{url}?f=json"],
+        )
 
-    def test_candidates_preserve_query_string(self) -> None:
+    def test_candidates_single_collection_derives_list(self) -> None:
+        url = "https://example.com/collections/surveys"
+        self.assertEqual(
+            _collections_url_candidates(url),
+            [
+                url,
+                "https://example.com/collections",
+                "https://example.com/collections?f=json",
+            ],
+        )
+
+    def test_candidates_items_derives_list(self) -> None:
+        url = "https://example.com/collections/surveys/items"
+        self.assertEqual(
+            _collections_url_candidates(url),
+            [
+                url,
+                "https://example.com/collections",
+                "https://example.com/collections?f=json",
+            ],
+        )
+
+    def test_candidates_base_with_query_derives_collections(self) -> None:
         base = "https://example.com/OGCFeatureServer?f=json"
         self.assertEqual(
             _collections_url_candidates(base),
-            [base, "https://example.com/OGCFeatureServer/collections?f=json"],
+            [
+                base,
+                "https://example.com/OGCFeatureServer/collections",
+                "https://example.com/OGCFeatureServer/collections?f=json",
+            ],
         )
 
     def test_falls_back_to_collections_when_base_returns_html(self) -> None:
@@ -65,6 +94,88 @@ class OgcApiCollectionsUrlFallbackTests(unittest.TestCase):
             return _FakeResponse(status_code=404)
 
         feature_types = load_feature_types(base, fake_get)
+        self.assertEqual([ft["name"] for ft in feature_types], ["0"])
+
+    def test_single_collection_url_lifted_to_list(self) -> None:
+        """A URL pointing at one collection (``.../collections/{id}``) must resolve
+        to the collections list, not be mistaken for the list itself."""
+        single = "https://example.com/collections/surveys"
+        collections = "https://example.com/collections"
+        single_payload = {"id": "surveys", "title": "Survey coverages", "links": []}
+        collections_payload = {
+            "collections": [{"id": "surveys", "title": "Survey coverages"}],
+        }
+
+        def fake_get(url: str) -> _FakeResponse:
+            if url == single:
+                return _FakeResponse(json_payload=single_payload)
+            if url == collections:
+                return _FakeResponse(json_payload=collections_payload)
+            return _FakeResponse(status_code=404)
+
+        feature_types = load_feature_types(single, fake_get)
+        self.assertEqual([ft["name"] for ft in feature_types], ["surveys"])
+
+    def test_items_url_lifted_to_list(self) -> None:
+        """A URL pointing at a collection's items must resolve to the list."""
+        items = "https://example.com/collections/surveys/items"
+        collections = "https://example.com/collections"
+        items_payload = {"type": "FeatureCollection", "features": [], "links": []}
+        collections_payload = {
+            "collections": [{"id": "surveys", "title": "Survey coverages"}],
+        }
+
+        def fake_get(url: str) -> _FakeResponse:
+            if url == items:
+                return _FakeResponse(json_payload=items_payload)
+            if url == collections:
+                return _FakeResponse(json_payload=collections_payload)
+            return _FakeResponse(status_code=404)
+
+        feature_types = load_feature_types(items, fake_get)
+        self.assertEqual([ft["name"] for ft in feature_types], ["surveys"])
+
+    def test_landing_page_prefers_collections_candidate(self) -> None:
+        """A service landing page returns valid JSON without a 'collections' array;
+        the loader must keep looking and use the '/collections' candidate rather
+        than giving up on the landing document."""
+        landing = "https://example.com/felles/jordressurser"
+        collections = "https://example.com/felles/jordressurser/collections"
+        landing_payload = {
+            "title": "Jordressurser",
+            "links": [{"rel": "data", "href": collections}],
+        }
+        collections_payload = {
+            "collections": [{"id": "jordressurser", "title": "Jordressurser"}],
+        }
+
+        def fake_get(url: str) -> _FakeResponse:
+            if url == landing:
+                return _FakeResponse(json_payload=landing_payload)
+            if url == collections:
+                return _FakeResponse(json_payload=collections_payload)
+            return _FakeResponse(status_code=404)
+
+        feature_types = load_feature_types(landing, fake_get)
+        self.assertEqual([ft["name"] for ft in feature_types], ["jordressurser"])
+
+    def test_geoserver_ignoring_accept_uses_f_json(self) -> None:
+        """Some GeoServer deployments ignore the Accept header and return HTML
+        unless ``?f=json`` is present; the loader must try the f=json candidate."""
+        collections = "https://example.com/collections"
+        f_json = "https://example.com/collections?f=json"
+        collections_payload = {
+            "collections": [{"id": "0", "title": "Test"}],
+        }
+
+        def fake_get(url: str) -> _FakeResponse:
+            if url == collections:
+                return _FakeResponse(text="<html></html>")
+            if url == f_json:
+                return _FakeResponse(json_payload=collections_payload)
+            return _FakeResponse(status_code=404)
+
+        feature_types = load_feature_types(collections, fake_get)
         self.assertEqual([ft["name"] for ft in feature_types], ["0"])
 
 

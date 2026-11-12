@@ -220,6 +220,20 @@ def load_feature_types(
     return feature_types
 
 
+def _is_collections_payload(payload: Any) -> bool:
+    """True when ``payload`` is an OGC collections document (has a ``collections``
+    array) or a bare list of collections — as opposed to a service landing page, a
+    single collection document, or a GeoJSON ``FeatureCollection``.
+    """
+
+    if isinstance(payload, Mapping):
+        collections = payload.get("collections")
+        return isinstance(collections, Sequence) and not isinstance(
+            collections, (str, bytes)
+        )
+    return isinstance(payload, Sequence) and not isinstance(payload, (str, bytes))
+
+
 def _fetch_collections_payload(
     collections_url: str, getter: HTTPGet
 ) -> tuple[Any, str]:
@@ -245,6 +259,7 @@ def _fetch_collections_payload(
 
     fetch_error: Exception | None = None
     saw_non_json = False
+    fallback: tuple[Any, str] | None = None
 
     for candidate in candidates:
         try:
@@ -274,7 +289,18 @@ def _fetch_collections_payload(
             saw_non_json = True
             continue
 
-        return payload, candidate
+        if _is_collections_payload(payload):
+            return payload, candidate
+
+        # Valid JSON that is not a collections document (a service landing page, a
+        # single collection, or a FeatureCollection).  Keep the first such payload
+        # as a fallback — the caller can still follow a rel="data"/"collections"
+        # link — but prefer a later candidate that is an actual collections list.
+        if fallback is None:
+            fallback = (payload, candidate)
+
+    if fallback is not None:
+        return fallback
 
     if saw_non_json:
         raise ValueError(
@@ -291,26 +317,51 @@ def _fetch_collections_payload(
     raise RuntimeError(f"Failed to fetch collections from '{collections_url}'.")
 
 
+def _collections_base_url(collections_url: str) -> str:
+    """Derive the canonical ``.../collections`` URL for an OGC API - Features service.
+
+    Handles URLs that point *deeper* than the collections document — a single
+    collection (``.../collections/{id}``), its items
+    (``.../collections/{id}/items``), a queryables/schema sub-resource, etc. — by
+    truncating the path to the last ``collections`` segment.  When the URL has no
+    ``collections`` segment at all (e.g. a service landing page or base URL) a
+    ``/collections`` segment is appended instead.  The query string is dropped;
+    JSON negotiation is handled by the ``Accept`` header and an explicit
+    ``?f=json`` candidate.
+    """
+
+    base = collections_url.partition("?")[0].rstrip("/")
+    segments = base.split("/")
+    lowered = [segment.lower() for segment in segments]
+
+    if "collections" in lowered:
+        idx = len(lowered) - 1 - lowered[::-1].index("collections")
+        return "/".join(segments[: idx + 1])
+
+    return f"{base}/collections"
+
+
 def _collections_url_candidates(collections_url: str) -> list[str]:
     """Return candidate URLs to try when locating the collections document.
 
-    The original URL is always tried first.  When it does not already point at
-    a ``/collections`` document we additionally try appending ``/collections``
-    so that base service URLs (e.g. ``.../OGCFeatureServer``) resolve.
+    The original URL is always tried first.  We then derive the canonical
+    ``.../collections`` URL (see :func:`_collections_base_url`) and try it both as
+    given and with ``?f=json`` appended, so that:
+
+    * base/landing URLs (e.g. ``.../OGCFeatureServer`` or a service landing page)
+      resolve to ``/collections``;
+    * URLs pointing at a single collection or its items are lifted back up to the
+      collections list;
+    * services that ignore the ``Accept`` header (some GeoServer deployments) and
+      only honour the ``f`` query parameter still return JSON.
     """
 
     candidates: list[str] = [collections_url]
 
-    base, sep, query = collections_url.partition("?")
-    trimmed = base.rstrip("/")
-    last_segment = trimmed.rsplit("/", 1)[-1].lower() if trimmed else ""
-
-    if last_segment != "collections":
-        appended = f"{trimmed}/collections"
-        if sep:
-            appended = f"{appended}?{query}"
-        if appended not in candidates:
-            candidates.append(appended)
+    base = _collections_base_url(collections_url)
+    for candidate in (base, f"{base}?f=json"):
+        if candidate not in candidates:
+            candidates.append(candidate)
 
     return candidates
 
