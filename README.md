@@ -294,6 +294,7 @@ Only your own schema is generated — the referenced ones are imported, not rebu
 
 Things worth knowing:
 
+- **A supertype from another model file needs `referenced-schemas` too.** When a feature type specialises a class that only exists as an `EAStub` (for example `Trafikkmengde` extending `Veglenke`), the supertype is placed in the referenced schema's package and the XSD extends the imported type (`extension base="fel:VeglenkeType"`). Without a matching entry, generation stops with `Supertypes not found in the model: Trafikkmengde -> Veglenke` instead of writing an XSD that silently derives the type from `gml:AbstractFeatureType`.
 - **`location` is what supplies `schemaLocation`.** ShapeChange derives the import itself from the other package's target namespace, but it has no idea where that schema is published. Omit `location` and you get an import without a location. One entry per schema is enough — not one per type.
 - **The declaration cannot be derived from the model.** An EA stub has only a name, so the namespace, prefix and published location have to come from you. The file name is not a reliable guide either: `Reguleringsplan-2024.xml` contains a package called `Reguleringsplan-2026-Utkast`.
 - **A schema whose types are never used is skipped**, so an over-broad list costs nothing but a download.

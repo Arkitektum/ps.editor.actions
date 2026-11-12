@@ -245,8 +245,8 @@ def _build_external_references(
 ) -> list[dict[str, Any]]:
     """Emit the stubs that take part in an association with a feature type.
 
-    Only association partners are included. A stub that merely appears as the
-    *subtype* of a generalization is an external model specialising ours -- an
+    Association partners and supertypes of a feature type are included. A stub
+    that merely appears as the *subtype* of a generalization is an external model specialising ours -- an
     inbound realization, not something this model imports -- and a stub used only
     as an attribute type already shows up as the type text on that attribute.
     """
@@ -274,6 +274,8 @@ def _build_external_references(
             used.setdefault(stub.name, []).extend(entries)
 
     # A feature type points at the stub: the box is needed for the line to land.
+    # That holds for a supertype too: a feature type that specialises a class
+    # from another model file needs it, or the inheritance is lost downstream.
     stub_names = {stub.name for stub in stubs.values() if stub.name not in known}
     for entry in feature_types:
         relationships = entry.get("relationships")
@@ -283,6 +285,9 @@ def _build_external_references(
             target = str(association.get("target") or "")
             if target in stub_names:
                 used.setdefault(target, [])
+        for supertype in relationships.get("inheritance") or []:
+            if str(supertype) in stub_names:
+                used.setdefault(str(supertype), [])
 
     external: list[dict[str, Any]] = []
     for name in sorted(used):
