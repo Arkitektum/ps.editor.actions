@@ -315,6 +315,12 @@ def _resolve_postgis_schema_source(product_slug: str | None, scope_name: str) ->
     return path, _repo_file_url(relative)
 
 
+def _scope_str(scope: Mapping[str, Any], key: str) -> str | None:
+    """An optional, non-empty string field of a scope (None otherwise)."""
+    value = scope.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def _scope_source(scope: Mapping[str, Any]) -> str:
     """A scope's data model path or URL: "source", falling back to the older "url"."""
     for key in ("source", "url"):
@@ -365,10 +371,14 @@ def _build_scope_catalogues(
             raise ValueError(f"Scope '{scope_name}' is missing a source (path or URL).")
 
         if generator == "xmi":
+            # "package"/"package_name": use only one package when the XMI file holds
+            # several (set by ps.editor.web when a package is picked in the search).
             feature_types = load_feature_types_from_xmi(
                 source,
                 username=xmi_username or "sosi",
                 password=xmi_password or "sosi",
+                package=_scope_str(scope, "package"),
+                package_name=_scope_str(scope, "package_name"),
             )
         elif generator == "postgis":
             # A DDL script (.sql), read rather than executed. Without a source it is

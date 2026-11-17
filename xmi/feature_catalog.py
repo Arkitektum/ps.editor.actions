@@ -48,6 +48,8 @@ def load_feature_types_from_xmi(
     password: str = "sosi",
     http_get: HTTPGet | None = None,
     include_only_features: Sequence[str] | None = None,
+    package: str | None = None,
+    package_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return feature type metadata extracted from an Enterprise Architect XMI file.
 
@@ -63,10 +65,17 @@ def load_feature_types_from_xmi(
         can either accept ``(url, auth=...)`` or only ``(url)``. The return value
         must expose ``status_code``, ``raise_for_status()`` and either ``content``
         or ``text``.
+    package, package_name:
+        Restrict the result to feature types inside one ``UML:Package`` (and its
+        sub-packages). Needed when several packages share one XMI file. ``package``
+        is the EA package id (``EAPK_...``, the same id objektkatalog.geonorge.no
+        uses); ``package_name`` is a fallback matched on the package name. Raises
+        ``ValueError`` when the package is not in the file, rather than silently
+        producing an empty or a mixed catalogue.
     """
 
     text = _load_xmi_text(xmi_source, username=username, password=password, http_get=http_get)
-    feature_types = _parse_feature_types(text)
+    feature_types = _parse_feature_types(text, package=package, package_name=package_name)
     return _filter_feature_types(feature_types, include_only_features)
 
 
@@ -165,8 +174,48 @@ def _read_file(path: Path) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def _parse_feature_types(text: str) -> list[dict[str, Any]]:
+def _class_ids_in_package(
+    root: ET.Element, package: str | None, package_name: str | None
+) -> set[str]:
+    """Ids of every ``UML:Class`` inside the chosen package, nested packages included."""
+    packages = root.findall(".//UML:Package", _NS)
+    target = None
+    if package and package.strip():
+        target = next(
+            (p for p in packages if _get_identifier(p) == package.strip()), None
+        )
+    if target is None and package_name and package_name.strip():
+        wanted = package_name.strip().lower()
+        matches = [p for p in packages if (p.get("name") or "").strip().lower() == wanted]
+        if len(matches) > 1:
+            raise ValueError(
+                f"Package name '{package_name}' is ambiguous in the XMI file "
+                f"({len(matches)} packages); set the package id."
+            )
+        target = matches[0] if matches else None
+    if target is None:
+        raise ValueError(
+            f"Package '{package_name or package}' (id {package or '-'}) was not found "
+            "in the XMI file."
+        )
+    return {
+        class_id
+        for class_elem in target.findall(".//UML:Class", _NS)
+        if (class_id := _get_identifier(class_elem))
+    }
+
+
+def _parse_feature_types(
+    text: str, *, package: str | None = None, package_name: str | None = None
+) -> list[dict[str, Any]]:
     root = ET.fromstring(text)
+    # Only feature types are narrowed: code lists, data types and supertypes elsewhere
+    # in the file stay available so the chosen package's attributes still resolve.
+    allowed_ids = (
+        _class_ids_in_package(root, package, package_name)
+        if (package or package_name)
+        else None
+    )
     extra_tagged = _collect_global_tagged_values(root)
     package_by_class_id = _collect_class_packages(root)
     classes, order = _collect_classes(root, extra_tagged, package_by_class_id)
@@ -196,6 +245,8 @@ def _parse_feature_types(text: str) -> list[dict[str, Any]]:
     for class_id in order:
         info = classes[class_id]
         if not info.stereotype or info.stereotype.lower() != "featuretype":
+            continue
+        if allowed_ids is not None and class_id not in allowed_ids:
             continue
         feature_types.append(
             _build_feature_type(
