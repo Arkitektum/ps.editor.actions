@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<XMI xmi.version="1.1" xmlns:UML="omg.org/UML1.3">
+  <XMI.content>
+    <UML:Model name="Trafikkmengde">
+      <UML:Namespace.ownedElement>
+        <UML:Package xmi.id="PKG_Trafikkmengde" name="Trafikkmengde">
+          <UML:Namespace.ownedElement>
+        <UML:Class xmi.id="FT_TRAF" name="Trafikkmengde">
+          <UML:ModelElement.stereotype>
+            <UML:Stereotype name="FeatureType" />
+          </UML:ModelElement.stereotype>
+          <UML:Classifier.feature>
+            <UML:Attribute xmi.id="A1" name="senterlinje">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="type" value="GM_Curve" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+            <UML:Attribute xmi.id="A2" name="ådtTotal">
+              <UML:ModelElement.taggedValue>
+                <UML:TaggedValue tag="type" value="Real" />
+                <UML:TaggedValue tag="lowerBound" value="1" />
+                <UML:TaggedValue tag="upperBound" value="1" />
+              </UML:ModelElement.taggedValue>
+            </UML:Attribute>
+          </UML:Classifier.feature>
+        </UML:Class>
+        <UML:Generalization subtype="FT_TRAF" supertype="STUB_VEG" xmi.id="GEN1" />
+          </UML:Namespace.ownedElement>
+        </UML:Package>
+        <EAStub xmi.id="STUB_VEG" name="Veglenke" UMLType="Class" />
+      </UML:Namespace.ownedElement>
+    </UML:Model>
+  </XMI.content>
+</XMI>

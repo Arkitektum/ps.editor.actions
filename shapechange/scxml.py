@@ -246,6 +246,7 @@ def _collect_class_specs(
     feature_types: Sequence[Mapping[str, Any]],
     *,
     as_dictionary: str = "model",
+    borrowed_names: frozenset[str] = frozenset(),
 ) -> list[_ClassSpec]:
     """Derive every class that ShapeChange needs from the feature catalogue.
 
@@ -260,8 +261,14 @@ def _collect_class_specs(
         if not isinstance(feature_type, Mapping):
             continue
         # Classes defined in another model file carry no attributes, so emitting
-        # them would put an empty type into the XSD. They exist for the diagram.
+        # them would put an empty type into the XSD. They exist for the diagram --
+        # unless a referenced schema owns them: then the class only marks where
+        # the type lives, and ShapeChange imports it instead of generating it.
         if feature_type.get("external") is True:
+            name = _text(feature_type.get("name"))
+            if name in borrowed_names and name not in taken:
+                taken.add(name)
+                specs.append(_ClassSpec(name, _ST_FEATURE_TYPE))
             continue
         name = _text(feature_type.get("name"))
         if not name or name in taken:
@@ -645,8 +652,26 @@ def build_scxml(
         raise ValueError("target_namespace is required to build a ShapeChange model.")
 
     entries = [entry for entry in feature_types if isinstance(entry, Mapping)]
-    specs = _collect_class_specs(entries, as_dictionary=as_dictionary)
+    owners = _schema_owners(referenced_schemas)
+    specs = _collect_class_specs(
+        entries, as_dictionary=as_dictionary, borrowed_names=frozenset(owners)
+    )
     class_ids = _assign_ids(specs)
+    # A supertype that is neither in the model nor owned by a referenced schema
+    # would be dropped, and the XSD would silently lose the inheritance.
+    unresolved = sorted(
+        f"{spec.name} -> {supertype}"
+        for spec in specs
+        for supertype in spec.supertypes
+        if supertype not in class_ids
+    )
+    if unresolved:
+        raise ValueError(
+            "Supertypes not found in the model: "
+            + ", ".join(unresolved)
+            + ". A supertype from another model file must be declared in "
+            "referenced-schemas, or the XSD loses the inheritance."
+        )
     roles_by_class, associations = _collect_associations(entries, class_ids)
 
     ET.register_namespace("sc", SCXML_NS)
@@ -682,7 +707,6 @@ def build_scxml(
     # ShapeChange then derives an <import> for it and qualifies the reference with
     # that schema's prefix, instead of us emitting a second local copy of a type
     # that already exists in a published schema.
-    owners = _schema_owners(referenced_schemas)
     borrowed: dict[str, list[_ClassSpec]] = {}
     own_specs: list[_ClassSpec] = []
     for spec in specs:
