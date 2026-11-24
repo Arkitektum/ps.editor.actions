@@ -2,8 +2,18 @@ name: Prepare product specification artefacts
 description: Fetch psdata metadata and feature catalogue information to prepare product specification artefacts.
 inputs:
   metadata-id:
-    description: Geonorge metadata UUID used as the psdata source.
-    required: true
+    description: Geonorge metadata UUID used as the psdata source. Leave empty for a dataset not yet registered in Geonorge and set dataset-title instead.
+    required: false
+    default: ""
+  dataset-title:
+    description: Temporary dataset title used when metadata-id is empty.
+    required: false
+  dataset-abstract:
+    description: Temporary dataset abstract used when metadata-id is empty.
+    required: false
+  dataset-organization:
+    description: Temporary owner organisation used when metadata-id is empty.
+    required: false
   ogc-feature-api:
     description: Optional URL to the OGC API - Features collections endpoint.
     required: false
@@ -133,14 +143,29 @@ runs:
       shell: bash
       env:
         INPUT_SCOPES: ${{ inputs.scopes }}
+        INPUT_METADATA_ID: ${{ inputs.metadata-id }}
+        INPUT_DATASET_TITLE: ${{ inputs.dataset-title }}
+        INPUT_DATASET_ABSTRACT: ${{ inputs.dataset-abstract }}
+        INPUT_DATASET_ORGANIZATION: ${{ inputs.dataset-organization }}
       run: |
         set -eo pipefail
         SUMMARY="$RUNNER_TEMP/product_spec_summary.txt"
-        ARGS=("${{ inputs.metadata-id }}")
+        ARGS=("$INPUT_METADATA_ID")
         if [ -n "${{ inputs.ogc-feature-api }}" ]; then
           ARGS+=("${{ inputs.ogc-feature-api }}")
         fi
         ARGS+=("--output-dir" "${{ inputs.output-directory }}")
+        if [ -z "$INPUT_METADATA_ID" ]; then
+          if [ -n "$INPUT_DATASET_TITLE" ]; then
+            ARGS+=("--dataset-title" "$INPUT_DATASET_TITLE")
+          fi
+          if [ -n "$INPUT_DATASET_ABSTRACT" ]; then
+            ARGS+=("--dataset-abstract" "$INPUT_DATASET_ABSTRACT")
+          fi
+          if [ -n "$INPUT_DATASET_ORGANIZATION" ]; then
+            ARGS+=("--dataset-organization" "$INPUT_DATASET_ORGANIZATION")
+          fi
+        fi
         if [ -n "${{ inputs.product-slug }}" ]; then
           ARGS+=("--slug" "${{ inputs.product-slug }}")
         fi

@@ -136,6 +136,41 @@ def fetch_psdata(metadata_id: str, *, http_get: HTTPGet | None = None) -> dict[s
     return build_psdata(metadata_id, metadata)
 
 
+PLACEHOLDER_OVERVIEW = (
+    "Denne produktspesifikasjonen er under arbeid. Datasettet er ennå ikke "
+    "registrert i Geonorge sin kartkatalog, så beskrivelsen bygger på midlertidige "
+    "opplysninger og datamodell fra SOSI modellregister, OGC API Features og/eller "
+    "egen datamodell. Spesifikasjonen kobles til metadata i kartkatalogen når "
+    "datasettet er registrert. Produktspesifikasjonen er i henhold til standarden: "
+    "'Geografisk informasjon - Dataproduktspesifikasjoner' (ISO19131:2022)"
+)
+
+
+def build_placeholder_psdata(
+    *,
+    title: str | None,
+    abstract: str | None = None,
+    organization: str | None = None,
+) -> dict[str, Any]:
+    """Build psdata for a dataset that is not (yet) registered in Geonorge.
+
+    The few user-supplied fields are shaped like a Geonorge ``getdata`` response so
+    the same builder fills title, abstract and contact. Everything that only
+    Geonorge knows (extent, quality, deliveries, metadata section …) is left out,
+    and ``metadataLinked`` is ``False`` so renderers can flag the spec as unlinked.
+    """
+
+    metadata: dict[str, Any] = {"Title": title or "", "Abstract": abstract or ""}
+    if organization:
+        metadata["ContactOwner"] = {"Organization": organization, "Role": "owner"}
+
+    psdata = build_psdata("", metadata)
+    psdata.pop("metadataSection", None)
+    psdata["overview"] = PLACEHOLDER_OVERVIEW
+    psdata["metadataLinked"] = False
+    return psdata
+
+
 def build_psdata(metadata_id: str, metadata: Mapping[str, Any]) -> dict[str, Any]:
     """Convert Geonorge metadata ``metadata`` into a psdata-like mapping."""
 

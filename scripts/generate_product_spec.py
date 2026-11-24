@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-from geonorge.psdata import fetch_psdata  # noqa: E402
+from geonorge.psdata import build_placeholder_psdata, fetch_psdata  # noqa: E402
 from md.feature_types import render_feature_types_to_markdown  # noqa: E402
 from md.product_specification import (  # noqa: E402
     IncludeResource,
@@ -804,8 +804,26 @@ def generate_product_specification(
     scopes: Sequence[Mapping[str, Any]] | None = None,
     render_spec_markdown: bool = True,
     spec_url: str | None = None,
+    dataset_title: str | None = None,
+    dataset_abstract: str | None = None,
+    dataset_organization: str | None = None,
 ) -> dict[str, Path | None]:
-    psdata = fetch_psdata(metadata_id)
+    if metadata_id:
+        psdata = fetch_psdata(metadata_id)
+    else:
+        # Datasettet er ikke registrert i kartkatalogen ennå: bygg psdata fra de
+        # midlertidige opplysningene i config. Kobles til Geonorge senere ved å
+        # sette metadataId.
+        if not (dataset_title or slug_override):
+            raise ValueError(
+                "Mangler metadataId: oppgi dataset_title (og gjerne product_slug) "
+                "for et datasett som ikke er registrert i kartkatalogen."
+            )
+        psdata = build_placeholder_psdata(
+            title=dataset_title or slug_override,
+            abstract=dataset_abstract,
+            organization=dataset_organization,
+        )
     if spec_url:
         psdata["specificationUrl"] = spec_url
     if scopes:
@@ -978,7 +996,25 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate product specification artefacts from Geonorge and OGC API sources.",
     )
-    parser.add_argument("metadata_id", help="Metadata UUID registered in Geonorge.")
+    parser.add_argument(
+        "metadata_id",
+        help=(
+            "Metadata UUID registered in Geonorge. Pass an empty string for a dataset "
+            "that is not registered yet and supply --dataset-title instead."
+        ),
+    )
+    parser.add_argument(
+        "--dataset-title",
+        help="Temporary dataset title, used when metadata_id is empty.",
+    )
+    parser.add_argument(
+        "--dataset-abstract",
+        help="Temporary dataset abstract, used when metadata_id is empty.",
+    )
+    parser.add_argument(
+        "--dataset-organization",
+        help="Temporary owner organisation, used when metadata_id is empty.",
+    )
     parser.add_argument(
         "ogc_feature_api",
         nargs="?",
@@ -1163,6 +1199,9 @@ def main(argv: list[str] | None = None) -> int:
             scopes=scopes,
             render_spec_markdown=not args.skip_spec_markdown,
             spec_url=args.spec_url,
+            dataset_title=args.dataset_title,
+            dataset_abstract=args.dataset_abstract,
+            dataset_organization=args.dataset_organization,
         )
     except Exception as error:  # pragma: no cover - defensive logging
         print(f"Failed to generate product specification: {error}", file=sys.stderr)
