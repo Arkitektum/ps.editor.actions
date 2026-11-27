@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from md.feature_types import unit_of_measure
 from geopackage.writer import (
     _GM_GEOM,
     _GPKG_GEOM,
@@ -97,6 +98,13 @@ _COLUMN_TYPE = {
     "double": "double precision",
     "decimal": "double precision",
     "float": "double precision",
+    # ISO 19103 measure types: numeric value; unit is documented via taggedValues.uom.
+    "measure": "double precision",
+    "length": "double precision",
+    "distance": "double precision",
+    "area": "double precision",
+    "volume": "double precision",
+    "angle": "double precision",
     "boolean": "boolean",
     "bool": "boolean",
     "date": "date",
@@ -598,6 +606,10 @@ class _ModelBuilder:
         raw_type = str(attribute.get("type") or "").strip()
         low = raw_type.lower()
         description = attribute.get("description") or None
+        uom = unit_of_measure(attribute)
+        if uom:
+            # Kolonnen holder bare tallet; enheten dokumenteres i kommentaren.
+            description = f"{description} (enhet: {uom})" if description else f"Enhet: {uom}"
         meta = (
             {"from": origin, "path": [*segments, _segment(recorded or attribute, index, leaf=True)]}
             if self.model_metadata

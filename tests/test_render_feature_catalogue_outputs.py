@@ -77,5 +77,20 @@ class RenderFeatureCatalogueOutputsTests(unittest.TestCase):
         self.assertGreater(len(PUML_OUTPUT_NONOTES_PATH.read_text(encoding="utf-8").strip()), 0)
 
 
+class UnitOfMeasureTests(unittest.TestCase):
+    def test_unit_is_shown_in_type_column(self) -> None:
+        fts = [{
+            "name": "Tomt",
+            "description": "En tomt.",
+            "attributes": [
+                {"name": "areal", "type": "Area", "cardinality": "1", "description": "Areal.", "taggedValues": {"uom": "m2"}},
+                {"name": "lengde", "type": "Length", "cardinality": "0..1", "description": "Lengde."},
+            ],
+        }]
+        md = render_feature_types_to_markdown(fts)
+        self.assertIn("(enhet: m²)", md)
+        self.assertEqual(md.count("(enhet:"), 1)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

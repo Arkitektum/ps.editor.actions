@@ -655,6 +655,9 @@ def _flatten_attributes(
         value_domain = attribute.get("valueDomain")
         if isinstance(value_domain, Mapping):
             entry["valueDomain"] = value_domain
+        uom = unit_of_measure(attribute)
+        if uom:
+            entry["uom"] = uom
         flattened.append(entry)
 
         nested = attribute.get("attributes")
@@ -733,6 +736,20 @@ def _is_enumeration(kind: Any, listed_values: Any) -> bool:
     return bool(listed_values)
 
 
+# UCUM-symboler (taggedValues.uom fra datamodell-editoren) -> visningsform.
+_UOM_DISPLAY = {"m2": "m²", "km2": "km²", "cm2": "cm²", "m3": "m³", "har": "ha"}
+
+
+def unit_of_measure(attribute: Mapping[str, Any]) -> str:
+    """Måleenhet for en målestørrelse (Length/Area …), fra ``taggedValues.uom``, klar
+    til visning (``m2`` -> ``m²``). Tom streng når enhet mangler."""
+    tags = attribute.get("taggedValues")
+    if not isinstance(tags, Mapping):
+        return ""
+    raw = str(tags.get("uom") or "").strip()
+    return _UOM_DISPLAY.get(raw, raw)
+
+
 def _type_kind(entry: Mapping[str, Any]) -> str:
     value_domain = entry.get("valueDomain")
     if isinstance(value_domain, Mapping):
@@ -808,6 +825,8 @@ def _build_table(
                 type_cell = f'<a href="#{_codelist_anchor(type_name)}">{type_cell}</a>'
             if type_cell and kind:
                 type_cell = f"{type_cell}<br />({kind})"
+            if type_cell and entry.get("uom"):
+                type_cell = f"{type_cell}<br />(enhet: {_escape_html(str(entry['uom']))})"
 
             cardinality_value = entry.get("cardinality")
             cardinality_text = "" if cardinality_value is None else str(cardinality_value)

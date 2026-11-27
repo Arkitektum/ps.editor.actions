@@ -157,6 +157,21 @@ class FeatureTableTests(unittest.TestCase):
         self.assertEqual(columns["tatt_i_bruk"].sql_type, "date")
         self.assertEqual(columns["identifikasjon_lokalid"].sql_type, "text")
 
+    def test_measure_types_are_numeric(self) -> None:
+        model = build_postgis_model(
+            [_feature("Tomt", _attr("lengde", "Length", "1"), _attr("areal", "Area", "1"), _attr("lenke", "URI", "0..1"))]
+        )
+        columns = _columns(model, "tomt")
+        self.assertEqual(columns["lengde"].sql_type, "double precision")
+        self.assertEqual(columns["areal"].sql_type, "double precision")
+        self.assertEqual(columns["lenke"].sql_type, "text")
+
+    def test_unit_of_measure_goes_into_column_comment(self) -> None:
+        attr = _attr("areal", "Area", "1", description="Tomtens areal.")
+        attr["taggedValues"] = {"uom": "m2"}
+        columns = _columns(build_postgis_model([_feature("Tomt", attr)]), "tomt")
+        self.assertEqual(columns["areal"].comment, "Tomtens areal. (enhet: m²)")
+
     def test_several_geometries_stay_in_one_table(self) -> None:
         columns = _columns(self.model, "bygning")
         self.assertEqual(columns["omriss"].sql_type, "geometry(Polygon, 25833)")

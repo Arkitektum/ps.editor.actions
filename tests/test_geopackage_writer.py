@@ -17,6 +17,7 @@ from geopackage.writer import (  # noqa: E402
     PRIMARY_KEY_COLUMN,
     _geonorge_api_url,
     _parse_geonorge_codelist,
+    _sql_column_type,
     write_geopackage,
 )
 
@@ -898,6 +899,13 @@ class GeonorgeResolverUnitTests(unittest.TestCase):
     def test_parse_codelist_handles_bad_payload(self) -> None:
         self.assertEqual(_parse_geonorge_codelist({}), [])
         self.assertEqual(_parse_geonorge_codelist("nope"), [])
+
+
+class MeasureTypeTests(unittest.TestCase):
+    def test_iso19103_measure_types_are_numeric(self) -> None:
+        for t in ("Length", "Area", "Measure"):
+            self.assertEqual(_sql_column_type(t), "REAL")
+        self.assertEqual(_sql_column_type("URI"), "TEXT")
 
 
 if __name__ == "__main__":

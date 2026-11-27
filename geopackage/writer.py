@@ -175,7 +175,9 @@ def _sql_column_type(cat_type: str | None) -> str:
     # XMI/UML primitive type names.
     if low in {"integer", "int"}:
         return "INTEGER"
-    if low in {"real", "double", "decimal", "float"}:
+    # ISO 19103 measure types (Length, Area, Measure …) store the numeric value; the
+    # unit of measure is documented on the property (taggedValues.uom), not in the column.
+    if low in {"real", "double", "decimal", "float", "measure", "length", "distance", "area", "volume", "angle"}:
         return "REAL"
     if low in {"boolean", "bool"}:
         return "BOOLEAN"
